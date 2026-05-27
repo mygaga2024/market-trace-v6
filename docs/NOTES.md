@@ -2,61 +2,72 @@
 
 ## 当前问题
 
-### 1. 代理拒连 eastmoney（反爬）
+### 1. 东方财富 WAF 拦截 ✅ 已适配
 
-**状态**：未解决  
-**影响**：Macro Agent 无法拉取真实宏观数据，RAI 固定 0.50 中性
+**状态**：已适配  
+**影响**：`/api/qt/clist/get` 路径被东财 CDN 主动断开（非代理/网络问题）
 
-```
-代理: 10.10.10.137:7890
-症状: 通 httpbin/baidu，拒 *.push2.eastmoney.com
-根因: 东方财富检测代理 IP 并断开 HTTPS CONNECT
-```
+`push2.eastmoney.com` 根路径正常（404），API 路径带参请求被断开。
+NAS 原生 curl 也失败，东财 WAF 层面的反爬。
 
-**排查记录**：
-- DNS 解析正常 ✅
-- 根路径 `https://push2.eastmoney.com` 返回 404 ✅
-- API 路径带参数 → ProxyError ❌
-- 非代理直连 → RemoteDisconnected ❌（容器无公网）
+**适配方案**：
+| 原接口 | 状态 | 替代方案 |
+|--------|------|----------|
+| `stock_zh_index_spot_em` | ❌ | `stock_zh_index_daily` (5大指数历史数据) |
+| `stock_board_concept_name_em` | ❌ | 板块数据降权，RAI 纯用指数 |
+| `stock_individual_fund_flow` | ❌ | Trace Agent 改用成交量异动分析 |
+| `stock_zh_a_spot_em` | ❌ | K线用 `stock_zh_a_hist` + 腾讯/新浪备选 |
 
-**解决方向**：
-1. 代理端添加 IP 轮换或延迟
-2. 更换代理（SOCKS5/透明代理）
-3. 改用 Tushare Pro（付费，支持 token 认证）
-4. 在宿主机跑数据抓取，推送到 Redis
+**后续方案**：
+- 对接 Tushare token 认证接口（不受 WAF 限制）
+- 框架已预留数据源接口，settings.yaml 配置即可切换
 
-### 2. 绿联 NAS 文件系统
+### 2. 网络架构演变
 
-- `.` 前缀文件会被隐藏：`.env` → 改为 `env`，`.env.example` → `env.example`
-- docker-compose 中显式指定 `env_file: ./env`
-- rsync 不支持 NAS 路径，改用 `tar | ssh` 管道传输
+| 版本 | 方式 | 结果 |
+|------|------|------|
+| v1 | Docker bridge + proxy | Redis 隔离，代理拒东财 |
+| v2 | host 网络 + proxy | Redis 端口冲突，代理仍拒 |
+| **v3** | **host 网络 + NAS Redis + SubStore 规则** | ✅ 生产运行 |
 
-### 3. Docker 权限
+当前：
+- 复用 NAS 自带 Redis (`localhost:6379`)，不在 docker-compose 中启动 Redis 容器
+- Docker 容器用 `network_mode: host` 共享 NAS 网卡
+- Sub-Store (`http://10.10.10.130:53001`) 管理代理规则，东财设为 DIRECT
 
-- 绿联 NAS 上 docker 创建的目录属于 root，mygaga 无权修改
-- 解决：`.dockerignore` 排除 data/，或预创建目录
-- 当前容器以 root 运行（兼容性折衷）
+### 3. 绿联 NAS 文件系统
 
-### 4. 双 compose 文件冲突
+- `.` 前缀文件会被隐藏：`.env` → `env`
+- docker-compose 显式指定 `env_file: ./env`
+- rsync 不支持 NAS 路径，改用 `tar | ssh` 管道
+- 绿联 UI 自动生成 `docker-compose.yaml` → 我们直接用它作为主文件
 
-- 绿联 UI 会生成 `docker-compose.yaml`
-- 我们的文件是 `docker-compose.yml`
-- 解决方案：`docker-compose.yaml` 加入 `.gitignore` 并删除
+### 4. Docker Compose 文件
+
+- 文件名：`docker-compose.yaml`（绿联 UI 更短）
+- 已移除 `docker-compose.yml` 避免双文件冲突
+- `version: "3.8"` 过时警告无害（Docker Engine 兼容）
+
+### 5. 数据提供者供应商路线图
+
+| 供应商 | 状态 | 接入方式 |
+|--------|------|----------|
+| AkShare (东财历史) | ✅ 生产 | `stock_zh_index_daily` |
+| AkShare (腾讯) | ✅ 备选 | `stock_zh_a_hist_tx` |
+| AkShare (新浪) | ✅ 备选 | `stock_zh_a_daily` |
+| XTick | ⬜ 预留 | 接口已定义，待对接 |
+| Yquoter | ⬜ 预留 | 接口已定义，待对接 |
+| Tushare | ⬜ 预留 | `settings.yaml` 配置 token |
+| FinQ4Cn-mcp | ⬜ 预留 | 接口已定义，待对接 |
 
 ## 环境速查
 
 | 组件 | 地址/配置 |
 |------|-----------|
+| 仪表盘 | `http://10.10.10.130:19377` |
 | NAS SSH | `ssh mygaga@10.10.10.130 -p 16011` |
 | 健康检查 | `http://10.10.10.130:19377/health` |
-| 代理 | `http://10.10.10.137:7890` |
+| Sub-Store | `http://10.10.10.130:53001` |
+| Mihomo 面板 | `http://10.10.10.137:9090/ui` |
 | GitHub | `github.com/mygaga2024/market-trace-v6` |
 | NAS 项目路径 | `/volume1/docker/market-trace-v6/` |
-
-## 配置密钥位置
-
-| 文件 | 说明 |
-|------|------|
-| `env` | 实际 API Key（nas 本地，不入 git） |
-| `env.example` | 模板（github，占位符） |
-| `config/settings.yaml` | 全配置（`${VAR}` 引用 env） |
