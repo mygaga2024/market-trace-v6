@@ -332,7 +332,7 @@ def main():
     logger.info("Market Trace V6.0 正在启动...")
     logger.info("LLM: {}::{}", CONFIG["llm"]["primary"]["provider"], CONFIG["llm"]["primary"]["model"])
     logger.info("数据源: {}", [p["name"] for p in CONFIG["data_providers"] if p.get("enabled")])
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, log_config=None, access_log=False)
+    uvicorn.run("main:app", host="0.0.0.0", port=19377, log_config=None, access_log=False)
 
 
 if __name__ == "__main__":

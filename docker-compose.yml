@@ -1,50 +1,21 @@
 version: "3.8"
 
 services:
-  redis:
-    image: redis:7-alpine
-    container_name: mt6-redis
-    restart: unless-stopped
-    volumes:
-      - ./data/redis:/data
-    command: redis-server --save 900 1 --save 300 10 --appendonly yes
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-    networks:
-      - mt6-network
-
   app:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: mt6-app
     restart: unless-stopped
+    network_mode: host
     env_file: ./env
-    environment:
-      - HTTP_PROXY=http://10.10.10.137:7890
-      - HTTPS_PROXY=http://10.10.10.137:7890
-      - NO_PROXY=localhost,127.0.0.1,redis,10.0.0.0/8,172.16.0.0/12
     volumes:
       - ./config/settings.yaml:/app/config/settings.yaml:ro
       - ./logs:/app/logs
       - ./data:/app/data
-    ports:
-      - "19377:8000"
-    depends_on:
-      redis:
-        condition: service_healthy
     deploy:
       resources:
         limits:
           memory: 1G
         reservations:
           memory: 256M
-    networks:
-      - mt6-network
-
-networks:
-  mt6-network:
-    driver: bridge
