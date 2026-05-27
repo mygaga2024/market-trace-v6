@@ -7,7 +7,7 @@ import asyncio
 import os
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from contextlib import asynccontextmanager
 
@@ -358,9 +358,10 @@ async def _analyze_single(symbol: str) -> dict:
 
     if tushare_token:
         try:
+            start_date = (datetime.now() - timedelta(days=60)).strftime("%Y%m%d")
             from data_provider.tushare_impl import TushareProvider
             tp = TushareProvider(bus, CONFIG, token=tushare_token)
-            klines = await tp.fetch_kline(symbol, "20260101", datetime.now().strftime("%Y%m%d"))
+            klines = await tp.fetch_kline(symbol, start_date, datetime.now().strftime("%Y%m%d"))
             if klines:
                 cached = [{"close": k.close, "open": k.open, "high": k.high, "low": k.low, "volume": k.volume, "amount": k.amount, "timestamp": k.timestamp.isoformat()} for k in klines]
         except Exception:
@@ -368,9 +369,10 @@ async def _analyze_single(symbol: str) -> dict:
 
     if not cached:
         try:
+            start_date = (datetime.now() - timedelta(days=60)).strftime("%Y%m%d")
             from data_provider.akshare_impl import AkShareProvider
             ap = AkShareProvider(bus, CONFIG)
-            klines = await ap.fetch_kline(symbol, "20260101", datetime.now().strftime("%Y%m%d"))
+            klines = await ap.fetch_kline(symbol, start_date, datetime.now().strftime("%Y%m%d"))
             if klines:
                 cached = [{"close": k.close, "open": k.open, "high": k.high, "low": k.low, "volume": k.volume, "amount": k.amount, "timestamp": k.timestamp.isoformat()} for k in klines]
         except Exception:
