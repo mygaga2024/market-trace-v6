@@ -1,0 +1,137 @@
+# ============================================================
+# Market Trace V6.0 — 全局配置文件
+# 所有参数从此读取，严禁在代码中硬编码
+# ============================================================
+
+# --- Redis 消息总线 ---
+redis:
+  host: redis
+  port: 6379
+  db: 0
+  password: ""
+  max_connections: 10
+  decode_responses: true
+  retry_interval: 5
+  health_check_interval: 30
+
+# --- AI 多级回退链 (DeepSeek → Gemini → MiniMax → 纯规则) ---
+llm:
+  primary:
+    provider: deepseek
+    model: deepseek-chat
+    api_key: ${DEEPSEEK_API_KEY}
+    base_url: https://api.deepseek.com/v1
+    timeout: 60
+    max_retries: 2
+    temperature: 0.3
+    max_tokens: 2048
+
+  secondary:
+    provider: gemini
+    model: gemini-2.0-flash
+    api_key: ${GEMINI_API_KEY}
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai
+    timeout: 45
+    max_retries: 2
+    temperature: 0.3
+    max_tokens: 2048
+
+  tertiary:
+    provider: minimax
+    model: abab6.5s-chat
+    api_key: ${MINIMAX_API_KEY}
+    base_url: https://api.minimax.chat/v1
+    timeout: 45
+    max_retries: 2
+    temperature: 0.3
+    max_tokens: 2048
+
+  fallback:
+    provider: rule_based
+    weights:
+      macro: 0.25
+      signal: 0.25
+      trace: 0.30
+      risk: 0.20
+
+# --- 熔断器 ---
+circuit_breaker:
+  failure_threshold: 3
+  recovery_timeout: 60
+  half_open_max_requests: 2
+
+# --- 反爬策略 ---
+anti_scraping:
+  delay:
+    mean: 2.0
+    std: 0.5
+    min: 0.5
+  user_agents:
+    - "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+    - "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+    - "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+    - "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:126.0) Gecko/20100101 Firefox/126.0"
+  cookie_persistence: true
+  max_cache_age_seconds: 300
+
+# --- Agent 配置 ---
+agents:
+  heartbeat_interval: 5
+  heartbeat_timeout: 15
+  max_concurrent_msgs: 100
+
+  macro:
+    interval: 600
+    indices:
+      - sh000001
+      - sz399001
+      - sz399006
+
+  signal:
+    ma_periods: [5, 10, 20, 60]
+    macd_fast: 12
+    macd_slow: 26
+    macd_signal: 9
+    rsi_period: 14
+    divergence_lookback: 20
+
+  trace:
+    big_order_threshold: 1000000
+    anomaly_zscore: 2.5
+    fund_flow_window: 5
+    concentration_threshold: 0.7
+
+  risk:
+    conflict_multiplier: 0.3
+    stop_loss_percent: 0.05
+    max_position_percent: 0.3
+
+# --- 日志 ---
+logging:
+  level: INFO
+  rotation: "500 MB"
+  retention: "7 days"
+  format: "{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} | {message}"
+
+# --- 数据源（适配器模式动态加载）---
+data_providers:
+  - name: akshare
+    enabled: true
+  # - name: xtick
+  #   enabled: false
+  # - name: yquoter
+  #   enabled: false
+  # - name: tushare
+  #   enabled: false
+  #   token: ${TUSHARE_TOKEN}
+
+# --- 数据库 ---
+database:
+  url: sqlite+aiosqlite:///data/market_trace.db
+  echo: false
+
+# --- 回测 ---
+backtest:
+  initial_capital: 100000
+  commission_rate: 0.0003
+  slippage: 0.001

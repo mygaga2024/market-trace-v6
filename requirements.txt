@@ -1,0 +1,43 @@
+# Market Trace V6.0 — Python 依赖
+# Python 3.11+
+
+# Web 框架
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+
+# 异步 HTTP（数据源 + LLM 调用）
+httpx==0.28.1
+
+# Redis 异步客户端
+redis[hiredis]==5.2.1
+
+# 配置加载
+pyyaml==6.0.2
+python-dotenv==1.0.1
+
+# 日志
+loguru==0.7.3
+
+# 数据库（异步 SQLAlchemy + SQLite）
+sqlalchemy[asyncio]==2.0.36
+aiosqlite==0.20.0
+
+# 数据提供者
+akshare==1.16.98
+
+# 数据解析
+feedparser==6.0.11
+beautifulsoup4==4.12.3
+lxml==5.3.0
+
+# 工具库
+tenacity==9.0.0
+numpy==2.2.1
+pandas==2.2.3
+
+# RSS 解析
+feedparser==6.0.11
+
+# 数据验证（FastAPI 已包含，显式声明版本）
+pydantic==2.10.4
+pydantic-settings==2.7.1

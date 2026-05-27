@@ -1,0 +1,43 @@
+# 敏感文件（无 . 前缀，兼容绿联 NAS）
+env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+*.egg
+
+# 日志
+logs/
+*.log
+
+# 数据
+data/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+.docker
+
+# 进度追踪（仅本地）
+PROGRESS.md
+
+# 虚拟环境
+venv/
+.venv/
+.env
+
+# 分发包
+dist/
+build/
+*.tar.gz
+*.whl
