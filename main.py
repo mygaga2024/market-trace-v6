@@ -134,6 +134,7 @@ async def lifespan(app: FastAPI):
 
 def _start_agents() -> list[asyncio.Task]:
     from data_provider.akshare_impl import AkShareProvider
+    from data_provider.tushare_impl import TushareProvider
     from core.memory import CaseMemory
     from agents.macro_agent import MacroAgent
     from agents.signal_agent import SignalAgent
@@ -143,9 +144,17 @@ def _start_agents() -> list[asyncio.Task]:
 
     tasks: list[asyncio.Task] = []
 
-    provider = AkShareProvider(bus, CONFIG)
+    ak_provider = AkShareProvider(bus, CONFIG)
 
-    macro = MacroAgent(bus, CONFIG, data_provider=provider)
+    tushare_cfg = [p for p in CONFIG.get("data_providers", []) if p.get("name") == "tushare" and p.get("enabled")]
+    tushare_provider = None
+    if tushare_cfg and tushare_cfg[0].get("token"):
+        tushare_provider = TushareProvider(bus, CONFIG, token=tushare_cfg[0]["token"])
+        logger.info("Tushare 数据源已启用")
+
+    primary_provider = tushare_provider or ak_provider
+
+    macro = MacroAgent(bus, CONFIG, data_provider=ak_provider)
     tasks.append(asyncio.create_task(macro.start(), name="macro-agent"))
 
     memory = CaseMemory(max_cases=10000)

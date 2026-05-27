@@ -48,17 +48,21 @@ NAS 原生 curl 也失败，东财 WAF 层面的反爬。
 - 已移除 `docker-compose.yml` 避免双文件冲突
 - `version: "3.8"` 过时警告无害（Docker Engine 兼容）
 
-### 5. 数据提供者供应商路线图
+### 5. 数据供应商状态
 
-| 供应商 | 状态 | 接入方式 |
-|--------|------|----------|
-| AkShare (东财历史) | ✅ 生产 | `stock_zh_index_daily` |
-| AkShare (腾讯) | ✅ 备选 | `stock_zh_a_hist_tx` |
-| AkShare (新浪) | ✅ 备选 | `stock_zh_a_daily` |
-| XTick | ⬜ 预留 | 接口已定义，待对接 |
-| Yquoter | ⬜ 预留 | 接口已定义，待对接 |
-| Tushare | ⬜ 预留 | `settings.yaml` 配置 token |
-| FinQ4Cn-mcp | ⬜ 预留 | 接口已定义，待对接 |
+| 供应商 | 接口 | 速率限制 | 用途 |
+|--------|------|---------|------|
+| AkShare | `stock_zh_index_daily` | 无限制 | ✅ Macro Agent (5大指数) |
+| AkShare | `stock_zh_a_hist` | 无限制 | ✅ Signal Agent (K线) |
+| AkShare | `stock_zh_a_hist_tx` | 无限制 | ✅ 腾讯备选 K线 |
+| AkShare | `stock_zh_a_daily` | 无限制 | ✅ 新浪备选 K线 |
+| AkShare | `stock_zh_a_spot_em` | ❌ WAF | 东财实时行情(已降级) |
+| AkShare | `stock_individual_fund_flow` | ❌ WAF | 资金流向(已用成交量替代) |
+| **Tushare** | **`daily`** | **200次/分** | **✅ 实时+K线 (已启用)** |
+| Tushare | `moneyflow` | 1次/小时 | ❌ 资金流向(频率限制不可用) |
+| Tushare | `index_daily` | 1次/分 | ⚠️ 宏观(需延迟,备选) |
+| XTick | — | 预留 | ⬜ 待对接 |
+| Yquoter | — | 预留 | ⬜ 待对接 |
 
 ## 环境速查
 

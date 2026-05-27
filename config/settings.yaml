@@ -117,13 +117,13 @@ logging:
 data_providers:
   - name: akshare
     enabled: true
+  - name: tushare
+    enabled: true
+    token: ${TUSHARE_TOKEN}
   # - name: xtick
   #   enabled: false
   # - name: yquoter
   #   enabled: false
-  # - name: tushare
-  #   enabled: false
-  #   token: ${TUSHARE_TOKEN}
 
 # --- 数据库 ---
 database:
