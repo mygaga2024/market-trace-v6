@@ -351,21 +351,34 @@ STOCK_POOL = [
 
 
 async def _analyze_single(symbol: str) -> dict:
-    """核心分析逻辑：拉数据→算指标→发信号→调LLM"""
-    cached = await bus.cache_get(f"market:raw:{symbol}") if bus else None
-    if not cached or len(cached) < 10:
-        provider_cfg = [p for p in CONFIG.get("data_providers", []) if p.get("enabled")]
-        tushare_token = next((p.get("token") for p in provider_cfg if p.get("name") == "tushare" and p.get("token")), None)
-        if tushare_token:
+    """核心分析逻辑：Tushare实时→AkShare→缓存降级→算指标→调LLM"""
+    provider_cfg = [p for p in CONFIG.get("data_providers", []) if p.get("enabled")]
+    tushare_token = next((p.get("token") for p in provider_cfg if p.get("name") == "tushare" and p.get("token")), None)
+    cached = None
+
+    if tushare_token:
+        try:
             from data_provider.tushare_impl import TushareProvider
             tp = TushareProvider(bus, CONFIG, token=tushare_token)
             klines = await tp.fetch_kline(symbol, "20260101", datetime.now().strftime("%Y%m%d"))
-            cached = [{"close": k.close, "open": k.open, "high": k.high, "low": k.low, "volume": k.volume, "timestamp": k.timestamp.isoformat()} for k in klines] if klines else None
-        if not cached:
+            if klines:
+                cached = [{"close": k.close, "open": k.open, "high": k.high, "low": k.low, "volume": k.volume, "amount": k.amount, "timestamp": k.timestamp.isoformat()} for k in klines]
+        except Exception:
+            pass
+
+    if not cached:
+        try:
             from data_provider.akshare_impl import AkShareProvider
             ap = AkShareProvider(bus, CONFIG)
             klines = await ap.fetch_kline(symbol, "20260101", datetime.now().strftime("%Y%m%d"))
-            cached = [{"close": k.close, "open": k.open, "high": k.high, "low": k.low, "volume": k.volume, "timestamp": k.timestamp.isoformat()} for k in klines] if klines else None
+            if klines:
+                cached = [{"close": k.close, "open": k.open, "high": k.high, "low": k.low, "volume": k.volume, "amount": k.amount, "timestamp": k.timestamp.isoformat()} for k in klines]
+        except Exception:
+            pass
+
+    if not cached and bus:
+        cached = await bus.cache_get(f"market:raw:{symbol}")
+
     if not cached or len(cached) < 5:
         raise HTTPException(400, f"股票 {symbol} 数据不足，至少需要5条K线")
 
