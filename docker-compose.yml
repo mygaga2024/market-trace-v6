@@ -23,12 +23,16 @@ services:
     container_name: mt6-app
     restart: unless-stopped
     env_file: ./env
+    environment:
+      - HTTP_PROXY=${HTTP_PROXY:-}
+      - HTTPS_PROXY=${HTTPS_PROXY:-}
+      - NO_PROXY=localhost,127.0.0.1,redis,10.0.0.0/8,172.16.0.0/12
     volumes:
       - ./config/settings.yaml:/app/config/settings.yaml:ro
       - ./logs:/app/logs
       - ./data:/app/data
     ports:
-      - "8000:8000"
+      - "19377:8000"
     depends_on:
       redis:
         condition: service_healthy
