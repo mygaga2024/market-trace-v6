@@ -1,19 +1,18 @@
 FROM python:3.11-slim
 
+ENV PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel
-
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir aiosqlite
 
 COPY . .
 
-RUN mkdir -p /app/logs /app/data && chown -R appuser:appuser /app
-
-USER appuser
+RUN mkdir -p /app/logs /app/data
 
 EXPOSE 8000
 

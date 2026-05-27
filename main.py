@@ -1,8 +1,9 @@
 """
 Market Trace V6.0 — 启动入口
-初始化消息总线、数据库、启动 FastAPI、注册 Agent
+初始化消息总线、数据库、启动 5 Agent、启动 FastAPI
 """
 
+import asyncio
 import os
 import sys
 import time
@@ -48,22 +49,49 @@ logger.add(
     encoding="utf-8",
     enqueue=True,
 )
-logger.add(
-    sys.stdout,
-    level="INFO",
-    format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>",
-    colorize=True,
-)
+logger.add(sys.stdout, level="INFO",
+           format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>",
+           colorize=True)
 
 START_TIME = time.time()
 bus = None
 db = None
 llm_chain = None
+_agent_tasks: list[asyncio.Task] = []
+
+
+def _build_llm_chain(cfg: dict):
+    from core.circuit_breaker import CircuitBreaker
+    from core.llm_factory import OpenAICompatibleLLM, RuleBasedAnalyzer, LLMFallbackChain
+
+    cb_cfg = cfg.get("circuit_breaker", {})
+    cb_kwargs = dict(
+        failure_threshold=cb_cfg.get("failure_threshold", 3),
+        recovery_timeout=cb_cfg.get("recovery_timeout", 60),
+        half_open_max_requests=cb_cfg.get("half_open_max_requests", 2),
+    )
+
+    llm_cfg = cfg.get("llm", {})
+    primary = OpenAICompatibleLLM(
+        "deepseek", llm_cfg.get("primary", {}),
+        CircuitBreaker(name="llm:deepseek", **cb_kwargs),
+    )
+    secondary = OpenAICompatibleLLM(
+        "gemini", llm_cfg.get("secondary", {}),
+        CircuitBreaker(name="llm:gemini", **cb_kwargs),
+    )
+    tertiary = OpenAICompatibleLLM(
+        "minimax", llm_cfg.get("tertiary", {}),
+        CircuitBreaker(name="llm:minimax", **cb_kwargs),
+    )
+    rule_based = RuleBasedAnalyzer(llm_cfg)
+
+    return LLMFallbackChain(primary, secondary, tertiary, rule_based)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global bus, db, llm_chain
+    global bus, db, llm_chain, _agent_tasks
 
     from core.bus import MessageBus
     from db.database import Database
@@ -82,7 +110,20 @@ async def lifespan(app: FastAPI):
     await db.init()
     logger.info("数据库已初始化")
 
+    llm_chain = _build_llm_chain(CONFIG)
+    logger.info("LLM 回退链已就绪: DeepSeek → Gemini → MiniMax → 纯规则")
+
+    _agent_tasks = _start_agents()
+    logger.info("{} 个 Agent 已启动", len(_agent_tasks))
+
     yield
+
+    logger.info("正在停止所有 Agent...")
+    for task in _agent_tasks:
+        if not task.done():
+            task.cancel()
+    await asyncio.gather(*_agent_tasks, return_exceptions=True)
+    logger.info("所有 Agent 已停止")
 
     if db:
         await db.close()
@@ -91,10 +132,42 @@ async def lifespan(app: FastAPI):
     logger.info("系统已关闭")
 
 
+def _start_agents() -> list[asyncio.Task]:
+    from data_provider.akshare_impl import AkShareProvider
+    from core.memory import CaseMemory
+    from agents.macro_agent import MacroAgent
+    from agents.signal_agent import SignalAgent
+    from agents.trace_agent import TraceAgent
+    from agents.risk_agent import RiskAgent
+    from agents.chief_analyst import ChiefAnalyst
+
+    tasks: list[asyncio.Task] = []
+
+    provider = AkShareProvider(bus, CONFIG)
+
+    macro = MacroAgent(bus, CONFIG, data_provider=provider)
+    tasks.append(asyncio.create_task(macro.start(), name="macro-agent"))
+
+    memory = CaseMemory(max_cases=10000)
+    signal = SignalAgent(bus, CONFIG, memory=memory)
+    tasks.append(asyncio.create_task(signal.start(), name="signal-agent"))
+
+    trace = TraceAgent(bus, CONFIG, data_provider=provider)
+    tasks.append(asyncio.create_task(trace.start(), name="trace-agent"))
+
+    risk = RiskAgent(bus, CONFIG)
+    tasks.append(asyncio.create_task(risk.start(), name="risk-agent"))
+
+    chief = ChiefAnalyst(bus, CONFIG, llm_chain=llm_chain)
+    tasks.append(asyncio.create_task(chief.start(), name="chief-agent"))
+
+    return tasks
+
+
 app = FastAPI(
     title="Market Trace V6.0",
     description="A/B 股量化分析系统 — 多 Agent 协作 + AI 决策",
-    version="0.7.0",
+    version="1.0.0",
     lifespan=lifespan,
 )
 
@@ -140,21 +213,19 @@ async def health():
 
     return {
         "status": "ok" if all_ok else "degraded",
-        "version": "0.7.0",
+        "version": "1.0.0",
         "uptime_seconds": round(uptime, 1),
         "redis": "connected" if redis_ok else "disconnected",
         "database": "connected" if db_ok else "disconnected",
         "agents": agents,
         "llm_chain": llm_status,
+        "agents_running": len([t for t in _agent_tasks if not t.done()]),
     }
 
 
 @app.get("/status")
 async def status():
-    response = {
-        "version": "0.7.0",
-        "uptime_seconds": round(time.time() - START_TIME, 1),
-    }
+    response = {"version": "1.0.0", "uptime_seconds": round(time.time() - START_TIME, 1)}
 
     if db:
         try:
@@ -163,19 +234,15 @@ async def status():
             latest = await db.get_latest_decision()
             if latest:
                 response["latest_decision"] = {
-                    "action": latest.action,
-                    "confidence": latest.confidence,
-                    "reasoning": latest.reasoning[:200],
-                    "provider": latest.provider_label,
+                    "action": latest.action, "confidence": latest.confidence,
+                    "reasoning": latest.reasoning[:200], "provider": latest.provider_label,
                     "timestamp": latest.timestamp.isoformat(),
                 }
         except Exception as e:
             response["decision_stats"] = {"error": str(e)}
 
-    if db:
         try:
-            case_stats = await db.get_case_statistics()
-            response["case_stats"] = case_stats
+            response["case_stats"] = await db.get_case_statistics()
         except Exception:
             response["case_stats"] = {"error": "unavailable"}
 
@@ -183,101 +250,58 @@ async def status():
 
 
 @app.get("/reports/{agent_name}")
-async def get_reports(
-    agent_name: str,
-    symbol: str = Query(None, description="按标的过滤"),
-    limit: int = Query(20, ge=1, le=100),
-    offset: int = Query(0, ge=0),
-):
-    valid_agents = {"macro", "signal", "trace", "risk", "chief"}
-    if agent_name not in valid_agents:
-        return JSONResponse(
-            {"error": f"无效 Agent: {agent_name}，可选: {sorted(valid_agents)}"},
-            status_code=400,
-        )
-
+async def get_reports(agent_name: str, symbol: str = Query(None),
+                      limit: int = Query(20, ge=1, le=100), offset: int = Query(0, ge=0)):
+    valid = {"macro", "signal", "trace", "risk", "chief"}
+    if agent_name not in valid:
+        return JSONResponse({"error": f"无效 Agent: {agent_name}，可选: {sorted(valid)}"}, status_code=400)
     if not db:
         return JSONResponse({"error": "数据库未就绪"}, status_code=503)
-
     try:
         reports = await db.get_reports(agent=agent_name, limit=limit, offset=offset)
         return {
-            "agent": agent_name,
-            "count": len(reports),
-            "items": [
-                {
-                    "report_id": r.report_id,
-                    "agent": r.agent,
-                    "symbol": r.symbol,
-                    "summary": r.summary,
-                    "confidence": r.confidence,
-                    "status": r.status,
-                    "timestamp": r.timestamp.isoformat() if r.timestamp else None,
-                    "data": r.data,
-                }
-                for r in reports
-            ],
+            "agent": agent_name, "count": len(reports),
+            "items": [{"report_id": r.report_id, "agent": r.agent, "symbol": r.symbol,
+                        "summary": r.summary, "confidence": r.confidence, "status": r.status,
+                        "timestamp": r.timestamp.isoformat() if r.timestamp else None, "data": r.data}
+                      for r in reports],
         }
     except Exception as e:
-        logger.error("获取报告失败: {}", e)
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
 @app.get("/reports/{agent_name}/latest")
 async def get_latest_report(agent_name: str, symbol: str = Query(None)):
-    valid_agents = {"macro", "signal", "trace", "risk", "chief"}
-    if agent_name not in valid_agents:
+    valid = {"macro", "signal", "trace", "risk", "chief"}
+    if agent_name not in valid:
         return JSONResponse({"error": f"无效 Agent: {agent_name}"}, status_code=400)
     if not db:
         return JSONResponse({"error": "数据库未就绪"}, status_code=503)
-
     try:
         r = await db.get_latest_report(agent_name, symbol=symbol)
         if not r:
             return JSONResponse({"error": f"Agent {agent_name} 无最新报告"}, status_code=404)
-        return {
-            "report_id": r.report_id,
-            "agent": r.agent,
-            "symbol": r.symbol,
-            "summary": r.summary,
-            "confidence": r.confidence,
-            "status": r.status,
-            "timestamp": r.timestamp.isoformat() if r.timestamp else None,
-            "data": r.data,
-        }
+        return {"report_id": r.report_id, "agent": r.agent, "symbol": r.symbol,
+                "summary": r.summary, "confidence": r.confidence, "status": r.status,
+                "timestamp": r.timestamp.isoformat() if r.timestamp else None, "data": r.data}
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
 @app.get("/decisions")
-async def get_decisions(
-    limit: int = Query(20, ge=1, le=100),
-    offset: int = Query(0, ge=0),
-):
+async def get_decisions(limit: int = Query(20, ge=1, le=100), offset: int = Query(0, ge=0)):
     if not db:
         return JSONResponse({"error": "数据库未就绪"}, status_code=503)
-
     try:
         decisions = await db.get_decisions(limit=limit, offset=offset)
         stats = await db.get_decision_stats()
-        return {
-            "count": len(decisions),
-            "stats": stats,
-            "items": [
-                {
-                    "decision_id": d.decision_id,
-                    "action": d.action,
-                    "confidence": d.confidence,
-                    "reasoning": d.reasoning[:300],
-                    "evidence_sources": d.evidence_sources,
-                    "risk_override": d.risk_override,
-                    "provider_label": d.provider_label,
-                    "provider_status": d.provider_status,
-                    "timestamp": d.timestamp.isoformat() if d.timestamp else None,
-                }
-                for d in decisions
-            ],
-        }
+        return {"count": len(decisions), "stats": stats,
+                "items": [{"decision_id": d.decision_id, "action": d.action, "confidence": d.confidence,
+                            "reasoning": d.reasoning[:300], "evidence_sources": d.evidence_sources,
+                            "risk_override": d.risk_override, "provider_label": d.provider_label,
+                            "provider_status": d.provider_status,
+                            "timestamp": d.timestamp.isoformat() if d.timestamp else None}
+                          for d in decisions]}
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
@@ -295,28 +319,19 @@ async def get_decision(decision_id: str):
             d = result.scalar_one_or_none()
             if not d:
                 return JSONResponse({"error": f"决策 {decision_id} 不存在"}, status_code=404)
-            return {
-                "decision_id": d.decision_id,
-                "action": d.action,
-                "confidence": d.confidence,
-                "reasoning": d.reasoning,
-                "evidence_sources": d.evidence_sources,
-                "evidence_chain": d.evidence_chain,
-                "risk_override": d.risk_override,
-                "provider_label": d.provider_label,
-                "provider_status": d.provider_status,
-                "timestamp": d.timestamp.isoformat() if d.timestamp else None,
-            }
+            return {"decision_id": d.decision_id, "action": d.action, "confidence": d.confidence,
+                    "reasoning": d.reasoning, "evidence_sources": d.evidence_sources,
+                    "evidence_chain": d.evidence_chain, "risk_override": d.risk_override,
+                    "provider_label": d.provider_label, "provider_status": d.provider_status,
+                    "timestamp": d.timestamp.isoformat() if d.timestamp else None}
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
 def main():
     logger.info("Market Trace V6.0 正在启动...")
-    logger.info("LLM 主力: {}::{}", CONFIG["llm"]["primary"]["provider"], CONFIG["llm"]["primary"]["model"])
+    logger.info("LLM: {}::{}", CONFIG["llm"]["primary"]["provider"], CONFIG["llm"]["primary"]["model"])
     logger.info("数据源: {}", [p["name"] for p in CONFIG["data_providers"] if p.get("enabled")])
-    logger.info("数据库: {}", CONFIG.get("database", {}).get("url", "sqlite+aiosqlite:///data/market_trace.db"))
-
     uvicorn.run("main:app", host="0.0.0.0", port=8000, log_config=None, access_log=False)
 
 
