@@ -300,25 +300,57 @@ class AkShareProvider(DataProviderBase):
         import akshare as ak
 
         await self._random_delay()
-        logger.debug("AkShare 抓取宏观指标")
+        logger.debug("AkShare 抓取宏观指标 (适配版)")
 
-        results: dict[str, Any] = {"timestamp": datetime.now().isoformat(), "source": "akshare"}
+        results: dict[str, Any] = {
+            "timestamp": datetime.now().isoformat(),
+            "source": "akshare",
+            "degraded": False,
+        }
+
+        index_codes = [
+            ("sh000001", "上证指数"),
+            ("sz399001", "深证成指"),
+            ("sz399006", "创业板指"),
+            ("sh000688", "科创50"),
+            ("sh000300", "沪深300"),
+        ]
+        indices_data: list[dict] = []
+
+        for code, name in index_codes:
+            try:
+                df = await asyncio.to_thread(ak.stock_zh_index_daily, symbol=code)
+                if df is not None and not df.empty:
+                    latest = df.iloc[-1]
+                    prev = df.iloc[-2] if len(df) > 1 else latest
+                    prev_close = float(prev.get("close", 0))
+                    cur_close = float(latest.get("close", 0))
+                    change_pct = ((cur_close - prev_close) / prev_close * 100) if prev_close > 0 else 0.0
+                    indices_data.append({
+                        "code": code,
+                        "name": str(latest.get("name", name)),
+                        "close": cur_close,
+                        "涨跌幅": round(change_pct, 2),
+                        "volume": float(latest.get("volume", 0)),
+                        "amount": float(latest.get("amount", 0)),
+                        "date": str(latest.get("date", "")),
+                    })
+            except Exception as e:
+                logger.warning("指数 {} ({}) 抓取失败: {}", code, name, e)
+
+        results["indices"] = indices_data
 
         try:
-            spot_df = await asyncio.to_thread(ak.stock_zh_index_spot_em)
+            spot_df = await asyncio.to_thread(ak.stock_zh_a_spot_em)
             if spot_df is not None and not spot_df.empty:
-                results["indices"] = spot_df.head(20).to_dict(orient="records")
-        except Exception as e:
-            logger.warning("宏观指数抓取失败: {}", e)
-            results["indices"] = []
-
-        try:
-            sector_df = await asyncio.to_thread(ak.stock_board_concept_name_em)
-            if sector_df is not None and not sector_df.empty:
-                results["sectors"] = sector_df.head(30).to_dict(orient="records")
-        except Exception as e:
-            logger.warning("板块数据抓取失败: {}", e)
+                results["sectors"] = spot_df.head(30).to_dict(orient="records")
+        except Exception:
             results["sectors"] = []
+            results["sectors_degraded"] = True
+
+        if not indices_data:
+            results["degraded"] = True
+            logger.warning("所有宏观指数抓取失败，数据已降级")
 
         await self.cache_and_publish_dict(results, "market:macro")
         return results

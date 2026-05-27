@@ -152,7 +152,7 @@ def _start_agents() -> list[asyncio.Task]:
     signal = SignalAgent(bus, CONFIG, memory=memory)
     tasks.append(asyncio.create_task(signal.start(), name="signal-agent"))
 
-    trace = TraceAgent(bus, CONFIG, data_provider=provider)
+    trace = TraceAgent(bus, CONFIG)
     tasks.append(asyncio.create_task(trace.start(), name="trace-agent"))
 
     risk = RiskAgent(bus, CONFIG)

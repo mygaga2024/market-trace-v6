@@ -224,40 +224,55 @@ class TestTraceAgent:
         signals = [{"direction": "bullish"}, {"direction": "bearish"}]
         assert TraceAgent._determine_direction(signals) == "neutral"
 
+    def test_volume_spike_bullish(self, trace_agent):
+        volumes = np.array([1000, 1100, 1050, 1200, 5000])
+        closes = np.array([10, 10.2, 10.1, 10.3, 10.5])
+        signals = []
+        trace_agent._detect_volume_spike(volumes, closes, signals)
+        assert len(signals) == 1
+        assert signals[0]["type"] == "VOLUME_SPIKE"
+        assert signals[0]["direction"] == "bullish"
+
+    def test_volume_spike_bearish(self, trace_agent):
+        volumes = np.array([1000, 1100, 1050, 1200, 5000])
+        closes = np.array([10, 10.2, 10.1, 10.3, 10.2])
+        signals = []
+        trace_agent._detect_volume_spike(volumes, closes, signals)
+        assert len(signals) == 1
+        assert signals[0]["direction"] == "bearish"
+
+    def test_volume_spike_no_anomaly(self, trace_agent):
+        volumes = np.array([1000, 1100, 1050, 1200, 1300])
+        closes = np.array([10, 10.2, 10.1, 10.3, 10.5])
+        signals = []
+        trace_agent._detect_volume_spike(volumes, closes, signals)
+        assert len(signals) == 0
+
+    def test_price_volume_divergence(self, trace_agent):
+        closes = np.array([10, 10.1, 10.2, 10.3, 10.6])
+        volumes = np.array([5000, 4000, 3000, 2000, 1000])
+        signals = []
+        trace_agent._detect_price_volume_divergence(closes, volumes, signals)
+        assert any(s["type"] == "BULLISH_DIVERGENCE_WEAK_VOLUME" for s in signals)
+
+    def test_breakout_detection(self, trace_agent):
+        highs = np.full(30, 10.0)
+        lows = np.full(30, 9.0)
+        closes = np.full(30, 10.0)
+        closes[-1] = 11.0
+        volumes = np.full(30, 1000.0)
+        volumes[-1] = 3000.0
+        signals = []
+        trace_agent._detect_range_breakout(highs, lows, closes, volumes, signals)
+        assert any(s["type"] == "BREAKOUT_HIGH_VOLUME" for s in signals)
+
     def test_make_summary(self):
         signals = [
-            {"type": "BIG_ORDER_INFLOW", "direction": "bullish"},
-            {"type": "FLOW_ZSCORE_ANOMALY", "direction": "bullish"},
+            {"type": "VOLUME_SPIKE", "direction": "bullish"},
+            {"type": "VOLUME_CONFIRMS_UPTREND", "direction": "bullish"},
         ]
         summary = TraceAgent._make_summary(signals, "bullish")
-        assert "BIG_ORDER_INFLOW" in summary
-        assert "FLOW_ZSCORE_ANOMALY" in summary
-
-    def test_big_order_detection(self, trace_agent):
-        signals = []
-        trace_agent._detect_big_order("000001", 2_000_000, 1_500_000, signals)
-        inflow = [s for s in signals if s["type"] == "BIG_ORDER_INFLOW"]
-        super_large = [s for s in signals if s["type"] == "SUPER_LARGE_INFLOW"]
-        assert len(inflow) == 1
-        assert len(super_large) == 1
-
-    def test_big_order_outflow(self, trace_agent):
-        signals = []
-        trace_agent._detect_big_order("000001", -2_000_000, -500_000, signals)
-        outflow = [s for s in signals if s["type"] == "BIG_ORDER_OUTFLOW"]
-        assert len(outflow) == 1
-
-    def test_concentration_accumulation(self, trace_agent):
-        signals = []
-        trace_agent._detect_concentration_shift(800_000, 200_000, signals)
-        acc = [s for s in signals if s["type"] == "CONCENTRATION_ACCUMULATION"]
-        assert len(acc) == 1
-
-    def test_concentration_distribution(self, trace_agent):
-        signals = []
-        trace_agent._detect_concentration_shift(-800_000, -200_000, signals)
-        dist = [s for s in signals if s["type"] == "CONCENTRATION_DISTRIBUTION"]
-        assert len(dist) == 1
+        assert "VOLUME_SPIKE" in summary
 
 
 # ---- Risk Agent Tests ----

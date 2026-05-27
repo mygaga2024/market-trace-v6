@@ -69,7 +69,7 @@ async def test_health_ok(client):
     assert data["status"] == "ok"
     assert data["redis"] == "connected"
     assert data["database"] == "connected"
-    assert data["version"] == "0.7.0"
+    assert data["version"] == "1.0.0"
 
 
 @pytest.mark.asyncio

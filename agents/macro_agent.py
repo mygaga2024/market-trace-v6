@@ -149,12 +149,14 @@ class MacroAgent(BaseAgent):
     @staticmethod
     def _compute_rai_score(components: dict[str, float]) -> float:
         """加权合成 RAI ∈ [0, 1]"""
-        weights = {
-            "index_breadth": 0.6,
-            "sector_momentum": 0.4,
-        }
         if not components:
             return 0.5
+
+        has_sectors = "sector_momentum" in components
+        if has_sectors:
+            weights = {"index_breadth": 0.6, "sector_momentum": 0.4}
+        else:
+            weights = {"index_breadth": 1.0}
 
         score = sum(components.get(k, 0.5) * w for k, w in weights.items())
         return round(min(1.0, max(0.0, score)), 4)

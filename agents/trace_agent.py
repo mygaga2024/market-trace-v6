@@ -1,6 +1,6 @@
 """
 Market Trace V6.0 — Trace Agent
-Level-2 异动扫描、大单流向、资金切入痕迹检测
+资金痕迹追踪：成交量异动、价量关系、主力行为检测（适配东财WAF后的降级方案）
 """
 
 from __future__ import annotations
@@ -15,24 +15,19 @@ from loguru import logger
 from agents.base_agent import BaseAgent
 from core.bus import MessageBus
 from core.schema import AgentReport, AgentName, ReportStatus
-from data_provider.akshare_impl import AkShareProvider
 
 
 class TraceAgent(BaseAgent):
     """
-    资金痕迹追踪 Agent
+    资金痕迹追踪 Agent (适配版)
 
-    监听 DATA_UPDATED 和 FUND_FLOW_UPDATED，
-    检测大单异动、资金流速突变、筹码集中度变化。
-    此为核心捕猎 Agent——捕捉主力资金介入痕迹。
+    因东财 WAF 拦截实时资金流向接口，改用成交量异动 + 价量关系分析：
+    - 成交量突增：当前量 > N 倍均量 → 主力介入信号
+    - 价量背离：价涨量缩 OR 价跌量增 → 预警信号
+    - 量价同步：价涨量增 → 多头确认
     """
 
-    def __init__(
-        self,
-        bus: MessageBus,
-        config: dict[str, Any],
-        data_provider: Optional[AkShareProvider] = None,
-    ):
+    def __init__(self, bus: MessageBus, config: dict[str, Any], data_provider=None):
         super().__init__(AgentName.TRACE.value, bus, ["events:data"], config)
 
         trace_cfg = config.get("agents", {}).get("trace", {})
@@ -40,9 +35,9 @@ class TraceAgent(BaseAgent):
         self._anomaly_zscore: float = trace_cfg.get("anomaly_zscore", 2.5)
         self._fund_flow_window: int = trace_cfg.get("fund_flow_window", 5)
         self._concentration_threshold: float = trace_cfg.get("concentration_threshold", 0.7)
-
-        self._provider = data_provider
-        self._flow_history: dict[str, list[float]] = {}
+        self._volume_multiplier: float = 2.0
+        self._volume_history: dict[str, list[float]] = {}
+        self._price_history: dict[str, list[float]] = {}
 
     async def process_message(self, message: dict[str, Any]) -> None:
         event = message.get("event", "")
@@ -54,33 +49,31 @@ class TraceAgent(BaseAgent):
             await self._trace_symbol(symbol)
 
     async def _trace_symbol(self, symbol: str) -> None:
-        """对单个标的执行资金痕迹扫描"""
-        fund_flow = None
-        if self._provider:
-            fund_flow = await self._provider.fetch_fund_flow(symbol)
+        """基于 K 线缓存的成交量异动检测"""
+        cached = await self.bus.cache_get(f"market:raw:{symbol}")
+        if not cached:
+            logger.debug("Trace Agent: {} 无缓存数据", symbol)
+            return
 
-        cached = await self.bus.cache_get(f"market:fundflow:{symbol}")
-        if not fund_flow and cached:
-            fund_flow = cached
+        closes = np.array([float(r.get("close", 0)) for r in cached])
+        volumes = np.array([float(r.get("volume", 0)) for r in cached])
+        amounts = np.array([float(r.get("amount", 0) or 0) for r in cached])
+        highs = np.array([float(r.get("high", 0)) for r in cached])
+        lows = np.array([float(r.get("low", 0)) for r in cached])
 
-        if not fund_flow:
-            logger.debug("Trace Agent: {} 无资金流向数据", symbol)
+        if len(closes) < 10:
+            logger.debug("Trace Agent: {} 数据不足", symbol)
             return
 
         signals: list[dict[str, Any]] = []
 
-        main_net = fund_flow.get("main_net_inflow", 0)
-        main_pct = fund_flow.get("main_net_inflow_pct", 0)
-        super_large = fund_flow.get("super_large_net", 0)
-        large_net = fund_flow.get("large_net", 0)
-
-        self._detect_big_order(symbol, main_net, super_large, signals)
-        self._detect_flow_anomaly(symbol, main_net, signals)
-        self._detect_concentration_shift(super_large, large_net, signals)
+        self._detect_volume_spike(volumes, closes, signals)
+        self._detect_price_volume_divergence(closes, volumes, signals)
+        self._detect_volume_price_trend(closes, volumes, signals)
+        self._detect_range_breakout(highs, lows, closes, volumes, signals)
 
         signal_count = len(signals)
         confidence = min(1.0, signal_count * 0.3) if signal_count > 0 else 0.0
-
         direction = self._determine_direction(signals)
 
         report = AgentReport(
@@ -90,7 +83,7 @@ class TraceAgent(BaseAgent):
             status=ReportStatus.OK,
             data={
                 "symbol": symbol,
-                "fund_flow": fund_flow,
+                "fund_flow": {"source": "volume_based", "note": "东财WAF适配: 成交量替代资金流向"},
                 "signals": signals,
                 "direction": direction,
                 "signal_count": signal_count,
@@ -112,86 +105,94 @@ class TraceAgent(BaseAgent):
 
         logger.info("Trace Agent {} 报告: {} 信号, 方向={}", symbol, signal_count, direction)
 
-    def _detect_big_order(
-        self, symbol: str, main_net: float, super_large: float, signals: list
-    ) -> None:
-        """大单检测"""
-        if main_net > self._big_order_threshold:
+    def _detect_volume_spike(self, volumes: np.ndarray, closes: np.ndarray, signals: list) -> None:
+        """成交量突增检测"""
+        if len(volumes) < 3:
+            return
+        avg_vol = np.mean(volumes[:-1])
+        last_vol = volumes[-1]
+
+        if avg_vol > 0 and last_vol > avg_vol * self._volume_multiplier:
+            direction = "bullish" if closes[-1] > closes[-2] else "bearish"
             signals.append({
-                "type": "BIG_ORDER_INFLOW",
-                "direction": "bullish",
-                "value": main_net,
-                "threshold": self._big_order_threshold,
+                "type": "VOLUME_SPIKE",
+                "direction": direction,
+                "ratio": round(last_vol / avg_vol, 2),
+                "strength": min(0.8, (last_vol / avg_vol - 1) * 0.3),
+            })
+
+    def _detect_price_volume_divergence(
+        self, closes: np.ndarray, volumes: np.ndarray, signals: list
+    ) -> None:
+        """价量背离检测"""
+        if len(closes) < 5 or len(volumes) < 5:
+            return
+        price_change = (closes[-1] - closes[-5]) / closes[-5]
+        vol_change = (volumes[-1] - np.mean(volumes[-5:-1])) / np.mean(volumes[-5:-1]) if np.mean(volumes[-5:-1]) > 0 else 0
+
+        if price_change > 0.03 and vol_change < -0.2:
+            signals.append({
+                "type": "BULLISH_DIVERGENCE_WEAK_VOLUME",
+                "direction": "bearish",
+                "note": "价涨量缩，上涨乏力",
                 "strength": 0.5,
             })
-        elif main_net < -self._big_order_threshold:
+        elif price_change < -0.03 and vol_change > 0.5:
             signals.append({
-                "type": "BIG_ORDER_OUTFLOW",
+                "type": "BEARISH_DIVERGENCE_HIGH_VOLUME",
                 "direction": "bearish",
-                "value": main_net,
+                "note": "价跌量增，恐慌抛售",
+                "strength": 0.6,
+            })
+
+    def _detect_volume_price_trend(
+        self, closes: np.ndarray, volumes: np.ndarray, signals: list
+    ) -> None:
+        """量价同步确认"""
+        if len(closes) < 5:
+            return
+        price_up = closes[-1] > closes[-5]
+        vol_avg_5 = np.mean(volumes[-5:])
+        vol_avg_20 = np.mean(volumes[-20:]) if len(volumes) >= 20 else vol_avg_5
+
+        if price_up and vol_avg_5 > vol_avg_20 * 1.2:
+            signals.append({
+                "type": "VOLUME_CONFIRMS_UPTREND",
+                "direction": "bullish",
+                "note": "价涨量增，多头确认",
+                "strength": 0.6,
+            })
+        elif not price_up and vol_avg_5 > vol_avg_20 * 1.2:
+            signals.append({
+                "type": "VOLUME_CONFIRMS_DOWNTREND",
+                "direction": "bearish",
+                "note": "价跌量增，空头确认",
                 "strength": 0.5,
             })
 
-        if super_large > self._big_order_threshold * 0.5:
+    def _detect_range_breakout(
+        self, highs: np.ndarray, lows: np.ndarray, closes: np.ndarray,
+        volumes: np.ndarray, signals: list
+    ) -> None:
+        """突破检测"""
+        if len(highs) < 20:
+            return
+        high_20 = np.max(highs[-20:-1])
+        low_20 = np.min(lows[-20:-1])
+        avg_vol_20 = np.mean(volumes[-20:-1])
+        last_vol = volumes[-1]
+
+        if closes[-1] > high_20 and last_vol > avg_vol_20 * 1.3:
             signals.append({
-                "type": "SUPER_LARGE_INFLOW",
+                "type": "BREAKOUT_HIGH_VOLUME",
                 "direction": "bullish",
-                "value": super_large,
                 "strength": 0.7,
             })
-
-    def _detect_flow_anomaly(self, symbol: str, main_net: float, signals: list) -> None:
-        """资金流速异常检测（Z-score）"""
-        history = self._flow_history.setdefault(symbol, [])
-        history.append(main_net)
-
-        window = self._fund_flow_window
-        if len(history) > window * 2:
-            history[:] = history[-window * 2:]
-
-        if len(history) < window:
-            return
-
-        recent = np.array(history[-window:])
-        mean_val = np.mean(recent)
-        std_val = np.std(recent)
-
-        if std_val < 1e-9:
-            return
-
-        z = (main_net - mean_val) / std_val
-
-        if abs(z) > self._anomaly_zscore:
-            direction = "bullish" if z > 0 else "bearish"
+        elif closes[-1] < low_20 and last_vol > avg_vol_20 * 1.3:
             signals.append({
-                "type": "FLOW_ZSCORE_ANOMALY",
-                "direction": direction,
-                "z_score": round(z, 2),
-                "threshold": self._anomaly_zscore,
-                "strength": min(0.9, abs(z) / (self._anomaly_zscore * 2)),
-            })
-
-    def _detect_concentration_shift(self, super_large: float, large_net: float, signals: list) -> None:
-        """筹码集中度变化检测"""
-        total_large = abs(super_large) + abs(large_net)
-        if total_large < 1e-9:
-            return
-
-        super_ratio = abs(super_large) / total_large
-
-        if super_ratio > self._concentration_threshold and super_large > 0:
-            signals.append({
-                "type": "CONCENTRATION_ACCUMULATION",
-                "direction": "bullish",
-                "ratio": round(super_ratio, 3),
-                "strength": 0.6,
-            })
-        elif super_ratio > self._concentration_threshold and super_large < 0:
-            signals.append({
-                "type": "CONCENTRATION_DISTRIBUTION",
+                "type": "BREAKDOWN_HIGH_VOLUME",
                 "direction": "bearish",
-                "ratio": round(super_ratio, 3),
-                "strength": 0.6,
+                "strength": 0.7,
             })
 
     @staticmethod
