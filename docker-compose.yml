@@ -24,8 +24,8 @@ services:
     restart: unless-stopped
     env_file: ./env
     environment:
-      - HTTP_PROXY=${HTTP_PROXY:-}
-      - HTTPS_PROXY=${HTTPS_PROXY:-}
+      - HTTP_PROXY=http://10.10.10.137:7890
+      - HTTPS_PROXY=http://10.10.10.137:7890
       - NO_PROXY=localhost,127.0.0.1,redis,10.0.0.0/8,172.16.0.0/12
     volumes:
       - ./config/settings.yaml:/app/config/settings.yaml:ro

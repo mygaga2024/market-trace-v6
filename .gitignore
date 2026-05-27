@@ -41,3 +41,6 @@ dist/
 build/
 *.tar.gz
 *.whl
+
+# 绿联 NAS Docker UI 自动生成
+docker-compose.yaml
