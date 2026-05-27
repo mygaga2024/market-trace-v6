@@ -41,3 +41,8 @@ feedparser==6.0.11
 # 数据验证（FastAPI 已包含，显式声明版本）
 pydantic==2.10.4
 pydantic-settings==2.7.1
+
+# 测试
+pytest==8.3.4
+pytest-asyncio==0.25.0
+pytest-mock==3.14.0
