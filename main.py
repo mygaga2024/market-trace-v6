@@ -7,13 +7,15 @@ import asyncio
 import os
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 from contextlib import asynccontextmanager
 
+import numpy as np
 import yaml
 import uvicorn
 from dotenv import load_dotenv
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, HTTPException
 from fastapi.responses import JSONResponse, HTMLResponse
 from loguru import logger
 
@@ -337,6 +339,174 @@ async def get_decision(decision_id: str):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+STOCK_POOL = [
+    "000001","000002","000063","000333","000651","000725","000858",
+    "002230","002415","002475","002594","300059","300750",
+    "600000","600009","600016","600028","600030","600036","600048",
+    "600050","600104","600276","600309","600519","600570","600585",
+    "600690","600809","600837","600887","600900","601012","601088",
+    "601166","601288","601318","601328","601390","601398","601601",
+    "601628","601668","601688","601857","601888","601939","603259",
+]
+
+
+async def _analyze_single(symbol: str) -> dict:
+    """核心分析逻辑：拉数据→算指标→发信号→调LLM"""
+    cached = await bus.cache_get(f"market:raw:{symbol}") if bus else None
+    if not cached or len(cached) < 10:
+        provider_cfg = [p for p in CONFIG.get("data_providers", []) if p.get("enabled")]
+        tushare_token = next((p.get("token") for p in provider_cfg if p.get("name") == "tushare" and p.get("token")), None)
+        if tushare_token:
+            from data_provider.tushare_impl import TushareProvider
+            tp = TushareProvider(bus, CONFIG, token=tushare_token)
+            klines = await tp.fetch_kline(symbol, "20260101", datetime.now().strftime("%Y%m%d"))
+            cached = [{"close": k.close, "open": k.open, "high": k.high, "low": k.low, "volume": k.volume, "timestamp": k.timestamp.isoformat()} for k in klines] if klines else None
+        if not cached:
+            from data_provider.akshare_impl import AkShareProvider
+            ap = AkShareProvider(bus, CONFIG)
+            klines = await ap.fetch_kline(symbol, "20260101", datetime.now().strftime("%Y%m%d"))
+            cached = [{"close": k.close, "open": k.open, "high": k.high, "low": k.low, "volume": k.volume, "timestamp": k.timestamp.isoformat()} for k in klines] if klines else None
+    if not cached or len(cached) < 5:
+        raise HTTPException(400, f"股票 {symbol} 数据不足，至少需要5条K线")
+
+    closes = np.array([float(r["close"]) for r in cached])
+    highs = np.array([float(r["high"]) for r in cached])
+    lows = np.array([float(r["low"]) for r in cached])
+    volumes = np.array([float(r["volume"]) for r in cached])
+
+    from agents.signal_agent import SignalAgent
+    from agents.trace_agent import TraceAgent
+
+    sig = SignalAgent(bus, CONFIG)
+    ta = TraceAgent(bus, CONFIG)
+
+    ma5 = round(float(SignalAgent._calc_ma(closes, 5)[-1]), 2) if len(closes) >= 5 else None
+    ma10 = round(float(SignalAgent._calc_ma(closes, 10)[-1]), 2) if len(closes) >= 10 else None
+    ma20 = round(float(SignalAgent._calc_ma(closes, 20)[-1]), 2) if len(closes) >= 20 else None
+
+    rsi_vals = SignalAgent._calc_rsi(closes, 14)
+    rsi = round(float(rsi_vals[-1]), 2) if rsi_vals is not None and len(rsi_vals) > 0 and not np.isnan(rsi_vals[-1]) else None
+
+    macd_dict = sig._calc_macd(closes)
+    macd = {}
+    if macd_dict and len(macd_dict.get("hist", [])) > 0:
+        macd = {
+            "dif": round(float(macd_dict["dif"][-1]), 4) if not np.isnan(macd_dict["dif"][-1]) else None,
+            "dea": round(float(macd_dict["dea"][-1]), 4) if not np.isnan(macd_dict["dea"][-1]) else None,
+            "histogram": round(float(macd_dict["hist"][-1]), 4) if not np.isnan(macd_dict["hist"][-1]) else None,
+        }
+
+    price = closes[-1]
+    prev = closes[-2] if len(closes) > 1 else price
+    change_pct = round((price - prev) / prev * 100, 2) if prev else 0
+
+    vol_ratio = round(float(volumes[-1] / np.mean(volumes[:-1])), 2) if len(volumes) > 1 and np.mean(volumes[:-1]) > 0 else 1.0
+
+    trace_agent = TraceAgent.__new__(TraceAgent)
+    trace_signals = []
+    ta._detect_volume_spike(volumes, closes, trace_signals)
+    if len(closes) >= 5:
+        ta._detect_price_volume_divergence(closes, volumes, trace_signals)
+
+    macro_rai = 0.5
+    if bus:
+        mc = await bus.cache_get("market:macro")
+        if mc and isinstance(mc, dict):
+            macro_rai = mc.get("risk_appetite_index", 0.5)
+
+    decision = None
+    if llm_chain:
+        try:
+            from core.schema import AgentReport, AgentName, DecisionAction
+            reports = {
+                "macro": AgentReport(agent=AgentName.MACRO, summary=f"RAI={macro_rai:.2f}",
+                    data={"risk_appetite_index": macro_rai}, confidence=abs(macro_rai - 0.5) * 2),
+                "signal": AgentReport(agent=AgentName.SIGNAL, summary=f"价格{price}",
+                    data={"indicators": {"rsi": rsi, "macd": macd}, "signals": []}, confidence=0.5),
+                "trace": AgentReport(agent=AgentName.TRACE, summary="量价分析",
+                    data={"signals": trace_signals, "direction": "neutral"}, confidence=0.5),
+            }
+            dec = await llm_chain.analyze(reports)
+            decision = {
+                "action": dec.action.value, "confidence": dec.confidence,
+                "reasoning": dec.reasoning, "provider": dec.provider_label,
+            }
+        except Exception:
+            pass
+
+    return {
+        "symbol": symbol, "price": float(price), "change_pct": change_pct,
+        "indicators": {"ma5": ma5, "ma10": ma10, "ma20": ma20, "macd": macd, "rsi": rsi, "vol_ratio": vol_ratio},
+        "trace_signals": [{"type": s["type"], "direction": s["direction"], "strength": s.get("strength", 0)} for s in trace_signals],
+        "macro_rai": macro_rai, "decision": decision,
+    }
+
+
+@app.post("/analyze/{symbol}")
+async def analyze_stock(symbol: str):
+    """诊股：拉数据→技术分析→AI决策"""
+    try:
+        result = await _analyze_single(symbol)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("诊股失败 {}: {}", symbol, e)
+        return JSONResponse({"error": str(e), "symbol": symbol}, status_code=500)
+
+
+STRATEGIES = {
+    "breakout": (lambda c,h,v: (
+        c[-1] > max(h[-20:-1]) and v[-1] > np.mean(v[-20:-1]) * 1.5 and len(c) >= 2 and c[-1] > c[-2]
+    ), "强势突破"),
+    "oversold": (lambda c,_,v: (
+        len(c) >= 14 and _calc_rsi14(c) < 35 and (c[-1]-c[-5])/c[-5] < -0.03
+    ), "超跌反弹"),
+    "strength": (lambda c,_,v: (
+        len(c) >= 5 and v[-1] > np.mean(v[-5:-1]) * 2 and c[-1] > c[-5]
+    ), "主力介入"),
+    "risk": (lambda c,h,_: (
+        len(c) >= 14 and _calc_rsi14(c) > 70 and c[-1] < c[-20]
+    ), "风险预警"),
+}
+
+
+def _calc_rsi14(closes):
+    from agents.signal_agent import SignalAgent
+    r = SignalAgent._calc_rsi(np.array(closes), 14)
+    return float(r[-1]) if r is not None and len(r) > 0 else 50
+
+
+@app.post("/screen/{strategy}")
+async def screen_stocks(strategy: str):
+    """选股：按策略扫描股票池"""
+    if strategy not in STRATEGIES:
+        return JSONResponse({"error": f"策略不存在: {strategy}，可选: {list(STRATEGIES.keys())}"}, status_code=400)
+
+    condition, strategy_name = STRATEGIES[strategy]
+    results = []
+
+    for symbol in STOCK_POOL:
+        try:
+            cached = await bus.cache_get(f"market:raw:{symbol}") if bus else None
+            if not cached or len(cached) < 20:
+                continue
+            closes = [float(r["close"]) for r in cached]
+            highs = [float(r["high"]) for r in cached]
+            vols = [float(r["volume"]) for r in cached]
+            if condition(closes, highs, vols):
+                results.append({
+                    "symbol": symbol, "price": closes[-1],
+                    "change_pct": round((closes[-1] - closes[-2]) / closes[-2] * 100, 2) if len(closes) > 1 else 0,
+                    "vol_ratio": round(vols[-1] / np.mean(vols[:-1]), 2) if len(vols) > 1 and np.mean(vols[:-1]) > 0 else 1,
+                })
+        except Exception:
+            continue
+
+    results.sort(key=lambda x: -x["vol_ratio"])
+    return {"strategy": strategy_name, "matched": len(results), "results": results[:20]}
+
+
 DASHBOARD_HTML = r"""<!DOCTYPE html>
 <html lang="zh">
 <head>
@@ -379,6 +549,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .refresh{font-size:12px;color:#484f58}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
 .pulse{animation:pulse 2s infinite}
+.strat-btn{padding:8px 16px;background:#21262d;color:#58a6ff;border:1px solid #30363d;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600}
+.strat-btn:hover{background:#30363d}
+.result-card{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:16px;margin-bottom:10px}
+.result-stats{display:flex;gap:20px;flex-wrap:wrap;margin-bottom:8px}
+.result-stat{text-align:center}.result-stat div:first-child{color:#8b949e;font-size:11px}.result-stat div:last-child{font-size:18px;font-weight:700;color:#c9d1d9}
+.strat-result{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:12px;margin-bottom:8px;cursor:pointer}
+.strat-result:hover{background:#21262d}
+.strat-result .price{font-weight:700;color:#58a6ff}
 </style>
 <meta http-equiv="refresh" content="30">
 </head>
@@ -390,6 +568,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 <span class="refresh">⏱ 30s刷新</span>
 </div>
 </div>
+
+<div style="margin-bottom:20px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+<input id="stock-input" type="text" placeholder="输入股票代码 如 000001" style="flex:1;min-width:180px;padding:10px 16px;border-radius:8px;border:1px solid #30363d;background:#0d1117;color:#c9d1d9;font-size:16px;outline:none" onkeydown="if(event.key==='Enter')analyzeStock()">
+<button onclick="analyzeStock()" style="padding:10px 20px;background:#238636;border:none;border-radius:8px;color:white;font-size:16px;cursor:pointer;font-weight:600">🔍 诊股</button>
+</div>
+<div id="analyze-spinner" style="display:none;text-align:center;padding:10px;color:#58a6ff">⏳ 分析中，正在拉取数据+调用AI...</div>
+<div id="analyze-result" style="display:none"></div>
 
 <div class="grid">
 <div class="card">
@@ -433,6 +618,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 <a href="/reports/signal">📉 信号报告</a>
 <a href="/reports/trace">💹 资金报告</a>
 <a href="/decisions">🧠 决策历史</a>
+</div>
+
+<div style="margin-top:20px">
+<div class="card-title" style="margin-bottom:10px">🎯 选股策略</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+<button onclick="screenStocks('breakout')" class="strat-btn">🔥 强势突破</button>
+<button onclick="screenStocks('oversold')" class="strat-btn">💎 超跌反弹</button>
+<button onclick="screenStocks('strength')" class="strat-btn">💰 主力介入</button>
+<button onclick="screenStocks('risk')" class="strat-btn">📉 风险预警</button>
+</div>
+<div id="screen-results" style="display:none"></div>
 </div>
 
 <div class="footer">
@@ -511,6 +707,40 @@ async function load(){
   }catch(e){console.error(e)}
 }
 function fmtTime(s){let m=Math.floor(s/60),h=Math.floor(m/60);m%=60;return h?h+'h'+m+'m':m+'m'+Math.floor(s%60)+'s'}
+async function analyzeStock(){
+  let sym=document.getElementById('stock-input').value.trim();
+  if(!sym){alert('请输入股票代码');return}
+  document.getElementById('analyze-spinner').style.display='block';
+  document.getElementById('analyze-result').style.display='none';
+  try{
+    let r=await fetch('/analyze/'+sym,{method:'POST'});
+    let d=await r.json();
+    if(d.error){document.getElementById('analyze-result').innerHTML='<div class=\"card\" style=\"border-color:#f85149\">❌ '+d.error+'</div>'}
+    else{
+      let dec=d.decision;
+      let html='<div class=\"result-card\"><div class=\"result-stats\"><div class=\"result-stat\"><div>价格</div><div>'+d.price.toFixed(2)+'</div></div><div class=\"result-stat\"><div>涨跌</div><div style=\"color:'+(d.change_pct>=0?'#3fb950':'#f85149')+'\">'+d.change_pct+'%</div></div><div class=\"result-stat\"><div>RSI</div><div>'+(d.indicators.rsi||'—')+'</div></div><div class=\"result-stat\"><div>量比</div><div>'+d.indicators.vol_ratio+'x</div></div></div>';
+      if(d.indicators.macd&&d.indicators.macd.dif)html+='<div style=\"font-size:13px;color:#8b949e\">MACD: DIF='+d.indicators.macd.dif+' DEA='+d.indicators.macd.dea+' 柱='+d.indicators.macd.histogram+'</div>';
+      if(d.trace_signals.length)html+='<div style=\"font-size:12px;margin-top:6px\">📊 '+d.trace_signals.map(s=>'<span style=\"color:'+(s.direction==='bullish'?'#3fb950':'#f85149')+'\">'+s.type+'</span>').join(' ')+'</div>';
+      if(dec)html+='<div style=\"margin-top:12px;padding:12px;background:#0d1117;border-radius:8px\"><span class=\"decision-action action-'+dec.action+'\">'+dec.action+'</span> <span style=\"font-size:13px\">置信度 '+(dec.confidence*100).toFixed(0)+'%</span><div style=\"margin-top:6px;font-size:13px;color:#8b949e\">'+dec.reasoning+'</div><div style=\"font-size:11px;color:#484f58;margin-top:4px\">AI: '+dec.provider+' | RAI宏观: '+d.macro_rai.toFixed(2)+'</div></div>';
+      html+='</div>';
+      document.getElementById('analyze-result').innerHTML=html;
+    }
+    document.getElementById('analyze-result').style.display='block';
+  }catch(e){document.getElementById('analyze-result').innerHTML='<div class=\"card\" style=\"border-color:#f85149\">请求失败: '+e.message+'</div>';document.getElementById('analyze-result').style.display='block'}
+  document.getElementById('analyze-spinner').style.display='none';
+}
+async function screenStocks(strategy){
+  document.getElementById('screen-results').style.display='block';
+  document.getElementById('screen-results').innerHTML='<div style=\"text-align:center;color:#58a6ff;padding:10px\">⏳ 扫描中...</div>';
+  try{
+    let r=await fetch('/screen/'+strategy,{method:'POST'});
+    let d=await r.json();
+    if(d.error){document.getElementById('screen-results').innerHTML='<div style=\"color:#f85149\">'+d.error+'</div>';return}
+    let html='<div style=\"font-size:13px;color:#8b949e;margin-bottom:10px\">📋 '+d.strategy+' — 匹配 '+d.matched+' 只</div>';
+    d.results.forEach(s=>{html+='<div class=\"strat-result\" onclick=\"document.getElementById(\'stock-input\').value=\''+s.symbol+'\';analyzeStock()\"><span class=\"price\">'+s.symbol+'</span> '+s.price.toFixed(2)+' <span style=\"color:'+(s.change_pct>=0?'#3fb950':'#f85149')+'\">'+s.change_pct+'%</span> <span style=\"color:#8b949e\">量比 '+s.vol_ratio+'x</span></div>'});
+    document.getElementById('screen-results').innerHTML=html;
+  }catch(e){document.getElementById('screen-results').innerHTML='<div style=\"color:#f85149\">'+e.message+'</div>'}
+}
 load();
 </script>
 </body>
