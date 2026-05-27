@@ -1,6 +1,6 @@
 """
 Market Trace V6.0 — AkShare 数据源实现
-异步封装 + 反爬策略 + 熔断集成 + 标准化输出
+异步封装 + 反爬策略 + 熔断集成 + 标准化输出 + 代理重试
 """
 
 from __future__ import annotations
@@ -20,11 +20,66 @@ from core.schema import MarketData
 from data_provider.base import DataProviderBase
 
 
+def _configure_proxy_requests():
+    """配置 requests 库的代理超时与重试（AkShare 依赖 requests）"""
+    try:
+        import os
+        import requests
+        from requests.adapters import HTTPAdapter
+        from urllib3.util.retry import Retry
+
+        proxy_url = os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY")
+        if not proxy_url:
+            return
+
+        retry_strategy = Retry(
+            total=3,
+            backoff_factor=2,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["GET", "POST"],
+        )
+        adapter = HTTPAdapter(
+            max_retries=retry_strategy,
+            pool_connections=20,
+            pool_maxsize=20,
+            pool_block=False,
+        )
+
+        _original_get = requests.get
+        _original_request = requests.Session.request
+
+        def _patched_get(url, **kwargs):
+            kwargs.setdefault("timeout", 25)
+            kwargs.setdefault("verify", False)
+            return _original_get(url, **kwargs)
+
+        def _patched_session_request(self, method, url, **kwargs):
+            kwargs.setdefault("timeout", 25)
+            kwargs.setdefault("verify", False)
+            self.mount("https://", adapter)
+            self.mount("http://", adapter)
+            return _original_request(self, method, url, **kwargs)
+
+        requests.get = _patched_get
+        for cls in (requests.Session,):
+            if not hasattr(cls, "_mt6_patched"):
+                cls.request = _patched_session_request
+                cls._mt6_patched = True
+
+        import urllib3
+        urllib3.disable_warnings()
+        logger.info("requests 代理重试已配置 (timeout=25s, retries=3)")
+    except Exception as e:
+        logger.warning("requests 代理配置失败: {}", e)
+
+
 class AkShareProvider(DataProviderBase):
     """AkShare 异步数据源适配器"""
 
     def __init__(self, bus: MessageBus, config: dict[str, Any]):
         super().__init__(bus, config, source_name="akshare")
+
+        _configure_proxy_requests()
 
         ac = config.get("anti_scraping", {})
         self._user_agents: list[str] = ac.get("user_agents", ["Mozilla/5.0"])
