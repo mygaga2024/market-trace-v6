@@ -32,6 +32,10 @@ def _configure_proxy_requests():
         if not proxy_url:
             return
 
+        # 仅在配置了代理时禁用 SSL 验证（代理自签证书场景）
+        disable_ssl = True
+        logger.warning("检测到 HTTP 代理 ({}), requests 将禁用 SSL 验证", proxy_url)
+
         retry_strategy = Retry(
             total=3,
             backoff_factor=2,
@@ -50,12 +54,14 @@ def _configure_proxy_requests():
 
         def _patched_get(url, **kwargs):
             kwargs.setdefault("timeout", 25)
-            kwargs.setdefault("verify", False)
+            if disable_ssl:
+                kwargs.setdefault("verify", False)
             return _original_get(url, **kwargs)
 
         def _patched_session_request(self, method, url, **kwargs):
             kwargs.setdefault("timeout", 25)
-            kwargs.setdefault("verify", False)
+            if disable_ssl:
+                kwargs.setdefault("verify", False)
             self.mount("https://", adapter)
             self.mount("http://", adapter)
             return _original_request(self, method, url, **kwargs)

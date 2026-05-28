@@ -131,7 +131,7 @@ class SimilarCase:
     """历史相似案例"""
     case_id: str
     similarity_score: float
-    decision: Decision
+    decision: Optional[Decision] = None
     outcome: Optional[float] = None
     market_context: dict[str, Any] = field(default_factory=dict)
 

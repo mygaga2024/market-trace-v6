@@ -43,7 +43,7 @@ class CaseMemory:
         case = SimilarCase(
             case_id=f"case_{self._case_counter}_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}",
             similarity_score=1.0,
-            decision=None,  # type: ignore
+            decision=None,
             outcome=outcome,
             market_context=market_context or {},
         )

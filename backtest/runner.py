@@ -212,7 +212,7 @@ class BacktestRunner:
         return trade
 
     def _record_equity(self, bar: int, price: float) -> None:
-        equity = self.capital + self.position.market_value
+        equity = self.capital + self.position.quantity * price
         self.equity_curve.append({"bar": bar, "equity": equity, "price": price})
 
     def finalize(self) -> BacktestResult:

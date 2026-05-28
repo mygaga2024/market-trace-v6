@@ -104,12 +104,16 @@ class ChiefAnalyst(BaseAgent):
         async with self._decide_lock:
             self._decision_count += 1
 
-            if self._risk_override and self._risk_override.severity == "critical":
+            # 快照当前报告，避免 clear() 丢失并发写入的新报告
+            reports_snapshot = dict(self._reports)
+            risk_override_snapshot = self._risk_override
+
+            if risk_override_snapshot and risk_override_snapshot.severity == "critical":
                 decision = self._build_risk_override_decision()
-            elif self._risk_override:
-                decision = await self._build_penalized_decision()
+            elif risk_override_snapshot:
+                decision = await self._build_penalized_decision(reports_snapshot)
             else:
-                decision = await self._build_ai_decision()
+                decision = await self._build_ai_decision(reports_snapshot)
 
             self._decision_history.append(decision)
 
@@ -118,24 +122,28 @@ class ChiefAnalyst(BaseAgent):
 
             await self._publish_decision(decision)
 
-            self._reports.clear()
+            # 仅移除已消费的报告 key，保留期间新到的报告
+            for key in reports_snapshot:
+                self._reports.pop(key, None)
             self._risk_state = "safe"
             self._risk_override = None
 
-    async def _build_ai_decision(self) -> Decision:
+    async def _build_ai_decision(self, reports: dict[str, AgentReport] = None) -> Decision:
         """调用 LLM 回退链进行非线性加权分析"""
+        if reports is None:
+            reports = self._reports
         if self._llm_chain is None:
             return self._dummy_decision("无 LLM 链路配置")
 
         try:
-            return await self._llm_chain.analyze(self._reports)
+            return await self._llm_chain.analyze(reports)
         except Exception as e:
             logger.error("LLM 决策异常: {}", e)
             return self._dummy_decision(f"LLM 调用异常: {e}")
 
-    async def _build_penalized_decision(self) -> Decision:
+    async def _build_penalized_decision(self, reports: dict[str, AgentReport] = None) -> Decision:
         """有风控警告但非致命：降低置信度"""
-        decision = await self._build_ai_decision()
+        decision = await self._build_ai_decision(reports)
         decision.confidence *= 0.3
         decision.risk_override = self._risk_override
         decision.reasoning += f" | 风控干预(置信度×0.3): {self._risk_override.reason if self._risk_override else 'N/A'}"

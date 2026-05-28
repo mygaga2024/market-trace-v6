@@ -123,7 +123,10 @@ class FallbackHandler:
             if not ts:
                 return None
             dt = datetime.fromisoformat(ts)
-            return (datetime.now(timezone.utc) - dt.replace(tzinfo=timezone.utc)).total_seconds()
+            # 如果时间戳无时区信息，假定为 UTC
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return (datetime.now(timezone.utc) - dt).total_seconds()
         except Exception:
             return None
 

@@ -47,7 +47,12 @@ class RiskAgent(BaseAgent):
         self._override_count: int = 0
 
     async def process_message(self, message: dict[str, Any]) -> None:
+        event = message.get("event", "")
         agent_name = message.get("agent", "")
+
+        # 仅处理 Agent 报告事件，忽略其他消息类型
+        if event not in ("MACRO_REPORT", "SIGNAL_REPORT", "TRACE_REPORT"):
+            return
 
         report = AgentReport(
             agent=AgentName(agent_name) if agent_name else AgentName.MACRO,

@@ -4,6 +4,7 @@ Market Trace V6.0 — 启动入口
 """
 
 import asyncio
+import logging
 import os
 import sys
 import time
@@ -15,7 +16,7 @@ import numpy as np
 import yaml
 import uvicorn
 from dotenv import load_dotenv
-from fastapi import FastAPI, Query, HTTPException
+from fastapi import Depends, FastAPI, Header, Query, HTTPException
 from fastapi.responses import JSONResponse, HTMLResponse
 from loguru import logger
 
@@ -86,7 +87,7 @@ def _build_llm_chain(cfg: dict):
         "minimax", llm_cfg.get("tertiary", {}),
         CircuitBreaker(name="llm:minimax", **cb_kwargs),
     )
-    rule_based = RuleBasedAnalyzer(llm_cfg)
+    rule_based = RuleBasedAnalyzer(llm_cfg.get("fallback", {}))
 
     return LLMFallbackChain(primary, secondary, tertiary, rule_based)
 
@@ -339,47 +340,44 @@ async def get_decision(decision_id: str):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
-STOCK_POOL = [
-    "000001","000002","000063","000333","000651","000725","000858",
-    "002230","002415","002475","002594","300059","300750",
-    "600000","600009","600016","600028","600030","600036","600048",
-    "600050","600104","600276","600309","600519","600570","600585",
-    "600690","600809","600837","600887","600900","601012","601088",
-    "601166","601288","601318","601328","601390","601398","601601",
-    "601628","601668","601688","601857","601888","601939","603259",
-]
+STOCK_POOL = CONFIG.get("stock_pool", [
+    "000001","600519","601318","600036","000858","300750","601012",
+])
 
 
 async def _analyze_single(symbol: str) -> dict:
-    """核心分析逻辑：Tushare实时→AkShare→缓存降级→算指标→调LLM"""
-    provider_cfg = [p for p in CONFIG.get("data_providers", []) if p.get("enabled")]
-    tushare_token = next((p.get("token") for p in provider_cfg if p.get("name") == "tushare" and p.get("token")), None)
+    """核心分析逻辑：优先缓存→Tushare→AkShare→算指标→调LLM"""
+    # 优先从 Redis 缓存读取（Agent 体系已缓存的数据）
     cached = None
-
-    if tushare_token:
-        try:
-            start_date = (datetime.now() - timedelta(days=60)).strftime("%Y%m%d")
-            from data_provider.tushare_impl import TushareProvider
-            tp = TushareProvider(bus, CONFIG, token=tushare_token)
-            klines = await tp.fetch_kline(symbol, start_date, datetime.now().strftime("%Y%m%d"))
-            if klines:
-                cached = [{"close": k.close, "open": k.open, "high": k.high, "low": k.low, "volume": k.volume, "amount": k.amount, "timestamp": k.timestamp.isoformat()} for k in klines]
-        except Exception:
-            pass
-
-    if not cached:
-        try:
-            start_date = (datetime.now() - timedelta(days=60)).strftime("%Y%m%d")
-            from data_provider.akshare_impl import AkShareProvider
-            ap = AkShareProvider(bus, CONFIG)
-            klines = await ap.fetch_kline(symbol, start_date, datetime.now().strftime("%Y%m%d"))
-            if klines:
-                cached = [{"close": k.close, "open": k.open, "high": k.high, "low": k.low, "volume": k.volume, "amount": k.amount, "timestamp": k.timestamp.isoformat()} for k in klines]
-        except Exception:
-            pass
-
-    if not cached and bus:
+    if bus:
         cached = await bus.cache_get(f"market:raw:{symbol}")
+
+    # 缓存未命中时尝试拉取
+    if not cached:
+        provider_cfg = [p for p in CONFIG.get("data_providers", []) if p.get("enabled")]
+        tushare_token = next((p.get("token") for p in provider_cfg if p.get("name") == "tushare" and p.get("token")), None)
+
+        if tushare_token:
+            try:
+                start_date = (datetime.now() - timedelta(days=60)).strftime("%Y%m%d")
+                from data_provider.tushare_impl import TushareProvider
+                tp = TushareProvider(bus, CONFIG, token=tushare_token)
+                klines = await tp.fetch_kline(symbol, start_date, datetime.now().strftime("%Y%m%d"))
+                if klines:
+                    cached = [{"close": k.close, "open": k.open, "high": k.high, "low": k.low, "volume": k.volume, "amount": k.amount, "timestamp": k.timestamp.isoformat()} for k in klines]
+            except Exception:
+                pass
+
+        if not cached:
+            try:
+                start_date = (datetime.now() - timedelta(days=60)).strftime("%Y%m%d")
+                from data_provider.akshare_impl import AkShareProvider
+                ap = AkShareProvider(bus, CONFIG)
+                klines = await ap.fetch_kline(symbol, start_date, datetime.now().strftime("%Y%m%d"))
+                if klines:
+                    cached = [{"close": k.close, "open": k.open, "high": k.high, "low": k.low, "volume": k.volume, "amount": k.amount, "timestamp": k.timestamp.isoformat()} for k in klines]
+            except Exception:
+                pass
 
     if not cached or len(cached) < 5:
         raise HTTPException(400, f"股票 {symbol} 数据不足，至少需要5条K线")
@@ -417,7 +415,6 @@ async def _analyze_single(symbol: str) -> dict:
 
     vol_ratio = round(float(volumes[-1] / np.mean(volumes[:-1])), 2) if len(volumes) > 1 and np.mean(volumes[:-1]) > 0 else 1.0
 
-    trace_agent = TraceAgent.__new__(TraceAgent)
     trace_signals = []
     ta._detect_volume_spike(volumes, closes, trace_signals)
     if len(closes) >= 5:
@@ -457,7 +454,24 @@ async def _analyze_single(symbol: str) -> dict:
     }
 
 
-@app.post("/analyze/{symbol}")
+# ─────────────────────────────────────────────
+# API Token 认证（可选，未配置 API_TOKEN 时跳过）
+# ─────────────────────────────────────────────
+
+_API_TOKEN = os.environ.get("API_TOKEN", "")
+
+
+async def _verify_api_token(authorization: str = Header(None)):
+    """简单 Bearer Token 认证，保护消耗资源的端点"""
+    if not _API_TOKEN:
+        return  # 未配置 token，跳过认证
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(401, "缺少 Authorization: Bearer <token> 请求头")
+    if authorization[7:] != _API_TOKEN:
+        raise HTTPException(403, "API Token 无效")
+
+
+@app.post("/analyze/{symbol}", dependencies=[Depends(_verify_api_token)])
 async def analyze_stock(symbol: str):
     """诊股：拉数据→技术分析→AI决策"""
     try:
@@ -492,7 +506,7 @@ def _calc_rsi14(closes):
     return float(r[-1]) if r is not None and len(r) > 0 else 50
 
 
-@app.post("/screen/{strategy}")
+@app.post("/screen/{strategy}", dependencies=[Depends(_verify_api_token)])
 async def screen_stocks(strategy: str):
     """选股：按策略扫描股票池"""
     if strategy not in STRATEGIES:
@@ -573,7 +587,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .strat-result:hover{background:#21262d}
 .strat-result .price{font-weight:700;color:#58a6ff}
 </style>
-<meta http-equiv="refresh" content="30">
+
 </head>
 <body>
 <div class="header">
@@ -757,6 +771,7 @@ async function screenStocks(strategy){
   }catch(e){document.getElementById('screen-results').innerHTML='<div style=\"color:#f85149\">'+e.message+'</div>'}
 }
 load();
+setInterval(load, 30000);
 </script>
 </body>
 </html>"""
