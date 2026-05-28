@@ -9,6 +9,7 @@ import asyncio
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+import numpy as np
 from loguru import logger
 
 from agents.base_agent import BaseAgent
@@ -22,8 +23,11 @@ class RiskAgent(BaseAgent):
 
     硬编码规则引擎，拥有最终一票否决权：
     1. 逻辑冲突：Trace vs Macro 完全对立 → confidence × 0.3
-    2. 止损检查：触及硬止损线 → 发布 RISK_OVERRIDE（最高优先级）
-    3. 仓位检查：单票仓位超限 → 发布 RISK_OVERRIDE
+    2. 止损检查（多层）：
+       - 硬止损：触及固定百分比止损线 → RISK_OVERRIDE
+       - ATR 动态止损：收盘价跌破 ATR 通道 → RISK_OVERRIDE
+       - 单日熔断：日内跌幅 >7% → 强制平仓
+    3. 连续下跌：连续3日收阴 → 强制减仓
     """
 
     def __init__(
@@ -42,6 +46,10 @@ class RiskAgent(BaseAgent):
         self._conflict_multiplier: float = risk_cfg.get("conflict_multiplier", 0.3)
         self._stop_loss_percent: float = risk_cfg.get("stop_loss_percent", 0.05)
         self._max_position_percent: float = risk_cfg.get("max_position_percent", 0.3)
+        self._atr_period: int = risk_cfg.get("atr_period", 14)
+        self._atr_multiplier: float = risk_cfg.get("atr_multiplier", 2.0)
+        self._daily_drop_threshold: float = risk_cfg.get("daily_drop_threshold", 0.07)
+        self._consecutive_drop_days: int = risk_cfg.get("consecutive_drop_days", 3)
 
         self._latest_reports: dict[str, AgentReport] = {}
         self._override_count: int = 0
@@ -50,7 +58,6 @@ class RiskAgent(BaseAgent):
         event = message.get("event", "")
         agent_name = message.get("agent", "")
 
-        # 仅处理 Agent 报告事件，忽略其他消息类型
         if event not in ("MACRO_REPORT", "SIGNAL_REPORT", "TRACE_REPORT"):
             return
 
@@ -79,7 +86,40 @@ class RiskAgent(BaseAgent):
             await self._emit_override(override)
             return
 
+        override = await self._check_atr_stop()
+        if override:
+            await self._emit_override(override)
+            return
+
+        override = await self._check_daily_circuit_breaker()
+        if override:
+            await self._emit_override(override)
+            return
+
+        override = await self._check_consecutive_decline()
+        if override:
+            await self._emit_override(override)
+            return
+
         await self._emit_safe()
+
+    async def _get_cached_klines(self, symbol: str) -> Optional[list[dict]]:
+        """从缓存获取 K 线数据"""
+        if not self.bus:
+            return None
+        return await self.bus.cache_get(f"market:raw:{symbol}")
+
+    def _calc_atr(self, highs: np.ndarray, lows: np.ndarray, closes: np.ndarray, period: int = 14) -> float:
+        """计算 ATR (Average True Range)"""
+        if len(closes) < period + 1:
+            return 0.0
+        prev_close = closes[:-1]
+        tr = np.maximum.reduce([
+            highs[1:] - lows[1:],
+            np.abs(highs[1:] - prev_close),
+            np.abs(lows[1:] - prev_close),
+        ])
+        return float(np.mean(tr[-period:]))
 
     def _check_conflict(self) -> Optional[RiskOverride]:
         """检测多源信号逻辑冲突"""
@@ -119,13 +159,12 @@ class RiskAgent(BaseAgent):
         return None
 
     def _check_stop_loss(self) -> Optional[RiskOverride]:
-        """硬止损检查"""
+        """固定百分比止损检查"""
         signal_report = self._latest_reports.get("signal")
         if not signal_report or not signal_report.data:
             return None
 
         signals = signal_report.data.get("signals", [])
-        indicators = signal_report.data.get("indicators", {})
 
         for sig in signals:
             if sig.get("type") == "BEARISH_DIVERGENCE" and sig.get("strength", 0) > 0.8:
@@ -135,6 +174,112 @@ class RiskAgent(BaseAgent):
                     severity="critical",
                     source_agent=AgentName.RISK,
                 )
+
+        return None
+
+    async def _check_atr_stop(self) -> Optional[RiskOverride]:
+        """ATR 动态止损：收盘价跌破 ATR 通道下轨"""
+        signal_report = self._latest_reports.get("signal")
+        if not signal_report or not signal_report.data:
+            return None
+
+        symbol = signal_report.data.get("symbol", "")
+        if not symbol:
+            return None
+
+        cached = await self._get_cached_klines(symbol)
+        if not cached or len(cached) < self._atr_period + 1:
+            return None
+
+        closes = np.array([float(r["close"]) for r in cached])
+        highs = np.array([float(r["high"]) for r in cached])
+        lows = np.array([float(r["low"]) for r in cached])
+
+        atr = self._calc_atr(highs, lows, closes, self._atr_period)
+        if atr <= 0:
+            return None
+
+        recent_high = float(np.max(highs[-self._atr_period:]))
+        atr_stop = recent_high - self._atr_multiplier * atr
+        current_close = closes[-1]
+
+        if current_close < atr_stop:
+            return RiskOverride(
+                reason=f"ATR动态止损触发: {current_close:.2f} < {atr_stop:.2f} (最高{recent_high:.2f} - {self._atr_multiplier}xATR={atr:.2f})",
+                action="FORCE_SELL",
+                severity="critical",
+                source_agent=AgentName.RISK,
+            )
+
+        return None
+
+    async def _check_daily_circuit_breaker(self) -> Optional[RiskOverride]:
+        """单日熔断：日内跌幅超过阈值"""
+        signal_report = self._latest_reports.get("signal")
+        if not signal_report or not signal_report.data:
+            return None
+
+        symbol = signal_report.data.get("symbol", "")
+        if not symbol:
+            return None
+
+        indicators = signal_report.data.get("indicators", {})
+        cached = await self._get_cached_klines(symbol)
+
+        if indicators.get("daily_change") is not None:
+            daily_change = float(indicators["daily_change"])
+            direction = "下跌" if daily_change < 0 else "上涨"
+            daily_change = abs(daily_change)
+        elif cached and len(cached) >= 2:
+            closes_list = [float(r["close"]) for r in cached]
+            prev_c = closes_list[-2]
+            cur_c = closes_list[-1]
+            daily_change = abs((cur_c - prev_c) / prev_c) if prev_c else 0
+            direction = "下跌" if cur_c < prev_c else "上涨"
+        else:
+            return None
+
+        if daily_change >= self._daily_drop_threshold:
+            return RiskOverride(
+                reason=f"单日熔断: {direction}{daily_change*100:.1f}% (阈值{self._daily_drop_threshold*100:.0f}%)",
+                action="FORCE_SELL",
+                severity="critical",
+                source_agent=AgentName.RISK,
+            )
+
+        return None
+
+    async def _check_consecutive_decline(self) -> Optional[RiskOverride]:
+        """连续下跌检测：连续N日收阴 → 强制减仓"""
+        signal_report = self._latest_reports.get("signal")
+        if not signal_report or not signal_report.data:
+            return None
+
+        symbol = signal_report.data.get("symbol", "")
+        if not symbol:
+            return None
+
+        cached = await self._get_cached_klines(symbol)
+        if not cached or len(cached) < self._consecutive_drop_days:
+            return None
+
+        closes = [float(r["close"]) for r in cached]
+        opens = [float(r.get("open", closes[i])) for i, r in enumerate(cached)]
+
+        decline_count = 0
+        for i in range(len(closes) - 1, max(0, len(closes) - self._consecutive_drop_days - 1), -1):
+            if i > 0 and closes[i] < closes[i - 1] and closes[i] < opens[i]:
+                decline_count += 1
+            else:
+                break
+
+        if decline_count >= self._consecutive_drop_days:
+            return RiskOverride(
+                reason=f"连续{decline_count}日收阴下跌 → 触发减仓",
+                action="FORCE_SELL",
+                severity="critical",
+                source_agent=AgentName.RISK,
+            )
 
         return None
 

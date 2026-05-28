@@ -105,6 +105,10 @@ agents:
     conflict_multiplier: 0.3
     stop_loss_percent: 0.05
     max_position_percent: 0.3
+    atr_period: 14
+    atr_multiplier: 2.0
+    daily_drop_threshold: 0.07
+    consecutive_drop_days: 3
 
 # --- 日志 ---
 logging:

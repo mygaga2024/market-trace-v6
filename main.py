@@ -31,6 +31,8 @@ CONFIG_PATH = Path("config/settings.yaml")
 def _resolve_env_vars(raw: str) -> str:
     for key, value in os.environ.items():
         raw = raw.replace(f"${{{key}}}", value)
+    import re
+    raw = re.sub(r"\$\{[^}]+\}", "", raw)
     return raw
 
 
@@ -530,6 +532,19 @@ STRATEGIES = {
     "risk": (lambda c,h,_: (
         len(c) >= 14 and _calc_rsi14(c) > 70 and c[-1] < c[-20]
     ), "风险预警"),
+    "ma_golden_cross": (lambda c,_,v: (
+        len(c) >= 20 and _calc_ma_val(c, 5)[-1] > _calc_ma_val(c, 20)[-1]
+        and _calc_ma_val(c, 5)[-2] <= _calc_ma_val(c, 20)[-2]
+        and v[-1] > np.mean(v[-20:-1]) * 1.2
+    ), "均线金叉"),
+    "volume_breakout": (lambda c,_,v: (
+        len(c) >= 5 and v[-1] > np.mean(v[-20:-1]) * 3
+        and (c[-1] - c[-5]) / c[-5] > 0.05
+    ), "放量突破"),
+    "rsi_reversal": (lambda c,_,v: (
+        len(c) >= 14 and _calc_rsi14(c) < 30
+        and (_calc_rsi14(c) - _calc_rsi_val(c, 2)) > 3
+    ), "RSI反转"),
 }
 
 
@@ -537,6 +552,19 @@ def _calc_rsi14(closes):
     from agents.signal_agent import SignalAgent
     r = SignalAgent._calc_rsi(np.array(closes), 14)
     return float(r[-1]) if r is not None and len(r) > 0 else 50
+
+
+def _calc_ma_val(closes, period):
+    from agents.signal_agent import SignalAgent
+    return SignalAgent._calc_ma(np.array(closes), period)
+
+
+def _calc_rsi_val(closes, days_ago):
+    from agents.signal_agent import SignalAgent
+    r = SignalAgent._calc_rsi(np.array(closes), 14)
+    if r is not None and len(r) > days_ago:
+        return float(r[-days_ago - 1]) if len(r) > days_ago else float(r[0])
+    return 50
 
 
 @app.post("/screen/{strategy}", dependencies=[Depends(_verify_api_token)])
