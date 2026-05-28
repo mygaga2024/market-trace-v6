@@ -296,14 +296,6 @@ function renderHealth(d) {
   html += '<tr><th>Redis</th><td class="' + (d.redis === 'connected' ? 'kv-ok' : 'kv-err') + '">' + escapeHtml(d.redis) + '</td></tr>';
   html += '<tr><th>数据库</th><td class="' + (d.database === 'connected' ? 'kv-ok' : 'kv-err') + '">' + escapeHtml(d.database) + '</td></tr>';
   html += '<tr><th>Agent 运行数</th><td>' + (d.agents_running || 0) + '</td></tr>';
-  if (d.llm_chain) {
-    html += '<tr><th>LLM 链路</th><td><ul class="tab-list">';
-    Object.keys(d.llm_chain).forEach(function(k) {
-      var llm = d.llm_chain[k];
-      html += '<li><span class="li-label">' + escapeHtml(k) + '</span><span class="li-value ' + (llm.api_key_configured ? 'kv-ok' : 'kv-dim') + '">' + escapeHtml(llm.provider) + ' / ' + escapeHtml(llm.model) + '</span></li>';
-    });
-    html += '</ul></td></tr>';
-  }
   html += '</table>';
   return html;
 }
