@@ -230,7 +230,8 @@ class TestAkShareProvider:
             "成交量": [1000000.0], "成交额": [10500000.0],
         })
 
-        with patch("akshare.stock_zh_a_hist", return_value=df):
+        with patch("akshare.stock_zh_a_hist_tx", side_effect=RuntimeError("mocked unavailable")), \
+             patch("akshare.stock_zh_a_hist", return_value=df):
             records = await provider._do_fetch_kline("000001", "20260501", "20260520")
             assert len(records) == 1
             assert records[0].symbol == "000001"

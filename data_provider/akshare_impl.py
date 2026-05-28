@@ -143,27 +143,35 @@ class AkShareProvider(DataProviderBase):
         import akshare as ak
 
         market, code = self._normalize_symbol(symbol)
+        ts_code = f"{market}{code}"  # sh600519 / sz000001
         await self._random_delay()
 
-        logger.info("AkShare 抓取 K 线: {} ({}), {} → {}", symbol, period, start, end)
-        df = await asyncio.to_thread(
-            ak.stock_zh_a_hist,
-            symbol=code,
-            period=period,
-            start_date=start,
-            end_date=end,
-            adjust="qfq",
-        )
+        sources = [
+            ("腾讯", lambda: asyncio.to_thread(
+                ak.stock_zh_a_hist_tx, symbol=ts_code, start_date=start,
+                end_date=end, adjust="qfq",
+            )),
+            ("东方财富", lambda: asyncio.to_thread(
+                ak.stock_zh_a_hist, symbol=code, period=period,
+                start_date=start, end_date=end, adjust="qfq",
+            )),
+        ]
 
-        if df is None or df.empty:
-            logger.warning("AkShare K 线返回空数据: {}", symbol)
-            return []
+        for src_name, fetcher in sources:
+            try:
+                logger.info("AkShare({}) 抓取 K 线: {} ({}), {} → {}", src_name, symbol, period, start, end)
+                df = await fetcher()
+                if df is not None and not df.empty:
+                    records = self._standardize_kline(df, symbol)
+                    if records:
+                        await self.cache_and_publish(records, symbol)
+                        logger.info("AkShare({}) K 线: {} ({} 条)", src_name, symbol, len(records))
+                        return records
+            except Exception as e:
+                logger.warning("AkShare({}) K 线失败: {} → {}", src_name, symbol, e)
 
-        records = self._standardize_kline(df, symbol)
-
-        await self.cache_and_publish(records, symbol)
-        logger.info("AkShare K 线抓取完成: {} ({} 条)", symbol, len(records))
-        return records
+        logger.warning("AkShare 所有源 K 线失败: {}", symbol)
+        return []
 
     async def _fallback_fetch_kline(
         self, symbol: str, start: str, end: str, period: str = "daily"
@@ -192,19 +200,31 @@ class AkShareProvider(DataProviderBase):
         return []
 
     def _standardize_kline(self, df, symbol: str) -> list[MarketData]:
-        """标准化 DataFrame → list[MarketData]"""
+        """标准化 DataFrame → list[MarketData]（兼容中英文列名）"""
+        cols = {}
+        for cn, en_list in [("日期", ["日期", "date"]), ("开盘", ["开盘", "open"]),
+                            ("最高", ["最高", "high"]), ("最低", ["最低", "low"]),
+                            ("收盘", ["收盘", "close"]), ("成交量", ["成交量", "volume"])]:
+            for c in en_list:
+                if c in df.columns:
+                    cols[cn] = c
+                    break
+
+        has_amount = any(c in df.columns for c in ["成交额", "amount"])
+
         records: list[MarketData] = []
         for _, row in df.iterrows():
             try:
+                ts = row.get(cols.get("日期", ""))
                 records.append(MarketData(
                     symbol=symbol,
-                    timestamp=pd_timestamp(row.get("日期")),
-                    open=float(row.get("开盘", 0)),
-                    high=float(row.get("最高", 0)),
-                    low=float(row.get("最低", 0)),
-                    close=float(row.get("收盘", 0)),
-                    volume=float(row.get("成交量", 0)),
-                    amount=float(row.get("成交额", 0)) if row.get("成交额") else None,
+                    timestamp=pd_timestamp(ts),
+                    open=float(row.get(cols.get("开盘", ""), 0)),
+                    high=float(row.get(cols.get("最高", ""), 0)),
+                    low=float(row.get(cols.get("最低", ""), 0)),
+                    close=float(row.get(cols.get("收盘", ""), 0)),
+                    volume=float(row.get(cols.get("成交量", ""), 0)),
+                    amount=float(row.get("成交额" if "成交额" in df.columns else "amount", 0)) if has_amount else None,
                     source="akshare",
                 ))
             except (ValueError, TypeError) as e:
@@ -431,8 +451,11 @@ def _safe_float(row, col: str, default: float = 0.0) -> float:
 def pd_timestamp(val) -> datetime:
     """Pandas Timestamp → datetime"""
     import pandas as pd
+    from datetime import date as dt_date
     if isinstance(val, pd.Timestamp):
         return val.to_pydatetime()
+    if isinstance(val, dt_date):
+        return datetime.combine(val, datetime.min.time())
     if isinstance(val, str):
         return datetime.strptime(val, "%Y-%m-%d")
     return datetime.fromtimestamp(float(str(val)))

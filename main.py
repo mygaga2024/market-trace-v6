@@ -372,7 +372,7 @@ STOCK_POOL = CONFIG.get("stock_pool", [
 
 async def _prefetch_stock_pool():
     """启动后后台异步预加载股票池K线数据到Redis缓存"""
-    await asyncio.sleep(3)  # 等 Agent 和 Redis 就绪
+    await asyncio.sleep(3)
     provider_cfg = [p for p in CONFIG.get("data_providers", []) if p.get("enabled")]
     tushare_token = next((p.get("token") for p in provider_cfg if p.get("name") == "tushare" and p.get("token")), None)
 
@@ -381,27 +381,28 @@ async def _prefetch_stock_pool():
             cache_key = f"market:raw:{symbol}"
             cached = None
 
-            if tushare_token:
+            # AkShare 优先 (数据完整)
+            try:
+                start_date = (datetime.now() - timedelta(days=60)).strftime("%Y%m%d")
+                from data_provider.akshare_impl import AkShareProvider
+                ap = AkShareProvider(bus, CONFIG)
+                klines = await ap.fetch_kline(symbol, start_date, datetime.now().strftime("%Y%m%d"))
+                if klines:
+                    cached = [{"close": k.close, "open": k.open, "high": k.high, "low": k.low,
+                               "volume": k.volume, "amount": k.amount, "timestamp": k.timestamp.isoformat()}
+                              for k in klines]
+                    if bus:
+                        await bus.cache_set(cache_key, cached, ttl=7200)
+            except Exception:
+                pass
+
+            # AkShare 失败时尝试 Tushare
+            if not cached and tushare_token:
                 try:
                     start_date = (datetime.now() - timedelta(days=60)).strftime("%Y%m%d")
                     from data_provider.tushare_impl import TushareProvider
                     tp = TushareProvider(bus, CONFIG, token=tushare_token)
                     klines = await tp.fetch_kline(symbol, start_date, datetime.now().strftime("%Y%m%d"))
-                    if klines:
-                        cached = [{"close": k.close, "open": k.open, "high": k.high, "low": k.low,
-                                   "volume": k.volume, "amount": k.amount, "timestamp": k.timestamp.isoformat()}
-                                  for k in klines]
-                        if bus:
-                            await bus.cache_set(cache_key, cached, ttl=7200)
-                except Exception:
-                    pass
-
-            if not cached:
-                try:
-                    start_date = (datetime.now() - timedelta(days=60)).strftime("%Y%m%d")
-                    from data_provider.akshare_impl import AkShareProvider
-                    ap = AkShareProvider(bus, CONFIG)
-                    klines = await ap.fetch_kline(symbol, start_date, datetime.now().strftime("%Y%m%d"))
                     if klines:
                         cached = [{"close": k.close, "open": k.open, "high": k.high, "low": k.low,
                                    "volume": k.volume, "amount": k.amount, "timestamp": k.timestamp.isoformat()}
@@ -425,35 +426,34 @@ async def _prefetch_stock_pool():
 
 
 async def _analyze_single(symbol: str) -> dict:
-    """核心分析逻辑：Tushare→AkShare→Redis缓存降级→算指标→调LLM"""
+    """核心分析逻辑：AkShare→Tushare→Redis缓存降级→算指标→调LLM"""
     cached = None
     provider_cfg = [p for p in CONFIG.get("data_providers", []) if p.get("enabled")]
     tushare_token = next((p.get("token") for p in provider_cfg if p.get("name") == "tushare" and p.get("token")), None)
     cache_key = f"market:raw:{symbol}"
 
-    # 1) 优先拉取最新实时数据（Tushare）
-    if tushare_token:
+    # 1) AkShare 优先 (数据完整，不受免费Token限制)
+    try:
+        start_date = (datetime.now() - timedelta(days=60)).strftime("%Y%m%d")
+        from data_provider.akshare_impl import AkShareProvider
+        ap = AkShareProvider(bus, CONFIG)
+        klines = await ap.fetch_kline(symbol, start_date, datetime.now().strftime("%Y%m%d"))
+        if klines:
+            cached = [{"close": k.close, "open": k.open, "high": k.high, "low": k.low,
+                       "volume": k.volume, "amount": k.amount, "timestamp": k.timestamp.isoformat()}
+                      for k in klines]
+            if bus:
+                await bus.cache_set(cache_key, cached, ttl=3600)
+    except Exception:
+        pass
+
+    # 2) AkShare 失败时尝试 Tushare
+    if not cached and tushare_token:
         try:
             start_date = (datetime.now() - timedelta(days=60)).strftime("%Y%m%d")
             from data_provider.tushare_impl import TushareProvider
             tp = TushareProvider(bus, CONFIG, token=tushare_token)
             klines = await tp.fetch_kline(symbol, start_date, datetime.now().strftime("%Y%m%d"))
-            if klines:
-                cached = [{"close": k.close, "open": k.open, "high": k.high, "low": k.low,
-                           "volume": k.volume, "amount": k.amount, "timestamp": k.timestamp.isoformat()}
-                          for k in klines]
-                if bus:
-                    await bus.cache_set(cache_key, cached, ttl=3600)
-        except Exception:
-            pass
-
-    # 2) Tushare 失败时尝试 AkShare
-    if not cached:
-        try:
-            start_date = (datetime.now() - timedelta(days=60)).strftime("%Y%m%d")
-            from data_provider.akshare_impl import AkShareProvider
-            ap = AkShareProvider(bus, CONFIG)
-            klines = await ap.fetch_kline(symbol, start_date, datetime.now().strftime("%Y%m%d"))
             if klines:
                 cached = [{"close": k.close, "open": k.open, "high": k.high, "low": k.low,
                            "volume": k.volume, "amount": k.amount, "timestamp": k.timestamp.isoformat()}
