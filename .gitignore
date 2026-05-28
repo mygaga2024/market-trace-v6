@@ -28,8 +28,8 @@ Thumbs.db
 # Docker
 .docker
 
-# 进度追踪（仅本地）
-PROGRESS.md
+# 运维文档（仅本地 + NAS，不上传）
+docs/
 
 # 虚拟环境
 venv/
