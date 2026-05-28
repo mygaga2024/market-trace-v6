@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Market Trace V6.0</title>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<link rel="manifest" href="/static/manifest.json">
+<meta name="theme-color" content="#0d1117">
+<meta name="description" content="A/B 股量化分析系统">
+<link rel="stylesheet" href="/static/css/dashboard.css">
+<script>
+  window.__API_TOKEN__ = '{{API_TOKEN}}';
+</script>
+</head>
+<body>
+
+<header class="header" role="banner">
+  <h1 aria-label="Market Trace 版本六点零">&#x1F4CA; Market Trace V6.0</h1>
+  <div style="display:flex;gap:8px;align-items:center">
+    <span id="sys-status" class="badge badge-ok" role="status" aria-live="polite">&#x25CF; 正常</span>
+    <span class="refresh" aria-hidden="true">&#x23F1; 30s刷新</span>
+  </div>
+</header>
+
+<noscript>
+  <div class="error-banner" role="alert">&#x26A0;&#xFE0F; 请启用 JavaScript 以使用仪表盘功能</div>
+</noscript>
+
+<main id="main-content" role="main">
+  <div class="search-row">
+    <label for="stock-input" class="sr-only">股票代码</label>
+    <input id="stock-input" type="text" placeholder="输入股票代码 如 000001" aria-label="输入股票代码，如零零零零零一">
+    <button id="analyze-btn" onclick="analyzeStock()" aria-label="开始诊股">&#x1F50D; 诊股</button>
+  </div>
+  <div id="analyze-spinner" class="spinner" style="display:none" role="status" aria-live="polite">&#x23F3; 分析中，正在拉取数据+调用AI...</div>
+  <section id="analyze-result" style="display:none" aria-live="polite" aria-label="诊股结果"></section>
+
+  <div class="grid">
+    <section class="card" aria-label="风险偏好指数">
+      <h2 class="card-title">&#x1F9ED; 风险偏好指数 RAI</h2>
+      <div id="rai-value" class="rai-value rai-warm" aria-live="polite" aria-atomic="true">&mdash;</div>
+      <div id="rai-label" class="rai-label">加载中...</div>
+      <div class="bar-bg" role="progressbar" aria-valuenow="50" aria-valuemin="0" aria-valuemax="100" aria-label="RAI 进度条">
+        <div id="rai-bar" class="bar-fill" style="width:50%;background:var(--color-yellow)"></div>
+      </div>
+    </section>
+
+    <section class="card" aria-label="运行中的 Agent">
+      <h2 class="card-title">&#x1F916; 运行 Agent <span id="agent-count" style="color:var(--accent-blue)">5/5</span></h2>
+      <div class="agent-grid">
+        <div class="agent-dot"><span class="dot dot-on" aria-hidden="true"></span>宏观 Macro</div>
+        <div class="agent-dot"><span class="dot dot-on" aria-hidden="true"></span>信号 Signal</div>
+        <div class="agent-dot"><span class="dot dot-on" aria-hidden="true"></span>资金 Trace</div>
+        <div class="agent-dot"><span class="dot dot-on" aria-hidden="true"></span>风控 Risk</div>
+        <div class="agent-dot"><span class="dot dot-on" aria-hidden="true"></span>决策 Chief</div>
+      </div>
+    </section>
+
+    <section class="card" aria-label="AI 决策链">
+      <h2 class="card-title">&#x1F4E1; AI 决策链</h2>
+      <div id="llm-chain" aria-live="polite">加载中...</div>
+    </section>
+  </div>
+
+  <section id="decision-area" class="decision-box" style="display:none" aria-live="polite" aria-label="最新决策">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap">
+      <h2 class="card-title" style="margin-bottom:0">&#x1F4C8; 最新决策</h2>
+      <span id="decision-action"></span>
+      <span style="color:var(--text-secondary);font-size:13px">置信度 <strong id="decision-conf"></strong></span>
+    </div>
+    <div id="decision-reason" style="font-size:14px;color:var(--text-secondary);line-height:1.6"></div>
+    <div style="margin-top:8px;font-size:12px;color:var(--text-muted)">AI: <span id="decision-provider"></span></div>
+  </section>
+
+  <nav class="links" aria-label="快捷链接">
+    <a href="/health">&#x1FA7A; 健康检查</a>
+    <a href="/status">&#x1F4CB; 状态详情</a>
+    <a href="/reports/macro">&#x1F4CA; 宏观报告</a>
+    <a href="/reports/signal">&#x1F4C9; 信号报告</a>
+    <a href="/reports/trace">&#x1F4B9; 资金报告</a>
+    <a href="/decisions">&#x1F9E0; 决策历史</a>
+  </nav>
+
+  <section style="margin-top:20px" aria-label="选股策略">
+    <h2 class="card-title" style="margin-bottom:10px">&#x1F3AF; 选股策略</h2>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      <button onclick="screenStocks('breakout')" class="strat-btn">&#x1F525; 强势突破</button>
+      <button onclick="screenStocks('oversold')" class="strat-btn">&#x1F48E; 超跌反弹</button>
+      <button onclick="screenStocks('strength')" class="strat-btn">&#x1F4B0; 主力介入</button>
+      <button onclick="screenStocks('risk')" class="strat-btn">&#x1F4C9; 风险预警</button>
+    </div>
+    <div id="screen-results" style="display:none" aria-live="polite" aria-label="选股结果"></div>
+  </section>
+</main>
+
+<footer class="footer" role="contentinfo">
+  运行时间: <strong id="uptime">—</strong> &nbsp;|&nbsp;
+  版本 1.0.0 &nbsp;|&nbsp;
+  <a href="https://github.com/mygaga2024/market-trace-v6" style="color:var(--text-muted)">GitHub</a>
+</footer>
+
+<script src="/static/js/dashboard.js"></script>
+</body>
+</html>

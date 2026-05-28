@@ -1,0 +1,16 @@
+{
+  "name": "Market Trace V6.0",
+  "short_name": "MarketTrace",
+  "description": "A/B 股量化分析系统 — 多 Agent 协作 + AI 决策",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0d1117",
+  "theme_color": "#0d1117",
+  "icons": [
+    {
+      "src": "/static/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

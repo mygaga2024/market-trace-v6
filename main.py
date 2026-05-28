@@ -3,6 +3,8 @@ Market Trace V6.0 — 启动入口
 初始化消息总线、数据库、启动 5 Agent、启动 FastAPI
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import os
@@ -18,6 +20,7 @@ import uvicorn
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Header, Query, HTTPException
 from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
 load_dotenv()
@@ -182,6 +185,8 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 @app.get("/health")
@@ -536,250 +541,22 @@ async def screen_stocks(strategy: str):
     return {"strategy": strategy_name, "matched": len(results), "results": results[:20]}
 
 
-DASHBOARD_HTML = r"""<!DOCTYPE html>
-<html lang="zh">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Market Trace V6.0</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0d1117;color:#c9d1d9;min-height:100vh;padding:24px}
-.header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px}
-.header h1{font-size:24px;background:linear-gradient(135deg,#58a6ff,#bc8cff);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.badge{padding:6px 14px;border-radius:20px;font-size:13px;font-weight:600}
-.badge-ok{background:#1a3620;color:#3fb950}
-.badge-warn{background:#3d2800;color:#d29922}
-.badge-err{background:#3d1516;color:#f85149}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-bottom:24px}
-.card{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:20px}
-.card-title{font-size:12px;text-transform:uppercase;color:#8b949e;margin-bottom:12px;letter-spacing:1px}
-.rai-value{font-size:56px;font-weight:700;line-height:1}
-.rai-good{color:#3fb950}.rai-warm{color:#d29922}.rai-bad{color:#f85149}
-.rai-label{font-size:14px;color:#8b949e;margin-top:4px}
-.bar-bg{background:#21262d;border-radius:6px;height:8px;margin-top:8px;overflow:hidden}
-.bar-fill{height:100%;border-radius:6px;transition:width .5s}
-.agent-grid{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
-.agent-dot{display:flex;align-items:center;gap:6px;padding:6px 12px;background:#21262d;border-radius:8px;font-size:13px}
-.agent-dot .dot{width:8px;height:8px;border-radius:50%}.dot-on{background:#3fb950}.dot-off{background:#f85149}
-.llm-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #21262d}
-.llm-row:last-child{border:none}
-.llm-name{font-weight:600}.llm-status-on{color:#3fb950}.llm-status-off{color:#8b949e}
-.links{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
-.links a{padding:6px 14px;background:#21262d;color:#58a6ff;text-decoration:none;border-radius:6px;font-size:13px;border:1px solid #30363d}
-.links a:hover{background:#30363d}
-.decision-box{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:20px;margin-top:16px}
-.decision-action{display:inline-block;padding:4px 12px;border-radius:6px;font-weight:700;font-size:14px;margin-right:8px}
-.action-BUY{background:#1a3620;color:#3fb950}
-.action-SELL{background:#3d1516;color:#f85149}
-.action-HOLD{background:#21262d;color:#d29922}
-.action-WAIT{background:#21262d;color:#8b949e}
-.footer{text-align:center;color:#484f58;font-size:12px;margin-top:24px}
-.refresh{font-size:12px;color:#484f58}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
-.pulse{animation:pulse 2s infinite}
-.strat-btn{padding:8px 16px;background:#21262d;color:#58a6ff;border:1px solid #30363d;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600}
-.strat-btn:hover{background:#30363d}
-.result-card{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:16px;margin-bottom:10px}
-.result-stats{display:flex;gap:20px;flex-wrap:wrap;margin-bottom:8px}
-.result-stat{text-align:center}.result-stat div:first-child{color:#8b949e;font-size:11px}.result-stat div:last-child{font-size:18px;font-weight:700;color:#c9d1d9}
-.strat-result{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:12px;margin-bottom:8px;cursor:pointer}
-.strat-result:hover{background:#21262d}
-.strat-result .price{font-weight:700;color:#58a6ff}
-</style>
+_DASHBOARD_TEMPLATE: str | None = None
 
-</head>
-<body>
-<div class="header">
-<h1>📊 Market Trace V6.0</h1>
-<div style="display:flex;gap:8px;align-items:center">
-<span id="sys-status" class="badge badge-ok">● 正常</span>
-<span class="refresh">⏱ 30s刷新</span>
-</div>
-</div>
 
-<div style="margin-bottom:20px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-<input id="stock-input" type="text" placeholder="输入股票代码 如 000001" style="flex:1;min-width:180px;padding:10px 16px;border-radius:8px;border:1px solid #30363d;background:#0d1117;color:#c9d1d9;font-size:16px;outline:none" onkeydown="if(event.key==='Enter')analyzeStock()">
-<button onclick="analyzeStock()" style="padding:10px 20px;background:#238636;border:none;border-radius:8px;color:white;font-size:16px;cursor:pointer;font-weight:600">🔍 诊股</button>
-</div>
-<div id="analyze-spinner" style="display:none;text-align:center;padding:10px;color:#58a6ff">⏳ 分析中，正在拉取数据+调用AI...</div>
-<div id="analyze-result" style="display:none"></div>
-
-<div class="grid">
-<div class="card">
-<div class="card-title">🧭 风险偏好指数 RAI</div>
-<div id="rai-value" class="rai-value rai-warm">—</div>
-<div id="rai-label" class="rai-label">加载中...</div>
-<div class="bar-bg"><div id="rai-bar" class="bar-fill" style="width:50%;background:#d29922"></div></div>
-</div>
-
-<div class="card">
-<div class="card-title">🤖 运行 Agent <span id="agent-count" style="color:#58a6ff">5/5</span></div>
-<div class="agent-grid">
-<div class="agent-dot"><span class="dot dot-on"></span>宏观 Macro</div>
-<div class="agent-dot"><span class="dot dot-on"></span>信号 Signal</div>
-<div class="agent-dot"><span class="dot dot-on"></span>资金 Trace</div>
-<div class="agent-dot"><span class="dot dot-on"></span>风控 Risk</div>
-<div class="agent-dot"><span class="dot dot-on"></span>决策 Chief</div>
-</div>
-</div>
-
-<div class="card">
-<div class="card-title">📡 AI 决策链</div>
-<div id="llm-chain">加载中...</div>
-</div>
-</div>
-
-<div id="decision-area" class="decision-box" style="display:none">
-<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
-<span class="card-title" style="margin-bottom:0">📈 最新决策</span>
-<span id="decision-action"></span>
-<span style="color:#8b949e;font-size:13px">置信度 <strong id="decision-conf"></strong></span>
-</div>
-<div id="decision-reason" style="font-size:14px;color:#8b949e;line-height:1.6"></div>
-<div style="margin-top:8px;font-size:12px;color:#484f58">AI: <span id="decision-provider"></span></div>
-</div>
-
-<div class="links">
-<a href="/health">🩺 健康检查</a>
-<a href="/status">📋 状态详情</a>
-<a href="/reports/macro">📊 宏观报告</a>
-<a href="/reports/signal">📉 信号报告</a>
-<a href="/reports/trace">💹 资金报告</a>
-<a href="/decisions">🧠 决策历史</a>
-</div>
-
-<div style="margin-top:20px">
-<div class="card-title" style="margin-bottom:10px">🎯 选股策略</div>
-<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-<button onclick="screenStocks('breakout')" class="strat-btn">🔥 强势突破</button>
-<button onclick="screenStocks('oversold')" class="strat-btn">💎 超跌反弹</button>
-<button onclick="screenStocks('strength')" class="strat-btn">💰 主力介入</button>
-<button onclick="screenStocks('risk')" class="strat-btn">📉 风险预警</button>
-</div>
-<div id="screen-results" style="display:none"></div>
-</div>
-
-<div class="footer">
-运行时间: <strong id="uptime">—</strong> &nbsp;|&nbsp;
-版本 1.0.0 &nbsp;|&nbsp;
-<a href="https://github.com/mygaga2024/market-trace-v6" style="color:#484f58">GitHub</a>
-</div>
-
-<script>
-async function load(){
-  try{
-    let [h,st,mr,lr,dr] = await Promise.all([
-      fetch('/health').then(r=>r.json()),
-      fetch('/status').then(r=>r.json()),
-      fetch('/reports/macro/latest').then(r=>r.ok?r.json():null),
-      fetch('/reports/signal/latest').then(r=>r.ok?r.json():null),
-      fetch('/reports/trace/latest').then(r=>r.ok?r.json():null),
-    ]);
-
-    // status
-    let ok = h.status==='ok';
-    document.getElementById('sys-status').className = 'badge '+(ok?'badge-ok':'badge-warn');
-    document.getElementById('sys-status').innerText = ok?'● 正常':'● 降级';
-    document.getElementById('uptime').innerText = fmtTime(h.uptime_seconds);
-
-    // agents
-    if(h.agents){
-      let dots = document.querySelectorAll('.agent-dot .dot');
-      let names = ['macro','signal','trace','risk','chief'];
-      let alive = names.filter(n=>h.agents[n]).length;
-      document.getElementById('agent-count').innerText = alive+'/5';
-      names.forEach((n,i)=>{
-        dots[i].className = 'dot '+(h.agents[n]?'dot-on':'dot-off');
-      });
-    }
-
-    // LLM chain
-    let llmHtml = '';
-    if(h.llm_chain){
-      for(let t of ['primary','secondary','tertiary']){
-        let p = h.llm_chain[t];
-        let icon = p.api_key_configured?'✓':'✗';
-        let cls = p.api_key_configured?'llm-status-on':'llm-status-off';
-        llmHtml += '<div class="llm-row"><span class="llm-name">'+icon+' '+p.provider+'</span><span style="font-size:12px;color:#8b949e">'+p.model+'</span></div>';
-      }
-    }
-    document.getElementById('llm-chain').innerHTML = llmHtml || '未配置';
-
-    // RAI
-    if(mr && mr.data && mr.data.risk_appetite_index!=null){
-      let rai = mr.data.risk_appetite_index;
-      let interp = mr.data.interpretation || {};
-      let cls = rai>=0.55?'rai-good':rai>=0.45?'rai-warm':'rai-bad';
-      let pct = (rai*100).toFixed(0);
-      document.getElementById('rai-value').innerHTML = rai.toFixed(2);
-      document.getElementById('rai-value').className = 'rai-value '+cls;
-      document.getElementById('rai-label').innerText = interp.regime || '';
-      document.getElementById('rai-bar').style.width = pct+'%';
-      document.getElementById('rai-bar').style.background = rai>=0.55?'#3fb950':rai>=0.45?'#d29922':'#f85149';
-    } else {
-      document.getElementById('rai-value').innerText = '—';
-      document.getElementById('rai-label').innerText = '等待数据';
-    }
-
-    // decision
-    let dec = st.latest_decision;
-    if(dec){
-      let area = document.getElementById('decision-area');
-      area.style.display = 'block';
-      document.getElementById('decision-action').innerHTML = '<span class="decision-action action-'+dec.action+'">'+dec.action+'</span>';
-      document.getElementById('decision-conf').innerText = (dec.confidence*100).toFixed(0)+'%';
-      document.getElementById('decision-reason').innerText = dec.reasoning || '';
-      document.getElementById('decision-provider').innerText = dec.provider || '—';
-    }
-
-  }catch(e){console.error(e)}
-}
-function fmtTime(s){let m=Math.floor(s/60),h=Math.floor(m/60);m%=60;return h?h+'h'+m+'m':m+'m'+Math.floor(s%60)+'s'}
-async function analyzeStock(){
-  let sym=document.getElementById('stock-input').value.trim();
-  if(!sym){alert('请输入股票代码');return}
-  document.getElementById('analyze-spinner').style.display='block';
-  document.getElementById('analyze-result').style.display='none';
-  try{
-    let r=await fetch('/analyze/'+sym,{method:'POST'});
-    let d=await r.json();
-    if(d.error){document.getElementById('analyze-result').innerHTML='<div class=\"card\" style=\"border-color:#f85149\">❌ '+d.error+'</div>'}
-    else{
-      let dec=d.decision;
-      let html='<div class=\"result-card\"><div class=\"result-stats\"><div class=\"result-stat\"><div>价格</div><div>'+d.price.toFixed(2)+'</div></div><div class=\"result-stat\"><div>涨跌</div><div style=\"color:'+(d.change_pct>=0?'#3fb950':'#f85149')+'\">'+d.change_pct+'%</div></div><div class=\"result-stat\"><div>RSI</div><div>'+(d.indicators.rsi||'—')+'</div></div><div class=\"result-stat\"><div>量比</div><div>'+d.indicators.vol_ratio+'x</div></div></div>';
-      if(d.indicators.macd&&d.indicators.macd.dif)html+='<div style=\"font-size:13px;color:#8b949e\">MACD: DIF='+d.indicators.macd.dif+' DEA='+d.indicators.macd.dea+' 柱='+d.indicators.macd.histogram+'</div>';
-      if(d.trace_signals.length)html+='<div style=\"font-size:12px;margin-top:6px\">📊 '+d.trace_signals.map(s=>'<span style=\"color:'+(s.direction==='bullish'?'#3fb950':'#f85149')+'\">'+s.type+'</span>').join(' ')+'</div>';
-      if(dec)html+='<div style=\"margin-top:12px;padding:12px;background:#0d1117;border-radius:8px\"><span class=\"decision-action action-'+dec.action+'\">'+dec.action+'</span> <span style=\"font-size:13px\">置信度 '+(dec.confidence*100).toFixed(0)+'%</span><div style=\"margin-top:6px;font-size:13px;color:#8b949e\">'+dec.reasoning+'</div><div style=\"font-size:11px;color:#484f58;margin-top:4px\">AI: '+dec.provider+' | RAI宏观: '+d.macro_rai.toFixed(2)+'</div></div>';
-      html+='</div>';
-      document.getElementById('analyze-result').innerHTML=html;
-    }
-    document.getElementById('analyze-result').style.display='block';
-  }catch(e){document.getElementById('analyze-result').innerHTML='<div class=\"card\" style=\"border-color:#f85149\">请求失败: '+e.message+'</div>';document.getElementById('analyze-result').style.display='block'}
-  document.getElementById('analyze-spinner').style.display='none';
-}
-async function screenStocks(strategy){
-  document.getElementById('screen-results').style.display='block';
-  document.getElementById('screen-results').innerHTML='<div style=\"text-align:center;color:#58a6ff;padding:10px\">⏳ 扫描中...</div>';
-  try{
-    let r=await fetch('/screen/'+strategy,{method:'POST'});
-    let d=await r.json();
-    if(d.error){document.getElementById('screen-results').innerHTML='<div style=\"color:#f85149\">'+d.error+'</div>';return}
-    let html='<div style=\"font-size:13px;color:#8b949e;margin-bottom:10px\">📋 '+d.strategy+' — 匹配 '+d.matched+' 只</div>';
-    d.results.forEach(s=>{html+='<div class=\"strat-result\" onclick=\"document.getElementById(\'stock-input\').value=\''+s.symbol+'\';analyzeStock()\"><span class=\"price\">'+s.symbol+'</span> '+s.price.toFixed(2)+' <span style=\"color:'+(s.change_pct>=0?'#3fb950':'#f85149')+'\">'+s.change_pct+'%</span> <span style=\"color:#8b949e\">量比 '+s.vol_ratio+'x</span></div>'});
-    document.getElementById('screen-results').innerHTML=html;
-  }catch(e){document.getElementById('screen-results').innerHTML='<div style=\"color:#f85149\">'+e.message+'</div>'}
-}
-load();
-setInterval(load, 30000);
-</script>
-</body>
-</html>"""
+def _get_dashboard_html() -> str:
+    global _DASHBOARD_TEMPLATE
+    if _DASHBOARD_TEMPLATE is None:
+        template_path = Path("templates/dashboard.html")
+        if not template_path.exists():
+            return "<html><body><h1>模板文件未找到</h1></body></html>"
+        _DASHBOARD_TEMPLATE = template_path.read_text(encoding="utf-8")
+    return _DASHBOARD_TEMPLATE.replace("{{API_TOKEN}}", _API_TOKEN)
 
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard():
-    return DASHBOARD_HTML
+    return _get_dashboard_html()
 
 
 def main():
