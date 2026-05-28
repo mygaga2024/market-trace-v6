@@ -8,11 +8,7 @@ A/B 股量化分析系统 — 多 Agent 协作 + AI 多级回退链
 
 ## 仪表盘
 
-打开浏览器访问：
-
-```
-http://10.10.10.130:19377
-```
+打开浏览器访问 `http://<your-nas-ip>:19377`
 
 暗色交易面板风格，实时显示 RAI 风险偏好指数、5 个 Agent 运行状态、LLM 三级链、最新决策。每 30 秒自动刷新。
 
@@ -21,10 +17,10 @@ http://10.10.10.130:19377
 ## 架构
 
 ```
-[AkShare 数据适配器 (东财历史+腾讯+新浪)]
-                    ↓
-         NAS Redis (localhost:6379)
-                    ↓
+[数据适配器 (多源备选)]
+           ↓
+      Redis 消息总线
+           ↓
 ┌──────────┬───────────┬──────────┬──────────┐
 │ Macro    │ Signal    │ Trace    │ Risk     │
 │ (RAI)    │ (MA/MACD) │ (量价异动) │ (否决权)  │
@@ -32,11 +28,11 @@ http://10.10.10.130:19377
      └───────────┴──────────┴──────────┘
                     ↓
            Chief Analyst AI
-   DeepSeek → Gemini → MiniMax → 纯规则加权
+       三级回退 → 纯规则加权
                     ↓
-          Redis decision:final + SQLite 持久化
+          Redis + SQLite 持久化
                     ↓
-       FastAPI (仪表盘 + 7 REST 端点)
+       FastAPI (仪表盘 + REST 端点)
 ```
 
 ## 核心链路
@@ -54,13 +50,13 @@ http://10.10.10.130:19377
 ## 快速启动 (NAS)
 
 ```bash
-cd /volume1/docker/market-trace-v6
-git clone https://github.com/mygaga2024/market-trace-v6.git .
+cd <your-project-path>
+git clone <your-repo-url> .
 cp env.example env
-vi env   # 填入 DeepSeek/Gemini/MiniMax 的 Key
+vi env   # 填入各 AI 模型的 API Key
 ```
 
-在绿联 Docker UI → 项目 → 新建 → 选择此目录 → 启动。
+在 NAS Docker UI → 项目 → 新建 → 选择此目录 → 启动。
 
 ---
 
@@ -81,17 +77,17 @@ vi env   # 填入 DeepSeek/Gemini/MiniMax 的 Key
 ## 部署架构
 
 ```
-绿联 NAS (10.10.10.130)
+NAS 宿主机
 ├── host 网络模式 (共享 NAS 网卡)
-├── 复用 NAS 自带 Redis (localhost:6379)
-├── Sub-Store 管理代理规则
+├── 复用 NAS 自带 Redis
+├── 代理管理规则
 └── 单容器, 内存 ≤ 1GB
 ```
 
 ## 已知限制
 
-东方财富 WAF 拦截实时行情接口 (`/api/qt/clist/get` 路径)。系统已适配：
-- 宏观数据改用 `stock_zh_index_daily`（历史指数，正常工作）
+东方财富 WAF 拦截实时行情接口。系统已适配：
+- 宏观数据改用历史指数接口
 - Trace Agent 改用成交量异动分析（替代资金流向）
 - K 线数据可用腾讯/新浪备选源
 
@@ -109,7 +105,7 @@ vi env   # 填入 DeepSeek/Gemini/MiniMax 的 Key
 
 | 变量 | 说明 |
 |------|------|
-| `DEEPSEEK_API_KEY` | 主力 AI 模型 |
-| `GEMINI_API_KEY` | 备用 AI 模型 |
-| `MINIMAX_API_KEY` | 三级备用 AI 模型 |
-| `TUSHARE_TOKEN` | (可选) 备用数据源 |
+| `PRIMARY_AI_API_KEY` | 主力 AI 模型 Key |
+| `SECONDARY_AI_API_KEY` | 备用 AI 模型 Key |
+| `TERTIARY_AI_API_KEY` | 三级备选 AI 模型 Key |
+| `TUSHARE_TOKEN` | (可选) 备用数据源 Token |

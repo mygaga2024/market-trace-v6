@@ -46,4 +46,4 @@
 - 每阶段完成后 commit + tag（v0.1 ~ v1.0.0）
 - `env` 文件不入库（gitignore）
 - `PROGRESS.md` 仅本地
-- 绿联 UI 生成的 `docker-compose.yaml` 不入库
+- NAS UI 生成的 `docker-compose.yaml` 不入库

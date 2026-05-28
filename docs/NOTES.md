@@ -28,23 +28,22 @@ NAS 原生 curl 也失败，东财 WAF 层面的反爬。
 |------|------|------|
 | v1 | Docker bridge + proxy | Redis 隔离，代理拒东财 |
 | v2 | host 网络 + proxy | Redis 端口冲突，代理仍拒 |
-| **v3** | **host 网络 + NAS Redis + SubStore 规则** | ✅ 生产运行 |
+| **v3** | **host 网络 + NAS Redis + 代理规则** | ✅ 生产运行 |
 
 当前：
-- 复用 NAS 自带 Redis (`localhost:6379`)，不在 docker-compose 中启动 Redis 容器
+- 复用 NAS 自带 Redis，不在 docker-compose 中启动 Redis 容器
 - Docker 容器用 `network_mode: host` 共享 NAS 网卡
-- Sub-Store (`http://10.10.10.130:53001`) 管理代理规则，东财设为 DIRECT
+- 代理软件管理规则，东财设为 DIRECT
 
-### 3. 绿联 NAS 文件系统
+### 3. NAS 文件系统
 
 - `.` 前缀文件会被隐藏：`.env` → `env`
 - docker-compose 显式指定 `env_file: ./env`
 - rsync 不支持 NAS 路径，改用 `tar | ssh` 管道
-- 绿联 UI 自动生成 `docker-compose.yaml` → 我们直接用它作为主文件
 
 ### 4. Docker Compose 文件
 
-- 文件名：`docker-compose.yaml`（绿联 UI 更短）
+- 文件名：`docker-compose.yaml`
 - 已移除 `docker-compose.yml` 避免双文件冲突
 - `version: "3.8"` 过时警告无害（Docker Engine 兼容）
 
@@ -63,15 +62,3 @@ NAS 原生 curl 也失败，东财 WAF 层面的反爬。
 | Tushare | `index_daily` | 1次/分 | ⚠️ 宏观(需延迟,备选) |
 | XTick | — | 预留 | ⬜ 待对接 |
 | Yquoter | — | 预留 | ⬜ 待对接 |
-
-## 环境速查
-
-| 组件 | 地址/配置 |
-|------|-----------|
-| 仪表盘 | `http://10.10.10.130:19377` |
-| NAS SSH | `ssh mygaga@10.10.10.130 -p 16011` |
-| 健康检查 | `http://10.10.10.130:19377/health` |
-| Sub-Store | `http://10.10.10.130:53001` |
-| Mihomo 面板 | `http://10.10.10.137:9090/ui` |
-| GitHub | `github.com/mygaga2024/market-trace-v6` |
-| NAS 项目路径 | `/volume1/docker/market-trace-v6/` |
