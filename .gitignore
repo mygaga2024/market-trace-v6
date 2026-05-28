@@ -30,6 +30,7 @@ Thumbs.db
 
 # 运维文档（仅本地 + NAS，不上传）
 docs/
+PROGRESS.md
 
 # 虚拟环境
 venv/
