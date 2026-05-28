@@ -103,13 +103,18 @@ async def lifespan(app: FastAPI):
     from db.database import Database
 
     redis_cfg = CONFIG["redis"]
-    bus = MessageBus(
+    bus_instance = MessageBus(
         host=redis_cfg["host"], port=redis_cfg["port"], db=redis_cfg["db"],
         password=redis_cfg["password"], max_connections=redis_cfg["max_connections"],
         retry_interval=redis_cfg["retry_interval"],
     )
-    await bus.connect()
-    logger.info("Redis 已连接")
+    try:
+        await bus_instance.connect(max_retries=3)
+        bus = bus_instance
+        logger.info("Redis 已连接")
+    except Exception:
+        logger.warning("Redis 不可用，将以无 Redis 模式运行")
+        bus = None
 
     db_cfg = CONFIG.get("database", {})
     db = Database(database_url=db_cfg.get("url", "sqlite+aiosqlite:///data/market_trace.db"))

@@ -39,8 +39,8 @@ class MessageBus:
             raise RuntimeError("MessageBus not connected. Call connect() first.")
         return self._redis
 
-    async def connect(self) -> None:
-        """建立连接，失败时自动重试"""
+    async def connect(self, max_retries: int = 0) -> None:
+        """建立连接，失败时自动重试。max_retries=0 表示无限重试"""
         attempt = 0
         while not self._connected:
             attempt += 1
@@ -57,6 +57,9 @@ class MessageBus:
                 self._connected = True
                 logger.info("MessageBus 已连接到 Redis ({})", self._redis_url)
             except Exception as e:
+                if max_retries and attempt >= max_retries:
+                    logger.error("Redis 连接失败 (已重试{}次): {}", attempt, e)
+                    raise
                 logger.warning("Redis 连接失败 (第{}次): {}。{}秒后重试...", attempt, e, self._retry_interval)
                 await asyncio.sleep(self._retry_interval)
 
