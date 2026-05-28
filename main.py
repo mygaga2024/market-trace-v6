@@ -610,6 +610,39 @@ async def screen_stocks(strategy: str):
     return {"strategy": strategy_name, "matched": len(results), "results": results[:20]}
 
 
+@app.get("/backtest/summary")
+async def backtest_summary():
+    """策略回测：股票池 × 7策略 → 夏普/回撤/胜率排行"""
+    if not bus:
+        return JSONResponse({"error": "消息总线未就绪"}, status_code=503)
+    try:
+        from backtest.strategy_backtest import run_strategy_backtest
+        results = await run_strategy_backtest(bus, CONFIG, STOCK_POOL)
+        return {"count": len(results), "results": results}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/kline/{symbol}.svg")
+async def kline_svg(symbol: str):
+    """K线 SVG 迷你图"""
+    cached = await bus.cache_get(f"market:raw:{symbol}") if bus else None
+    if not cached or len(cached) < 5:
+        from fastapi.responses import Response
+        return Response('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="20"><text x="0" y="14" font-size="12" fill="#8b949e">数据不足</text></svg>', media_type="image/svg+xml")
+    closes = [float(r["close"]) for r in cached[-30:]]
+    w, h = 200, 40
+    mn, mx = min(closes), max(closes)
+    rng = max(mx - mn, 0.01)
+    step = w / max(len(closes) - 1, 1)
+    color = "#3fb950" if closes[-1] >= closes[0] else "#f85149"
+    points = " ".join(f"{i*step:.1f},{h - (c - mn)/rng*h*0.8 - h*0.1:.1f}" for i, c in enumerate(closes))
+    poly = " ".join(f"{i*step:.1f},{h}" for i in range(len(closes)))
+    from fastapi.responses import Response
+    svg = f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}"><rect width="{w}" height="{h}" fill="#0d1117" rx="4"/><polyline points="{points}" fill="none" stroke="{color}" stroke-width="1.5"/><polygon points="0,{h} {poly} {w},{h}" fill="{color}" opacity="0.1"/></svg>'
+    return Response(svg, media_type="image/svg+xml")
+
+
 _DASHBOARD_TEMPLATE: str | None = None
 
 

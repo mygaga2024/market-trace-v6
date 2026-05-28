@@ -177,6 +177,7 @@ function analyzeStock() {
         html += '<div class="result-stat"><div>RSI</div><div>' + (d.indicators.rsi || '\u2014') + '</div></div>';
         html += '<div class="result-stat"><div>量比</div><div>' + d.indicators.vol_ratio + 'x</div></div>';
         html += '</div>';
+        html += '<div style="margin-bottom:8px"><img src="/kline/' + escapeHtml(d.symbol) + '.svg" alt="K线图" style="width:100%;max-width:400px;height:40px" onerror="this.style.display=\'none\'"></div>';
 
         if (d.indicators.macd && d.indicators.macd.dif) {
           html += '<div style="font-size:13px;color:var(--text-secondary)">MACD: DIF=' + d.indicators.macd.dif + ' DEA=' + d.indicators.macd.dea + ' \u67F1=' + d.indicators.macd.histogram + '</div>';
@@ -268,6 +269,7 @@ function loadTab(tab) {
     signal:    function() { return fetchAuth('/reports/signal?limit=5').then(function(r) { return r.json(); }); },
     trace:     function() { return fetchAuth('/reports/trace?limit=5').then(function(r) { return r.json(); }); },
     decisions: function() { return fetchAuth('/decisions?limit=10').then(function(r) { return r.json(); }); },
+    backtest:  function() { return fetchAuth('/backtest/summary').then(function(r) { return r.json(); }); },
   };
 
   var fn = fetchers[tab];
@@ -282,6 +284,7 @@ function loadTab(tab) {
       case 'signal':    html = renderReportList(data, '信号报告'); break;
       case 'trace':     html = renderReportList(data, '资金报告'); break;
       case 'decisions': html = renderDecisions(data); break;
+      case 'backtest':  html = renderBacktest(data); break;
       default: html = '<pre>' + escapeHtml(JSON.stringify(data, null, 2)) + '</pre>';
     }
     _tabCache[tab] = html;
@@ -361,6 +364,33 @@ function renderDecisions(d) {
     html += '<td>' + (dec.confidence * 100).toFixed(0) + '%</td>';
     html += '<td class="kv-dim">' + escapeHtml(dec.provider_label || '\u2014') + '</td>';
     html += '<td class="kv-dim">' + escapeHtml((dec.reasoning || '').substring(0, 80)) + '</td>';
+    html += '</tr>';
+  });
+  html += '</table>';
+  return html;
+}
+
+function renderBacktest(d) {
+  var html = '<div style="margin-bottom:8px;font-size:13px;color:var(--text-secondary)">\uD83D\uDCCA 股票池 × 7策略回测 — ' + d.count + ' 只股票</div>';
+  if (!d.results || !Object.keys(d.results).length) {
+    html += '<div class="tab-empty">暂无回测数据（需先刷新缓存生成K线）</div>';
+    return html;
+  }
+  var labels = {breakout: '强势突破', oversold: '超跌反弹', strength: '主力介入', risk: '风险预警', ma_golden_cross: '均线金叉', volume_breakout: '放量突破', rsi_reversal: 'RSI反转'};
+  html += '<table class="tab-table"><tr><th>股票</th><th>最优策略</th><th>夏普</th><th>回撤%</th><th>胜率%</th><th>盈亏比</th><th>评分</th></tr>';
+  Object.keys(d.results).forEach(function(sym) {
+    var best = d.results[sym];
+    var top = Object.keys(best)[0];
+    if (!top) return;
+    var r = best[top];
+    var rowClass = r.score > 1 ? 'kv-ok' : r.score > 0 ? '' : 'kv-dim';
+    html += '<tr><td><span onclick="document.getElementById(\'stock-input\').value=\'' + escapeHtml(sym) + '\';analyzeStock()" style="cursor:pointer;font-weight:700;color:var(--accent-blue)">' + escapeHtml(sym) + '</span></td>';
+    html += '<td>' + escapeHtml(labels[top] || top) + '</td>';
+    html += '<td class="' + (r.sharpe > 0 ? 'kv-ok' : 'kv-dim') + '">' + r.sharpe.toFixed(2) + '</td>';
+    html += '<td class="' + (r.max_drawdown_pct < 10 ? 'kv-ok' : 'kv-dim') + '">' + r.max_drawdown_pct + '%</td>';
+    html += '<td class="' + (r.win_rate_pct > 50 ? 'kv-ok' : 'kv-dim') + '">' + r.win_rate_pct + '%</td>';
+    html += '<td>' + r.profit_factor + '</td>';
+    html += '<td class="' + rowClass + '"><strong>' + r.score + '</strong></td>';
     html += '</tr>';
   });
   html += '</table>';
