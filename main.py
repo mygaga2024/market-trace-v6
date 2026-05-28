@@ -389,11 +389,13 @@ async def _prefetch_stock_pool():
                     tp = TushareProvider(bus, CONFIG, token=tushare_token)
                     klines = await tp.fetch_kline(symbol, start_date, datetime.now().strftime("%Y%m%d"))
                     if klines:
-                        cached = [{"close": k.close, "open": k.open, "high": k.high, "low": k.low,
-                                   "volume": k.volume, "amount": k.amount, "timestamp": k.timestamp.isoformat()}
-                                  for k in klines]
-                        if bus:
-                            await bus.cache_set(cache_key, cached, ttl=7200)
+                        last_date = klines[-1].timestamp.date()
+                        if (datetime.now().date() - last_date).days <= 2:
+                            cached = [{"close": k.close, "open": k.open, "high": k.high, "low": k.low,
+                                       "volume": k.volume, "amount": k.amount, "timestamp": k.timestamp.isoformat()}
+                                      for k in klines]
+                            if bus:
+                                await bus.cache_set(cache_key, cached, ttl=7200)
                 except Exception:
                     pass
 
@@ -441,11 +443,16 @@ async def _analyze_single(symbol: str) -> dict:
             tp = TushareProvider(bus, CONFIG, token=tushare_token)
             klines = await tp.fetch_kline(symbol, start_date, datetime.now().strftime("%Y%m%d"))
             if klines:
-                cached = [{"close": k.close, "open": k.open, "high": k.high, "low": k.low,
-                           "volume": k.volume, "amount": k.amount, "timestamp": k.timestamp.isoformat()}
-                          for k in klines]
-                if bus:
-                    await bus.cache_set(cache_key, cached, ttl=3600)
+                # 新鲜度检查：最新数据距今超过2天则放弃（免费token可能截断）
+                last_date = klines[-1].timestamp.date()
+                if (datetime.now().date() - last_date).days <= 2:
+                    cached = [{"close": k.close, "open": k.open, "high": k.high, "low": k.low,
+                               "volume": k.volume, "amount": k.amount, "timestamp": k.timestamp.isoformat()}
+                              for k in klines]
+                    if bus:
+                        await bus.cache_set(cache_key, cached, ttl=3600)
+                else:
+                    logger.info("Tushare K线过旧({}), 降级到AkShare", last_date)
         except Exception:
             pass
 
@@ -469,19 +476,31 @@ async def _analyze_single(symbol: str) -> dict:
     if not cached and bus:
         cached = await bus.cache_get(cache_key)
 
-    # 4) 盘中实时报价修正：优先 Tushare realtime，回退 AkShare spot
-    if cached and tushare_token:
+    # 4) 盘中实时报价修正：腾讯行情API覆盖最新价
+    if cached:
         try:
-            from data_provider.tushare_impl import TushareProvider
-            tp = TushareProvider(bus, CONFIG, token=tushare_token)
-            rt = await tp.fetch_realtime(symbol)
-            if rt and rt.get("price"):
-                live_price = float(rt["price"])
-                logger.info("Tushare 实时价: {} = {} (前收: {})", symbol, live_price, rt.get("pre_close"))
+            import httpx
+            ts_prefix = "sh" if symbol.startswith(("6", "9")) else "sz"
+            url = f"http://qt.gtimg.cn/q={ts_prefix}{symbol}"
+            async with httpx.AsyncClient(timeout=httpx.Timeout(5.0)) as tc:
+                resp = await tc.get(url)
+                text = resp.text
+                if "~" not in text:
+                    raise ValueError("非行情数据响应")
+            fields = text.split("~")
+            if len(fields) >= 4:
+                live_price = float(fields[3])
+                prev_close = float(fields[4]) if len(fields) > 4 else float(cached[-1]["close"])
                 if live_price > 0 and abs(live_price - float(cached[-1]["close"])) > 0.001:
-                    cached[-1] = {**cached[-1], "close": live_price, "high": max(float(cached[-1]["high"]), live_price), "low": min(float(cached[-1]["low"]), live_price)}
+                    logger.info("腾讯实时价: {} = {} (前收: {})", symbol, live_price, prev_close)
+                    cached[-1] = {
+                        **cached[-1],
+                        "close": live_price,
+                        "high": max(float(cached[-1]["high"]), live_price),
+                        "low": min(float(cached[-1]["low"]), live_price),
+                    }
         except Exception as e:
-            logger.warning("Tushare 实时报价失败 ({}): {}", symbol, e)
+            logger.debug("腾讯实时价获取失败 ({}): {}", symbol, e)
 
     if not cached or len(cached) < 5:
         raise HTTPException(400, f"股票 {symbol} 数据不足，至少需要5条K线")
