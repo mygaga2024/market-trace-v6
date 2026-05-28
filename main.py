@@ -140,6 +140,8 @@ async def lifespan(app: FastAPI):
     _agent_tasks = _start_agents()
     logger.info("{} 个 Agent 已启动", len(_agent_tasks))
 
+    asyncio.create_task(_prefetch_stock_pool())
+
     yield
 
     logger.info("正在停止所有 Agent...")
@@ -366,6 +368,60 @@ async def get_decision(decision_id: str):
 STOCK_POOL = CONFIG.get("stock_pool", [
     "000001","600519","601318","600036","000858","300750","601012",
 ])
+
+
+async def _prefetch_stock_pool():
+    """启动后后台异步预加载股票池K线数据到Redis缓存"""
+    await asyncio.sleep(3)  # 等 Agent 和 Redis 就绪
+    provider_cfg = [p for p in CONFIG.get("data_providers", []) if p.get("enabled")]
+    tushare_token = next((p.get("token") for p in provider_cfg if p.get("name") == "tushare" and p.get("token")), None)
+
+    for symbol in STOCK_POOL:
+        try:
+            cache_key = f"market:raw:{symbol}"
+            cached = None
+
+            if tushare_token:
+                try:
+                    start_date = (datetime.now() - timedelta(days=60)).strftime("%Y%m%d")
+                    from data_provider.tushare_impl import TushareProvider
+                    tp = TushareProvider(bus, CONFIG, token=tushare_token)
+                    klines = await tp.fetch_kline(symbol, start_date, datetime.now().strftime("%Y%m%d"))
+                    if klines:
+                        cached = [{"close": k.close, "open": k.open, "high": k.high, "low": k.low,
+                                   "volume": k.volume, "amount": k.amount, "timestamp": k.timestamp.isoformat()}
+                                  for k in klines]
+                        if bus:
+                            await bus.cache_set(cache_key, cached, ttl=7200)
+                except Exception:
+                    pass
+
+            if not cached:
+                try:
+                    start_date = (datetime.now() - timedelta(days=60)).strftime("%Y%m%d")
+                    from data_provider.akshare_impl import AkShareProvider
+                    ap = AkShareProvider(bus, CONFIG)
+                    klines = await ap.fetch_kline(symbol, start_date, datetime.now().strftime("%Y%m%d"))
+                    if klines:
+                        cached = [{"close": k.close, "open": k.open, "high": k.high, "low": k.low,
+                                   "volume": k.volume, "amount": k.amount, "timestamp": k.timestamp.isoformat()}
+                                  for k in klines]
+                        if bus:
+                            await bus.cache_set(cache_key, cached, ttl=7200)
+                except Exception:
+                    pass
+
+            if cached:
+                logger.info("预加载 {}: {} 条K线", symbol, len(cached))
+                await bus.publish("events:data", {"event": "DATA_UPDATED", "symbol": symbol})
+            else:
+                logger.warning("预加载 {}: 数据拉取失败", symbol)
+
+            await asyncio.sleep(0.6)
+        except Exception as e:
+            logger.warning("预加载 {} 异常: {}", symbol, e)
+
+    logger.info("股票池预加载完成: {} 只", len(STOCK_POOL))
 
 
 async def _analyze_single(symbol: str) -> dict:
