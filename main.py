@@ -356,38 +356,61 @@ STOCK_POOL = CONFIG.get("stock_pool", [
 
 
 async def _analyze_single(symbol: str) -> dict:
-    """核心分析逻辑：优先缓存→Tushare→AkShare→算指标→调LLM"""
-    # 优先从 Redis 缓存读取（Agent 体系已缓存的数据）
+    """核心分析逻辑：Tushare→AkShare→Redis缓存降级→算指标→调LLM"""
     cached = None
-    if bus:
-        cached = await bus.cache_get(f"market:raw:{symbol}")
+    provider_cfg = [p for p in CONFIG.get("data_providers", []) if p.get("enabled")]
+    tushare_token = next((p.get("token") for p in provider_cfg if p.get("name") == "tushare" and p.get("token")), None)
+    cache_key = f"market:raw:{symbol}"
 
-    # 缓存未命中时尝试拉取
+    # 1) 优先拉取最新实时数据（Tushare）
+    if tushare_token:
+        try:
+            start_date = (datetime.now() - timedelta(days=60)).strftime("%Y%m%d")
+            from data_provider.tushare_impl import TushareProvider
+            tp = TushareProvider(bus, CONFIG, token=tushare_token)
+            klines = await tp.fetch_kline(symbol, start_date, datetime.now().strftime("%Y%m%d"))
+            if klines:
+                cached = [{"close": k.close, "open": k.open, "high": k.high, "low": k.low,
+                           "volume": k.volume, "amount": k.amount, "timestamp": k.timestamp.isoformat()}
+                          for k in klines]
+                if bus:
+                    await bus.cache_set(cache_key, cached, ttl=3600)
+        except Exception:
+            pass
+
+    # 2) Tushare 失败时尝试 AkShare
     if not cached:
-        provider_cfg = [p for p in CONFIG.get("data_providers", []) if p.get("enabled")]
-        tushare_token = next((p.get("token") for p in provider_cfg if p.get("name") == "tushare" and p.get("token")), None)
+        try:
+            start_date = (datetime.now() - timedelta(days=60)).strftime("%Y%m%d")
+            from data_provider.akshare_impl import AkShareProvider
+            ap = AkShareProvider(bus, CONFIG)
+            klines = await ap.fetch_kline(symbol, start_date, datetime.now().strftime("%Y%m%d"))
+            if klines:
+                cached = [{"close": k.close, "open": k.open, "high": k.high, "low": k.low,
+                           "volume": k.volume, "amount": k.amount, "timestamp": k.timestamp.isoformat()}
+                          for k in klines]
+                if bus:
+                    await bus.cache_set(cache_key, cached, ttl=3600)
+        except Exception:
+            pass
 
-        if tushare_token:
-            try:
-                start_date = (datetime.now() - timedelta(days=60)).strftime("%Y%m%d")
-                from data_provider.tushare_impl import TushareProvider
-                tp = TushareProvider(bus, CONFIG, token=tushare_token)
-                klines = await tp.fetch_kline(symbol, start_date, datetime.now().strftime("%Y%m%d"))
-                if klines:
-                    cached = [{"close": k.close, "open": k.open, "high": k.high, "low": k.low, "volume": k.volume, "amount": k.amount, "timestamp": k.timestamp.isoformat()} for k in klines]
-            except Exception:
-                pass
+    # 3) 实时数据源均失败时，降级到 Redis 缓存
+    if not cached and bus:
+        cached = await bus.cache_get(cache_key)
 
-        if not cached:
-            try:
-                start_date = (datetime.now() - timedelta(days=60)).strftime("%Y%m%d")
-                from data_provider.akshare_impl import AkShareProvider
-                ap = AkShareProvider(bus, CONFIG)
-                klines = await ap.fetch_kline(symbol, start_date, datetime.now().strftime("%Y%m%d"))
-                if klines:
-                    cached = [{"close": k.close, "open": k.open, "high": k.high, "low": k.low, "volume": k.volume, "amount": k.amount, "timestamp": k.timestamp.isoformat()} for k in klines]
-            except Exception:
-                pass
+    # 4) 盘中实时报价修正：优先 Tushare realtime，回退 AkShare spot
+    if cached and tushare_token:
+        try:
+            from data_provider.tushare_impl import TushareProvider
+            tp = TushareProvider(bus, CONFIG, token=tushare_token)
+            rt = await tp.fetch_realtime(symbol)
+            if rt and rt.get("price"):
+                live_price = float(rt["price"])
+                logger.info("Tushare 实时价: {} = {} (前收: {})", symbol, live_price, rt.get("pre_close"))
+                if live_price > 0 and abs(live_price - float(cached[-1]["close"])) > 0.001:
+                    cached[-1] = {**cached[-1], "close": live_price, "high": max(float(cached[-1]["high"]), live_price), "low": min(float(cached[-1]["low"]), live_price)}
+        except Exception as e:
+            logger.warning("Tushare 实时报价失败 ({}): {}", symbol, e)
 
     if not cached or len(cached) < 5:
         raise HTTPException(400, f"股票 {symbol} 数据不足，至少需要5条K线")
