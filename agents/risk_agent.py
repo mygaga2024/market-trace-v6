@@ -299,6 +299,15 @@ class RiskAgent(BaseAgent):
         await self.publish("risk:override", payload)
         logger.warning("Risk Agent 否决: [{}] {}", override.severity, override.reason)
 
+        if override.severity == "critical":
+            try:
+                from core.notifier import get_notifier
+                n = get_notifier()
+                if n.enabled:
+                    await n.alert_risk(override.reason, override.severity)
+            except Exception:
+                pass
+
     async def _emit_safe(self) -> None:
         await self.publish("risk:override", {
             "event": "RISK_SAFE",

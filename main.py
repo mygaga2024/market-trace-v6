@@ -23,6 +23,8 @@ from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
+from core.log_filter import desensitize as log_filter
+
 load_dotenv()
 
 CONFIG_PATH = Path("config/settings.yaml")
@@ -56,6 +58,7 @@ logger.add(
     format=log_cfg["format"],
     encoding="utf-8",
     enqueue=True,
+    filter=log_filter,
 )
 logger.add(sys.stdout, level="INFO",
            format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>",
@@ -64,6 +67,7 @@ logger.add(sys.stdout, level="INFO",
 START_TIME = time.time()
 bus = None
 db = None
+notifier = None
 llm_chain = None
 _agent_tasks: list[asyncio.Task] = []
 
@@ -99,9 +103,10 @@ def _build_llm_chain(cfg: dict):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global bus, db, llm_chain, _agent_tasks
+    global bus, db, llm_chain, _agent_tasks, notifier
 
     from core.bus import MessageBus
+    from core.notifier import get_notifier
     from db.database import Database
 
     redis_cfg = CONFIG["redis"]
@@ -125,6 +130,12 @@ async def lifespan(app: FastAPI):
 
     llm_chain = _build_llm_chain(CONFIG)
     logger.info("LLM 回退链已就绪: DeepSeek → Gemini → MiniMax → 纯规则")
+
+    notifier = get_notifier()
+    if notifier.enabled:
+        logger.info("微信通知已启用")
+    else:
+        logger.info("微信通知未配置 (设置 WXPUSHER_TOKEN + WXPUSHER_UID)")
 
     _agent_tasks = _start_agents()
     logger.info("{} 个 Agent 已启动", len(_agent_tasks))
@@ -481,11 +492,13 @@ async def _analyze_single(symbol: str) -> dict:
         except Exception:
             pass
 
+    latest_ts = cached[-1]["timestamp"] if cached else None
     return {
         "symbol": symbol, "price": float(price), "change_pct": change_pct,
         "indicators": {"ma5": ma5, "ma10": ma10, "ma20": ma20, "macd": macd, "rsi": rsi, "vol_ratio": vol_ratio},
         "trace_signals": [{"type": s["type"], "direction": s["direction"], "strength": s.get("strength", 0)} for s in trace_signals],
         "macro_rai": macro_rai, "decision": decision,
+        "data_timestamp": latest_ts, "data_source": "tushare" if tushare_token else "akshare",
     }
 
 

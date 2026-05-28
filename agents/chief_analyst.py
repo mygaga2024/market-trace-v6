@@ -201,6 +201,21 @@ class ChiefAnalyst(BaseAgent):
             self._decision_count, decision.action.value, decision.confidence, decision.provider_label,
         )
 
+        if decision.action.value in ("BUY", "SELL"):
+            try:
+                from core.notifier import get_notifier
+                n = get_notifier()
+                if n.enabled:
+                    await n.alert_decision(
+                        symbol=payload.get("symbol", ""),
+                        action=decision.action.value,
+                        confidence=decision.confidence,
+                        price=float(payload.get("price", 0)),
+                        reason=decision.reasoning,
+                    )
+            except Exception:
+                pass
+
     async def run(self) -> None:
         while self._running:
             await asyncio.sleep(1)
