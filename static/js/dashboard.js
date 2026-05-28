@@ -41,6 +41,8 @@ function fmtTime(s) {
 var _pollTimer = null;
 var _analyzeLoading = false;
 var _screenAbort = null;
+var _activeTab = 'health';
+var _tabCache = {};
 
 function startPoll() {
   if (_pollTimer) clearInterval(_pollTimer);
@@ -236,9 +238,152 @@ async function screenStocks(strategy) {
   }
 }
 
+/* ── Tab Switching ── */
+function switchTab(tab) {
+  _activeTab = tab;
+  var buttons = document.querySelectorAll('.tab-btn');
+  buttons.forEach(function(b) {
+    b.classList.toggle('active', b.getAttribute('data-tab') === tab);
+    b.setAttribute('aria-selected', b.getAttribute('data-tab') === tab ? 'true' : 'false');
+  });
+  loadTab(tab);
+}
+
+function loadTab(tab) {
+  var panel = $id('tab-panel');
+  panel.innerHTML = '<div class="spinner">\u23F3 加载中...</div>';
+
+  if (_tabCache[tab]) {
+    panel.innerHTML = _tabCache[tab];
+    return;
+  }
+
+  var fetchers = {
+    health:    function() { return fetchAuth('/health').then(function(r) { return r.json(); }); },
+    status:    function() { return fetchAuth('/status').then(function(r) { return r.json(); }); },
+    reports:   function() { return fetchAuth('/reports/macro?limit=5').then(function(r) { return r.json(); }); },
+    signal:    function() { return fetchAuth('/reports/signal?limit=5').then(function(r) { return r.json(); }); },
+    trace:     function() { return fetchAuth('/reports/trace?limit=5').then(function(r) { return r.json(); }); },
+    decisions: function() { return fetchAuth('/decisions?limit=10').then(function(r) { return r.json(); }); },
+  };
+
+  var fn = fetchers[tab];
+  if (!fn) { panel.innerHTML = '<div class="tab-empty">未知面板</div>'; return; }
+
+  fn().then(function(data) {
+    var html;
+    switch(tab) {
+      case 'health':    html = renderHealth(data); break;
+      case 'status':    html = renderStatus(data); break;
+      case 'reports':   html = renderReportList(data, '宏观报告'); break;
+      case 'signal':    html = renderReportList(data, '信号报告'); break;
+      case 'trace':     html = renderReportList(data, '资金报告'); break;
+      case 'decisions': html = renderDecisions(data); break;
+      default: html = '<pre>' + escapeHtml(JSON.stringify(data, null, 2)) + '</pre>';
+    }
+    _tabCache[tab] = html;
+    panel.innerHTML = html;
+  }).catch(function(e) {
+    panel.innerHTML = '<div class="tab-empty">\u26A0\uFE0F 加载失败: ' + escapeHtml(e.message || '网络错误') + '</div>';
+  });
+}
+
+function renderHealth(d) {
+  var html = '<table class="tab-table">';
+  html += '<tr><th>系统状态</th><td class="' + (d.status === 'ok' ? 'kv-ok' : 'kv-warn') + '">' + (d.status === 'ok' ? '\u2713' : '\u26A0') + ' ' + escapeHtml(d.status) + '</td></tr>';
+  html += '<tr><th>版本</th><td>' + escapeHtml(d.version) + '</td></tr>';
+  html += '<tr><th>运行时间</th><td>' + escapeHtml(fmtTime(d.uptime_seconds)) + '</td></tr>';
+  html += '<tr><th>Redis</th><td class="' + (d.redis === 'connected' ? 'kv-ok' : 'kv-err') + '">' + escapeHtml(d.redis) + '</td></tr>';
+  html += '<tr><th>数据库</th><td class="' + (d.database === 'connected' ? 'kv-ok' : 'kv-err') + '">' + escapeHtml(d.database) + '</td></tr>';
+  html += '<tr><th>Agent 运行数</th><td>' + (d.agents_running || 0) + '</td></tr>';
+  if (d.agents) {
+    html += '<tr><th>Agent 心跳</th><td><ul class="tab-list">';
+    Object.keys(d.agents).forEach(function(k) {
+      var alive = d.agents[k];
+      html += '<li><span class="li-label">' + escapeHtml(k) + '</span><span class="li-value ' + (alive ? 'kv-ok' : 'kv-off') + '">' + (alive ? '\u25CF 在线' : '\u25CB 离线') + '</span></li>';
+    });
+    html += '</ul></td></tr>';
+  }
+  if (d.llm_chain) {
+    html += '<tr><th>LLM 链路</th><td><ul class="tab-list">';
+    Object.keys(d.llm_chain).forEach(function(k) {
+      var llm = d.llm_chain[k];
+      html += '<li><span class="li-label">' + escapeHtml(k) + '</span><span class="li-value ' + (llm.api_key_configured ? 'kv-ok' : 'kv-dim') + '">' + escapeHtml(llm.provider) + ' / ' + escapeHtml(llm.model) + '</span></li>';
+    });
+    html += '</ul></td></tr>';
+  }
+  html += '</table>';
+  return html;
+}
+
+function renderStatus(d) {
+  var html = '<table class="tab-table">';
+  html += '<tr><th>运行时间</th><td>' + escapeHtml(fmtTime(d.uptime_seconds)) + '</td></tr>';
+  if (d.decision_stats) {
+    var s = d.decision_stats;
+    html += '<tr><th>决策统计</th><td>共 ' + (s.total || 0) + ' 条';
+    if (s.buy) html += ', BUY: ' + s.buy;
+    if (s.sell) html += ', SELL: ' + s.sell;
+    if (s.hold) html += ', HOLD: ' + s.hold;
+    html += '</td></tr>';
+  }
+  if (d.case_stats && !d.case_stats.error) {
+    html += '<tr><th>案例统计</th><td>共 ' + (d.case_stats.total || 0) + ' 条</td></tr>';
+  }
+  if (d.latest_decision) {
+    var ld = d.latest_decision;
+    html += '<tr><th>最新决策</th><td>';
+    html += '<span class="decision-action action-' + escapeHtml(ld.action) + '">' + escapeHtml(ld.action) + '</span>';
+    html += ' 置信度 ' + (ld.confidence * 100).toFixed(0) + '% | ' + escapeHtml(ld.provider);
+    html += '<div style="margin-top:6px;font-size:13px;color:var(--text-secondary)">' + escapeHtml(ld.reasoning || '') + '</div>';
+    html += '</td></tr>';
+  }
+  html += '</table>';
+  return html;
+}
+
+function renderReportList(d, name) {
+  var html = '<div style="margin-bottom:8px;font-size:13px;color:var(--text-secondary)">' + escapeHtml(name) + ' — 最近 ' + (d.count || 0) + ' 条</div>';
+  if (!d.items || !d.items.length) {
+    html += '<div class="tab-empty">暂无 ' + escapeHtml(name) + ' 数据</div>';
+    return html;
+  }
+  html += '<table class="tab-table"><tr><th>时间</th><th>代码</th><th>摘要</th><th>置信度</th></tr>';
+  d.items.forEach(function(r) {
+    var ts = r.timestamp ? new Date(r.timestamp).toLocaleString('zh') : '\u2014';
+    html += '<tr><td class="kv-dim">' + escapeHtml(ts) + '</td><td>' + escapeHtml(r.symbol || '\u2014') + '</td><td>' + escapeHtml(r.summary || '\u2014') + '</td><td>' + (r.confidence ? (r.confidence * 100).toFixed(0) + '%' : '\u2014') + '</td></tr>';
+  });
+  html += '</table>';
+  return html;
+}
+
+function renderDecisions(d) {
+  var html = '<div style="margin-bottom:8px;font-size:13px;color:var(--text-secondary)">\uD83E\uDDE0 决策历史 — 共 ' + d.count + ' 条';
+  if (d.stats) html += ' (BUY: ' + (d.stats.buy || 0) + ', SELL: ' + (d.stats.sell || 0) + ', HOLD: ' + (d.stats.hold || 0) + ')';
+  html += '</div>';
+  if (!d.items || !d.items.length) {
+    html += '<div class="tab-empty">暂无决策记录</div>';
+    return html;
+  }
+  html += '<table class="tab-table"><tr><th>时间</th><th>决策</th><th>置信度</th><th>AI</th><th>理由</th></tr>';
+  d.items.forEach(function(dec) {
+    var ts = dec.timestamp ? new Date(dec.timestamp).toLocaleString('zh') : '\u2014';
+    html += '<tr>';
+    html += '<td class="kv-dim">' + escapeHtml(ts) + '</td>';
+    html += '<td><span class="decision-action action-' + escapeHtml(dec.action) + '">' + escapeHtml(dec.action) + '</span></td>';
+    html += '<td>' + (dec.confidence * 100).toFixed(0) + '%</td>';
+    html += '<td class="kv-dim">' + escapeHtml(dec.provider_label || '\u2014') + '</td>';
+    html += '<td class="kv-dim">' + escapeHtml((dec.reasoning || '').substring(0, 80)) + '</td>';
+    html += '</tr>';
+  });
+  html += '</table>';
+  return html;
+}
+
 /* ── Keyboard Submit ── */
 $id('stock-input').addEventListener('keydown', function(e) {
   if (e.key === 'Enter') analyzeStock();
 });
 
+switchTab('health');
 startPoll();
