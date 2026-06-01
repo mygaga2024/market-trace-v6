@@ -34,6 +34,7 @@ class RiskAgent(BaseAgent):
         self,
         bus: MessageBus,
         config: dict[str, Any],
+        risk_manager=None,
     ):
         super().__init__(
             AgentName.RISK.value,
@@ -41,6 +42,8 @@ class RiskAgent(BaseAgent):
             ["reports:macro", "reports:signal", "reports:trace"],
             config,
         )
+
+        self._rm = risk_manager
 
         risk_cfg = config.get("agents", {}).get("risk", {})
         self._conflict_multiplier: float = risk_cfg.get("conflict_multiplier", 0.3)
@@ -298,6 +301,16 @@ class RiskAgent(BaseAgent):
 
         await self.publish("risk:override", payload)
         logger.warning("Risk Agent 否决: [{}] {}", override.severity, override.reason)
+
+        if self._rm:
+            try:
+                await self._rm.record_override(
+                    reason=override.reason,
+                    action=override.action,
+                    severity=override.severity,
+                )
+            except Exception:
+                pass
 
         if override.severity == "critical":
             try:

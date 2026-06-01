@@ -351,6 +351,23 @@ body {
   .strat-btn, .tab-btn { flex: 1; text-align: center; }
   .result-stats { gap: 10px; }
   .tab-table th { width: 100px; }
+  .chart-container { height: 220px; }
+}
+
+/* ── Chart Container ── */
+.chart-container {
+  margin: 12px 0;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  min-height: 320px;
+  background: var(--bg-card);
+}
+.chart-container--compact {
+  min-height: 220px;
+}
+.chart-container--hidden {
+  display: none;
 }
 
 /* ── Print ── */

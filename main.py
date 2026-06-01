@@ -69,6 +69,8 @@ bus = None
 db = None
 notifier = None
 llm_chain = None
+strategy_manager = None
+risk_manager = None
 _agent_tasks: list[asyncio.Task] = []
 
 
@@ -103,7 +105,7 @@ def _build_llm_chain(cfg: dict):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global bus, db, llm_chain, _agent_tasks, notifier
+    global bus, db, llm_chain, _agent_tasks, notifier, strategy_manager, risk_manager
 
     from core.bus import MessageBus
     from core.notifier import get_notifier
@@ -137,10 +139,29 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("微信通知未配置 (设置 WXPUSHER_TOKEN + WXPUSHER_UID)")
 
-    _agent_tasks = _start_agents()
+    from core.risk_manager import RiskManager
+    risk_manager = RiskManager(bus, CONFIG)
+    logger.info("风控闭环管理器已就绪")
+
+    _agent_tasks = _start_agents(_rm=risk_manager)
     logger.info("{} 个 Agent 已启动", len(_agent_tasks))
 
     asyncio.create_task(_prefetch_stock_pool())
+
+    from backtest.strategy_manager import StrategyManager
+    bt_cfg = CONFIG.get("backtest", {})
+    strategy_manager = StrategyManager(
+        bus,
+        consecutive_loss_threshold=bt_cfg.get("consecutive_loss_threshold", 10),
+        min_win_rate=bt_cfg.get("min_win_rate", 0.35),
+        min_score=bt_cfg.get("min_score", -1.0),
+        min_total_trades=bt_cfg.get("min_total_trades", 3),
+    )
+
+    schedule_cfg = bt_cfg.get("schedule", {})
+    if schedule_cfg.get("enabled", False):
+        asyncio.create_task(_backtest_scheduler(bus, CONFIG, strategy_manager, schedule_cfg))
+        logger.info("定时回测已启用: 每日 {}", schedule_cfg.get("time", "18:00"))
 
     yield
 
@@ -158,7 +179,7 @@ async def lifespan(app: FastAPI):
     logger.info("系统已关闭")
 
 
-def _start_agents() -> list[asyncio.Task]:
+def _start_agents(_rm=None) -> list[asyncio.Task]:
     from data_provider.akshare_impl import AkShareProvider
     from data_provider.tushare_impl import TushareProvider
     from core.memory import CaseMemory
@@ -190,7 +211,7 @@ def _start_agents() -> list[asyncio.Task]:
     trace = TraceAgent(bus, CONFIG)
     tasks.append(asyncio.create_task(trace.start(), name="trace-agent"))
 
-    risk = RiskAgent(bus, CONFIG)
+    risk = RiskAgent(bus, CONFIG, risk_manager=_rm)
     tasks.append(asyncio.create_task(risk.start(), name="risk-agent"))
 
     chief = ChiefAnalyst(bus, CONFIG, llm_chain=llm_chain)
@@ -426,6 +447,44 @@ async def _prefetch_stock_pool():
             logger.warning("预加载 {} 异常: {}", symbol, e)
 
     logger.info("股票池预加载完成: {} 只", len(STOCK_POOL))
+
+
+async def _backtest_scheduler(_bus, config: dict, _sm, schedule_cfg: dict):
+    """后台定时回测任务"""
+    time_str = schedule_cfg.get("time", "18:00")
+    try:
+        hour, minute = map(int, time_str.split(":"))
+    except (ValueError, TypeError):
+        hour, minute = 18, 0
+
+    while True:
+        now = datetime.now()
+        next_run = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if next_run <= now:
+            next_run += timedelta(days=1)
+        wait = (next_run - now).total_seconds()
+        logger.info("定时回测: 下次运行 {} ({}s后)", next_run.strftime("%Y-%m-%d %H:%M"), int(wait))
+        try:
+            await asyncio.sleep(wait)
+        except asyncio.CancelledError:
+            return
+
+        if not _bus:
+            logger.warning("定时回测跳过: 消息总线未就绪")
+            continue
+
+        try:
+            from backtest.strategy_backtest import run_strategy_backtest
+            active = await _sm.get_active_strategies()
+            if not active:
+                logger.warning("定时回测跳过: 无活跃策略")
+                continue
+            stocks = config.get("stock_pool", [])[:20]
+            results = await run_strategy_backtest(_bus, config, stocks, active_strategies=active)
+            changes = await _sm.evaluate_health(results)
+            logger.info("定时回测完成: {} 只股票, {} 个策略, 变更: {}", len(results), len(active), changes)
+        except Exception as e:
+            logger.error("定时回测异常: {}", e)
 
 
 async def _analyze_single(symbol: str) -> dict:
@@ -689,15 +748,138 @@ async def screen_stocks(strategy: str):
 
 @app.get("/backtest/summary")
 async def backtest_summary():
-    """策略回测：股票池 × 7策略 → 夏普/回撤/胜率排行"""
+    """策略回测：仅活跃策略 × 股票池 → 夏普/回撤/胜率排行"""
     if not bus:
         return JSONResponse({"error": "消息总线未就绪"}, status_code=503)
     try:
         from backtest.strategy_backtest import run_strategy_backtest
-        results = await run_strategy_backtest(bus, CONFIG, STOCK_POOL)
+        active = await strategy_manager.get_active_strategies() if strategy_manager else None
+        results = await run_strategy_backtest(bus, CONFIG, STOCK_POOL, active_strategies=active)
+        if strategy_manager:
+            await strategy_manager.evaluate_health(results)
         return {"count": len(results), "results": results}
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/backtest/strategies")
+async def backtest_strategies():
+    """所有回测策略的状态、连续失败数、是否被禁用"""
+    if not strategy_manager:
+        return JSONResponse({"error": "策略管理器未就绪"}, status_code=503)
+    try:
+        all_strategies = await strategy_manager.get_all_strategies()
+        return {"strategies": all_strategies}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/backtest/strategies/{name}/enable")
+async def backtest_strategy_enable(name: str):
+    """重新启用已被禁用的策略"""
+    if not strategy_manager:
+        return JSONResponse({"error": "策略管理器未就绪"}, status_code=503)
+    try:
+        await strategy_manager.enable_strategy(name)
+        return {"strategy": name, "status": "active"}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/backtest/run")
+async def backtest_run():
+    """手动触发一次回测并评估策略健康"""
+    if not bus:
+        return JSONResponse({"error": "消息总线未就绪"}, status_code=503)
+    try:
+        from backtest.strategy_backtest import run_strategy_backtest
+        active = await strategy_manager.get_active_strategies() if strategy_manager else None
+        results = await run_strategy_backtest(bus, CONFIG, STOCK_POOL, active_strategies=active)
+        changes = await strategy_manager.evaluate_health(results) if strategy_manager else {}
+        return {"count": len(results), "results": results, "strategy_changes": changes}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/risk/status")
+async def risk_status():
+    """风控闭环当前状态：风险等级、否决次数、熔断状态"""
+    if not risk_manager:
+        return JSONResponse({"error": "风控管理器未就绪"}, status_code=503)
+    try:
+        state = await risk_manager.get_risk_state()
+        return state
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/risk/overrides")
+async def risk_overrides(limit: int = Query(default=20, ge=1, le=100)):
+    """风控否决事件历史"""
+    if not risk_manager:
+        return JSONResponse({"error": "风控管理器未就绪"}, status_code=503)
+    try:
+        history = await risk_manager.get_override_history(limit)
+        return {"count": len(history), "overrides": history}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/risk/position/{symbol}")
+async def risk_position(
+    symbol: str,
+    method: str = Query(default="kelly"),
+    capital: float = Query(default=100000, ge=1000),
+    price: float = Query(default=10.0, gt=0),
+    win_prob: float = Query(default=0.5, ge=0, le=1),
+    avg_win: float = Query(default=0.03, gt=0),
+    avg_loss: float = Query(default=0.02, gt=0),
+):
+    """风控加权仓位建议：根据当前风险等级调整仓位"""
+    if not risk_manager:
+        return JSONResponse({"error": "风控管理器未就绪"}, status_code=503)
+    try:
+        suggestion = await risk_manager.get_position_suggestion(
+            symbol, capital=capital, price=price, method=method,
+            win_prob=win_prob, avg_win=avg_win, avg_loss=avg_loss,
+        )
+        return suggestion
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+def _render_kline_svg(closes: list[float]) -> str:
+    w, h = 200, 40
+    mn, mx = min(closes), max(closes)
+    rng = max(mx - mn, 0.01)
+    step = w / max(len(closes) - 1, 1)
+    color = "#3fb950" if closes[-1] >= closes[0] else "#f85149"
+    points = " ".join(f"{i*step:.1f},{h - (c - mn)/rng*h*0.8 - h*0.1:.1f}" for i, c in enumerate(closes))
+    poly = " ".join(f"{i*step:.1f},{h}" for i in range(len(closes)))
+    return f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}"><rect width="{w}" height="{h}" fill="#0d1117" rx="4"/><polyline points="{points}" fill="none" stroke="{color}" stroke-width="1.5"/><polygon points="0,{h} {poly} {w},{h}" fill="{color}" opacity="0.1"/></svg>'
+
+
+def _build_kline_json(cached: list[dict], symbol: str) -> dict:
+    bars = []
+    for r in cached[-60:]:
+        bars.append({
+            "time": r.get("timestamp", "")[:10],
+            "open": float(r["open"]),
+            "high": float(r["high"]),
+            "low": float(r["low"]),
+            "close": float(r["close"]),
+            "volume": int(float(r["volume"])),
+        })
+    return {"symbol": symbol, "bars": bars, "count": len(bars)}
+
+
+@app.get("/api/kline/{symbol}")
+async def api_kline(symbol: str):
+    """K线 OHLCV JSON 数据，供前端图表渲染"""
+    cached = await bus.cache_get(f"market:raw:{symbol}") if bus else None
+    if not cached or len(cached) < 5:
+        return {"symbol": symbol, "bars": [], "count": 0}
+    return _build_kline_json(cached, symbol)
 
 
 @app.get("/kline/{symbol}.svg")
@@ -708,16 +890,8 @@ async def kline_svg(symbol: str):
         from fastapi.responses import Response
         return Response('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="20"><text x="0" y="14" font-size="12" fill="#8b949e">数据不足</text></svg>', media_type="image/svg+xml")
     closes = [float(r["close"]) for r in cached[-30:]]
-    w, h = 200, 40
-    mn, mx = min(closes), max(closes)
-    rng = max(mx - mn, 0.01)
-    step = w / max(len(closes) - 1, 1)
-    color = "#3fb950" if closes[-1] >= closes[0] else "#f85149"
-    points = " ".join(f"{i*step:.1f},{h - (c - mn)/rng*h*0.8 - h*0.1:.1f}" for i, c in enumerate(closes))
-    poly = " ".join(f"{i*step:.1f},{h}" for i in range(len(closes)))
     from fastapi.responses import Response
-    svg = f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}"><rect width="{w}" height="{h}" fill="#0d1117" rx="4"/><polyline points="{points}" fill="none" stroke="{color}" stroke-width="1.5"/><polygon points="0,{h} {poly} {w},{h}" fill="{color}" opacity="0.1"/></svg>'
-    return Response(svg, media_type="image/svg+xml")
+    return Response(_render_kline_svg(closes), media_type="image/svg+xml")
 
 
 _DASHBOARD_TEMPLATE: str | None = None

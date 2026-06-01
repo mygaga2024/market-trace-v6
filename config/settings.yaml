@@ -110,6 +110,14 @@ agents:
     daily_drop_threshold: 0.07
     consecutive_drop_days: 3
 
+# --- 风控闭环管理器 ---
+risk_manager:
+  elevated_threshold: 3
+  critical_threshold: 5
+  cooldown_minutes: 60
+  max_override_history: 100
+  adaptive_params_enabled: true
+
 # --- 日志 ---
 logging:
   level: INFO
@@ -190,3 +198,11 @@ backtest:
   initial_capital: 100000
   commission_rate: 0.0003
   slippage: 0.001
+  schedule:
+    enabled: false
+    time: "18:00"
+  strategy_auto_disable: true
+  consecutive_loss_threshold: 10
+  min_win_rate: 0.35
+  min_score: -1.0
+  min_total_trades: 3

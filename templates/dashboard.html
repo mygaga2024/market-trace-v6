@@ -12,6 +12,7 @@
 <script>
   window.__API_TOKEN__ = '{{API_TOKEN}}';
 </script>
+<script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
 </head>
 <body>
 
@@ -33,7 +34,8 @@
     <input id="stock-input" type="text" placeholder="输入股票代码 如 000001" aria-label="输入股票代码，如零零零零零一">
     <button id="analyze-btn" onclick="analyzeStock()" aria-label="开始诊股">&#x1F50D; 诊股</button>
   </div>
-  <div id="analyze-spinner" class="spinner" style="display:none" role="status" aria-live="polite">&#x23F3; 分析中，正在拉取数据+调用AI...</div>
+  <div id="analyze-spinner" class="spinner" style="display:none" role="status" aria-live="polite">⏳ 分析中，正在拉取数据+调用AI...</div>
+  <div id="kline-chart" class="chart-container chart-container--hidden" role="img" aria-label="K线图"></div>
   <section id="analyze-result" style="display:none" aria-live="polite" aria-label="诊股结果"></section>
 
   <div class="grid">
@@ -85,6 +87,7 @@
   <section class="tab-panel active" id="tab-panel" role="tabpanel" aria-label="数据面板内容">
     <div class="spinner">&#x23F3; 加载中...</div>
   </section>
+  <div id="backtest-chart" class="chart-container chart-container--compact" style="display:none" role="img" aria-label="策略对比图"></div>
 
   <section style="margin-top:20px" aria-label="选股策略">
     <h2 class="card-title" style="margin-bottom:10px">&#x1F3AF; 选股策略</h2>
@@ -104,6 +107,7 @@
   <a href="<your-repo-url>" style="color:var(--text-muted)">GitHub</a>
 </footer>
 
+<script src="/static/js/charts.js"></script>
 <script src="/static/js/dashboard.js"></script>
 </body>
 </html>

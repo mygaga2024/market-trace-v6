@@ -16,8 +16,6 @@ RUN mkdir -p /app/logs /app/data \
 
 EXPOSE 19377
 
-USER appuser
-
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=15s \
     CMD python -c "import httpx; r = httpx.get('http://localhost:19377/health', timeout=5.0); assert r.status_code == 200" || exit 1
 

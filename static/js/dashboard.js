@@ -177,7 +177,6 @@ function analyzeStock() {
         html += '<div class="result-stat"><div>RSI</div><div>' + (d.indicators.rsi || '\u2014') + '</div></div>';
         html += '<div class="result-stat"><div>量比</div><div>' + d.indicators.vol_ratio + 'x</div></div>';
         html += '</div>';
-        html += '<div style="margin-bottom:8px"><img src="/kline/' + escapeHtml(d.symbol) + '.svg" alt="K线图" style="width:100%;max-width:400px;height:40px" onerror="this.style.display=\'none\'"></div>';
 
         if (d.indicators.macd && d.indicators.macd.dif) {
           html += '<div style="font-size:13px;color:var(--text-secondary)">MACD: DIF=' + d.indicators.macd.dif + ' DEA=' + d.indicators.macd.dea + ' \u67F1=' + d.indicators.macd.histogram + '</div>';
@@ -204,6 +203,17 @@ function analyzeStock() {
       }
       $id('analyze-result').innerHTML = html;
       $id('analyze-result').style.display = 'block';
+
+      if (!d.error) {
+        $id('kline-chart').classList.remove('chart-container--hidden');
+        fetchAuth('/api/kline/' + sym)
+          .then(function(r) { return r.json(); })
+          .then(function(kd) { Charts.renderKline('kline-chart', kd); })
+          .catch(function() { $id('kline-chart').classList.add('chart-container--hidden'); Charts.destroy('kline-chart'); });
+      } else {
+        $id('kline-chart').classList.add('chart-container--hidden');
+        Charts.destroy('kline-chart');
+      }
     })
     .catch(function(e) {
       $id('analyze-result').innerHTML = '<div class="error-banner" role="alert">请求失败: ' + escapeHtml(e.message) + '</div>';
@@ -250,6 +260,8 @@ function switchTab(tab) {
     b.classList.toggle('active', b.getAttribute('data-tab') === tab);
     b.setAttribute('aria-selected', b.getAttribute('data-tab') === tab ? 'true' : 'false');
   });
+  var bc = $id('backtest-chart');
+  if (bc) bc.style.display = (tab === 'backtest') ? 'block' : 'none';
   loadTab(tab);
 }
 
@@ -394,6 +406,32 @@ function renderBacktest(d) {
     html += '</tr>';
   });
   html += '</table>';
+
+  var strategyScores = {};
+  Object.keys(d.results).forEach(function(sym) {
+    var strats = d.results[sym];
+    Object.keys(strats).forEach(function(name) {
+      var s = strats[name];
+      if (!strategyScores[name]) strategyScores[name] = { label: labels[name] || name, sharpe: 0, win_rate: 0, count: 0 };
+      strategyScores[name].sharpe += s.sharpe || 0;
+      strategyScores[name].win_rate += s.win_rate_pct / 100;
+      strategyScores[name].count += 1;
+    });
+  });
+  var chartData = [];
+  Object.keys(strategyScores).forEach(function(name) {
+    var ss = strategyScores[name];
+    chartData.push({ label: ss.label, sharpe: ss.count ? ss.sharpe / ss.count : 0, win_rate: ss.count ? ss.win_rate / ss.count : 0 });
+  });
+
+  setTimeout(function() {
+    var bc = document.getElementById('backtest-chart');
+    if (bc) {
+      bc.style.display = 'block';
+      Charts.renderBacktestBars('backtest-chart', chartData);
+    }
+  }, 100);
+
   return html;
 }
 

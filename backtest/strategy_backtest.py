@@ -96,9 +96,13 @@ def _calc_ma(closes: np.ndarray, period: int) -> np.ndarray:
     return result
 
 
-async def run_strategy_backtest(bus, config: dict, symbols: list[str] | None = None) -> dict[str, Any]:
-    """对股票池跑所有策略回测，返回排序后的结果"""
+async def run_strategy_backtest(
+    bus, config: dict, symbols: list[str] | None = None,
+    active_strategies: list[str] | None = None,
+) -> dict[str, Any]:
+    """对股票池跑策略回测，返回排序后的结果"""
     stock_pool = symbols or config.get("stock_pool", [])[:20]
+    strategies_to_run = active_strategies if active_strategies is not None else list(STRATEGIES.keys())
 
     results: dict[str, dict[str, Any]] = {}
 
@@ -114,7 +118,8 @@ async def run_strategy_backtest(bus, config: dict, symbols: list[str] | None = N
 
             symbol_results: dict[str, Any] = {}
 
-            for strategy, label in STRATEGIES.items():
+            for strategy in strategies_to_run:
+                label = STRATEGIES.get(strategy, strategy)
                 actions = _evaluate_strategy(strategy, closes, highs, volumes)
                 if not actions or all(a == "HOLD" for a in actions):
                     continue
