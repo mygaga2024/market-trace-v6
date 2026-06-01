@@ -18,7 +18,7 @@ import numpy as np
 import yaml
 import uvicorn
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, Header, Query, HTTPException
+from fastapi import Depends, FastAPI, Header, Query, HTTPException, Request
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
@@ -172,6 +172,11 @@ async def lifespan(app: FastAPI):
     await asyncio.gather(*_agent_tasks, return_exceptions=True)
     logger.info("所有 Agent 已停止")
 
+    if llm_chain:
+        try:
+            await llm_chain.close()
+        except Exception:
+            pass
     if db:
         await db.close()
     if bus:
@@ -198,8 +203,6 @@ def _start_agents(_rm=None) -> list[asyncio.Task]:
     if tushare_cfg and tushare_cfg[0].get("token"):
         tushare_provider = TushareProvider(bus, CONFIG, token=tushare_cfg[0]["token"])
         logger.info("Tushare 数据源已启用")
-
-    primary_provider = tushare_provider or ak_provider
 
     macro = MacroAgent(bus, CONFIG, data_provider=ak_provider)
     tasks.append(asyncio.create_task(macro.start(), name="macro-agent"))
@@ -261,9 +264,7 @@ async def health():
     for tier, key in [("primary", "primary"), ("secondary", "secondary"), ("tertiary", "tertiary")]:
         provider = llm_cfg.get(key, {})
         llm_status[key] = {
-            "provider": provider.get("provider", "unknown"),
-            "model": provider.get("model", "unknown"),
-            "api_key_configured": bool(provider.get("api_key") and "your-" not in str(provider.get("api_key", ""))),
+            "configured": bool(provider.get("api_key") and "your-" not in str(provider.get("api_key", ""))),
         }
 
     uptime = time.time() - START_TIME
@@ -296,13 +297,13 @@ async def status():
                     "reasoning": latest.reasoning[:200], "provider": latest.provider_label,
                     "timestamp": latest.timestamp.isoformat(),
                 }
-        except Exception as e:
-            response["decision_stats"] = {"error": str(e)}
+        except Exception:
+            response["decision_stats"] = {"error": "获取决策统计失败"}
 
         try:
             response["case_stats"] = await db.get_case_statistics()
         except Exception:
-            response["case_stats"] = {"error": "unavailable"}
+            response["case_stats"] = {"error": "获取案例统计失败"}
 
     return response
 
@@ -325,7 +326,8 @@ async def get_reports(agent_name: str, symbol: str = Query(None),
                       for r in reports],
         }
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        logger.error("获取报告失败: {}", e)
+        return JSONResponse({"error": "服务器内部错误"}, status_code=500)
 
 
 @app.get("/reports/{agent_name}/latest")
@@ -343,7 +345,8 @@ async def get_latest_report(agent_name: str, symbol: str = Query(None)):
                 "summary": r.summary, "confidence": r.confidence, "status": r.status,
                 "timestamp": r.timestamp.isoformat() if r.timestamp else None, "data": r.data}
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        logger.error("获取最新报告失败: {}", e)
+        return JSONResponse({"error": "服务器内部错误"}, status_code=500)
 
 
 @app.get("/decisions")
@@ -361,7 +364,8 @@ async def get_decisions(limit: int = Query(20, ge=1, le=100), offset: int = Quer
                             "timestamp": d.timestamp.isoformat() if d.timestamp else None}
                           for d in decisions]}
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        logger.error("获取决策列表失败: {}", e)
+        return JSONResponse({"error": "服务器内部错误"}, status_code=500)
 
 
 @app.get("/decisions/{decision_id}")
@@ -383,7 +387,8 @@ async def get_decision(decision_id: str):
                     "provider_label": d.provider_label, "provider_status": d.provider_status,
                     "timestamp": d.timestamp.isoformat() if d.timestamp else None}
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        logger.error("获取决策详情失败: {}", e)
+        return JSONResponse({"error": "服务器内部错误"}, status_code=500)
 
 
 STOCK_POOL = CONFIG.get("stock_pool", [
@@ -438,7 +443,8 @@ async def _prefetch_stock_pool():
 
             if cached:
                 logger.info("预加载 {}: {} 条K线", symbol, len(cached))
-                await bus.publish("events:data", {"event": "DATA_UPDATED", "symbol": symbol})
+                if bus:
+                    await bus.publish("events:data", {"event": "DATA_UPDATED", "symbol": symbol})
             else:
                 logger.warning("预加载 {}: 数据拉取失败", symbol)
 
@@ -643,16 +649,24 @@ async def _analyze_single(symbol: str) -> dict:
 # ─────────────────────────────────────────────
 
 _API_TOKEN = os.environ.get("API_TOKEN", "")
+_SESSION_COOKIE_NAME = "mt6_session"
 
 
-async def _verify_api_token(authorization: str = Header(None)):
-    """简单 Bearer Token 认证，保护消耗资源的端点"""
+async def _verify_api_token(request: Request, authorization: str = Header(None)):
+    """Bearer Token 或 httpOnly Cookie 认证，保护消耗资源的端点"""
     if not _API_TOKEN:
         return  # 未配置 token，跳过认证
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(401, "缺少 Authorization: Bearer <token> 请求头")
-    if authorization[7:] != _API_TOKEN:
+    # 1) Bearer Token 认证 (外部 API 调用)
+    if authorization and authorization.startswith("Bearer ") and authorization[7:] == _API_TOKEN:
+        return
+    # 2) httpOnly Cookie 认证 (仪表盘浏览器访问)
+    if request:
+        cookie_val = request.cookies.get(_SESSION_COOKIE_NAME, "")
+        if cookie_val == _API_TOKEN:
+            return
+    if authorization and authorization.startswith("Bearer "):
         raise HTTPException(403, "API Token 无效")
+    raise HTTPException(401, "缺少认证凭据")
 
 
 @app.post("/analyze/{symbol}", dependencies=[Depends(_verify_api_token)])
@@ -665,7 +679,7 @@ async def analyze_stock(symbol: str):
         raise
     except Exception as e:
         logger.error("诊股失败 {}: {}", symbol, e)
-        return JSONResponse({"error": str(e), "symbol": symbol}, status_code=500)
+        return JSONResponse({"error": "诊股分析失败，请稍后重试", "symbol": symbol}, status_code=500)
 
 
 STRATEGIES = {
@@ -759,7 +773,8 @@ async def backtest_summary():
             await strategy_manager.evaluate_health(results)
         return {"count": len(results), "results": results}
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        logger.error("回测汇总失败: {}", e)
+        return JSONResponse({"error": "回测执行失败"}, status_code=500)
 
 
 @app.get("/backtest/strategies")
@@ -771,7 +786,8 @@ async def backtest_strategies():
         all_strategies = await strategy_manager.get_all_strategies()
         return {"strategies": all_strategies}
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        logger.error("获取策略列表失败: {}", e)
+        return JSONResponse({"error": "获取策略列表失败"}, status_code=500)
 
 
 @app.post("/backtest/strategies/{name}/enable")
@@ -783,7 +799,8 @@ async def backtest_strategy_enable(name: str):
         await strategy_manager.enable_strategy(name)
         return {"strategy": name, "status": "active"}
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        logger.error("启用策略失败: {}", e)
+        return JSONResponse({"error": "启用策略失败"}, status_code=500)
 
 
 @app.post("/backtest/run")
@@ -798,7 +815,8 @@ async def backtest_run():
         changes = await strategy_manager.evaluate_health(results) if strategy_manager else {}
         return {"count": len(results), "results": results, "strategy_changes": changes}
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        logger.error("手动回测失败: {}", e)
+        return JSONResponse({"error": "回测执行失败"}, status_code=500)
 
 
 @app.get("/risk/status")
@@ -810,7 +828,8 @@ async def risk_status():
         state = await risk_manager.get_risk_state()
         return state
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        logger.error("获取风控状态失败: {}", e)
+        return JSONResponse({"error": "获取风控状态失败"}, status_code=500)
 
 
 @app.get("/risk/overrides")
@@ -822,7 +841,8 @@ async def risk_overrides(limit: int = Query(default=20, ge=1, le=100)):
         history = await risk_manager.get_override_history(limit)
         return {"count": len(history), "overrides": history}
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        logger.error("获取风控历史失败: {}", e)
+        return JSONResponse({"error": "获取风控历史失败"}, status_code=500)
 
 
 @app.get("/risk/position/{symbol}")
@@ -845,7 +865,8 @@ async def risk_position(
         )
         return suggestion
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        logger.error("仓位建议失败: {}", e)
+        return JSONResponse({"error": "获取仓位建议失败"}, status_code=500)
 
 
 def _render_kline_svg(closes: list[float]) -> str:
@@ -904,12 +925,26 @@ def _get_dashboard_html() -> str:
         if not template_path.exists():
             return "<html><body><h1>模板文件未找到</h1></body></html>"
         _DASHBOARD_TEMPLATE = template_path.read_text(encoding="utf-8")
-    return _DASHBOARD_TEMPLATE.replace("{{API_TOKEN}}", _API_TOKEN)
+    # 不再注入 API_TOKEN 到 HTML，改用 httpOnly cookie
+    return _DASHBOARD_TEMPLATE.replace("{{API_TOKEN}}", "")
+
 
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard():
-    return _get_dashboard_html()
+    from fastapi.responses import HTMLResponse as _HR
+    html = _get_dashboard_html()
+    response = _HR(content=html)
+    if _API_TOKEN:
+        response.set_cookie(
+            key=_SESSION_COOKIE_NAME,
+            value=_API_TOKEN,
+            httponly=True,
+            samesite="strict",
+            max_age=86400 * 7,
+            path="/",
+        )
+    return response
 
 
 def main():

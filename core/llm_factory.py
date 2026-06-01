@@ -136,7 +136,8 @@ class OpenAICompatibleLLM(LLMInterface):
 
     def _build_prompt(self, reports: dict[str, AgentReport]) -> str:
         """构建决策分析提示词"""
-        parts = ["请根据以下多维度分析报告，输出一个JSON格式的交易决策。\n"]
+        parts = [f"当前时间: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}\n"]
+        parts.append("请根据以下多维度分析报告，输出一个JSON格式的交易决策。\n")
 
         macro = reports.get("macro")
         if macro and macro.data:
@@ -268,7 +269,7 @@ class RuleBasedAnalyzer(LLMInterface):
 
     def __init__(self, config: dict[str, Any]):
         super().__init__("rule_based", config)
-        weights = config.get("fallback", {}).get("weights", {
+        weights = config.get("weights", {
             "macro": 0.25, "signal": 0.25, "trace": 0.30, "risk": 0.20,
         })
         self.weights = weights
@@ -380,3 +381,11 @@ class LLMFallbackChain:
             results[p.provider_name] = await p.health_check()
         results["rule_based"] = True
         return results
+
+    async def close(self) -> None:
+        """关闭所有 LLM provider 的连接池"""
+        for p in self.providers:
+            try:
+                await p.close()
+            except Exception:
+                pass

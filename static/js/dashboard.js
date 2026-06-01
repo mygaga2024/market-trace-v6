@@ -2,14 +2,11 @@
    Market Trace V6.0 — Dashboard Logic
    ────────────────────────────────────── */
 
-const API_TOKEN = window.__API_TOKEN__ || '';
-
-function fetchAuth(url, options = {}) {
-  opts = { ...options };
-  if (API_TOKEN) {
-    opts.headers = { ...(opts.headers || {}), 'Authorization': 'Bearer ' + API_TOKEN };
-  }
-  return fetchWithRetry(url, opts);
+// 认证通过 httpOnly cookie 自动发送，无需在 JS 中读取 token
+function fetchAuth(url, options) {
+  options = options || {};
+  options.credentials = 'same-origin';  // 自动携带 httpOnly cookie
+  return fetchWithRetry(url, options);
 }
 
 function fetchWithRetry(url, options, retries = 3, delay = 1000) {
