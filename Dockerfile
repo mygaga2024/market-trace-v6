@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 ENV PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 
-RUN groupadd -r appuser && useradd -r -g appuser appuser
+RUN groupadd -r -g 1000 appuser && useradd -r -u 1000 -g appuser appuser
 
 WORKDIR /app
 
