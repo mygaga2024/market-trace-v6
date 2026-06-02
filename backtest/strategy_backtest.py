@@ -34,7 +34,7 @@ def _evaluate_strategy(name: str, closes: list[float], highs: list[float],
     h = np.array(highs)
     v = np.array(volumes)
     actions: list[str] = []
-    min_len = {"breakout": 20, "oversold": 14, "strength": 5, "risk": 20,
+    min_len = {"breakout": 20, "oversold": 14, "strength": 20, "risk": 20,
                "ma_golden_cross": 20, "volume_breakout": 20, "rsi_reversal": 14}
 
     min_bars = min_len.get(name, 14)
@@ -52,8 +52,8 @@ def _evaluate_strategy(name: str, closes: list[float], highs: list[float],
         elif name == "oversold" and len(ci) >= 14:
             rsi14 = _calc_rsi(ci, 14)
             triggered = bool(rsi14 < 35 and (ci[-1] - ci[-5]) / ci[-5] < -0.03)
-        elif name == "strength" and len(ci) >= 5:
-            triggered = bool(vi[-1] > np.mean(vi[-6:-1]) * 2 and ci[-1] > ci[-5])
+        elif name == "strength" and len(ci) >= 20:
+            triggered = bool(vi[-1] > np.mean(vi[-21:-1]) * 2 and (ci[-1] - ci[-5]) / ci[-5] > 0.02)
         elif name == "risk" and len(ci) >= 20:
             rsi14 = _calc_rsi(ci, 14)
             triggered = bool(rsi14 > 70 and ci[-1] < ci[-20])
@@ -164,5 +164,5 @@ async def run_strategy_backtest(
 
 
 def _get_min_bars(name: str) -> int:
-    return {"breakout": 20, "oversold": 14, "strength": 5, "risk": 20,
+    return {"breakout": 20, "oversold": 14, "strength": 20, "risk": 20,
             "ma_golden_cross": 20, "volume_breakout": 20, "rsi_reversal": 14}.get(name, 14)

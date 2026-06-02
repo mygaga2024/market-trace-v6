@@ -33,9 +33,9 @@ def _strategy_oversold(c: list, h: list, v: list) -> bool:
 
 
 def _strategy_strength(c: list, h: list, v: list) -> bool:
-    """主力介入：量能翻倍 + 5日上涨"""
-    return (len(c) >= 5 and v[-1] > np.mean(v[-5:-1]) * 2
-            and c[-1] > c[-5])
+    """主力介入：量能翻倍(20日均量) + 5日涨幅>2%"""
+    return (len(c) >= 20 and v[-1] > np.mean(v[-20:-1]) * 2
+            and (c[-1] - c[-5]) / c[-5] > 0.02)
 
 
 def _strategy_risk(c: list, h: list, v: list) -> bool:
