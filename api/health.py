@@ -49,7 +49,9 @@ async def health(request: Request):
     for tier, key in [("primary", "primary"), ("secondary", "secondary"), ("tertiary", "tertiary")]:
         provider = llm_cfg.get(key, {})
         llm_status[key] = {
-            "configured": bool(provider.get("api_key") and "your-" not in str(provider.get("api_key", ""))),
+            "api_key_configured": bool(provider.get("api_key") and "your-" not in str(provider.get("api_key", ""))),
+            "provider": provider.get("provider", key),
+            "model": provider.get("model", ""),
         }
 
     uptime = time.time() - request.app.state.start_time
