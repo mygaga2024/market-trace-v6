@@ -51,12 +51,13 @@ def _evaluate_strategy(name: str, closes: list[float], highs: list[float],
             triggered = bool(ci[-1] > max(hi[-21:-1]) and vi[-1] > np.mean(vi[-21:-1]) * 1.5 and ci[-1] > ci[-2])
         elif name == "oversold" and len(ci) >= 14:
             rsi14 = _calc_rsi(ci, 14)
-            triggered = bool(rsi14 < 35 and (ci[-1] - ci[-5]) / ci[-5] < -0.03)
+            triggered = bool(rsi14 < 35 and (ci[-1] - ci[-5]) / ci[-5] < -0.03 and ci[-1] > ci[-2])
         elif name == "strength" and len(ci) >= 20:
             triggered = bool(vi[-1] > np.mean(vi[-21:-1]) * 2 and (ci[-1] - ci[-5]) / ci[-5] > 0.02)
         elif name == "risk" and len(ci) >= 20:
             rsi14 = _calc_rsi(ci, 14)
-            triggered = bool(rsi14 > 70 and ci[-1] < ci[-20])
+            triggered = bool(rsi14 > 70 and ci[-1] < ci[-20] and ci[-1] < ci[-2]
+                             and vi[-1] > np.mean(vi[-21:-1]) * 1.2)
         elif name == "ma_golden_cross" and len(ci) >= 20:
             ma5 = _calc_ma(ci, 5)
             ma20 = _calc_ma(ci, 20)

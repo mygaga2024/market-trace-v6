@@ -27,9 +27,10 @@ def _strategy_breakout(c: list, h: list, v: list) -> bool:
 
 
 def _strategy_oversold(c: list, h: list, v: list) -> bool:
-    """超跌反弹：RSI < 35 + 5日跌幅 > 3%"""
+    """超跌反弹：RSI < 35 + 5日跌幅 > 3% + 止跌回升"""
     return (len(c) >= 14 and _calc_rsi14(c) < 35
-            and (c[-1] - c[-5]) / c[-5] < -0.03)
+            and (c[-1] - c[-5]) / c[-5] < -0.03
+            and c[-1] > c[-2])
 
 
 def _strategy_strength(c: list, h: list, v: list) -> bool:
@@ -39,9 +40,11 @@ def _strategy_strength(c: list, h: list, v: list) -> bool:
 
 
 def _strategy_risk(c: list, h: list, v: list) -> bool:
-    """风险预警：RSI > 70 + 价格低于20日前"""
-    return (len(c) >= 14 and _calc_rsi14(c) > 70
-            and c[-1] < c[-20])
+    """风险预警：RSI > 70 + 价格低于20日前 + 续跌 + 放量"""
+    return (len(c) >= 20 and _calc_rsi14(c) > 70
+            and c[-1] < c[-20]
+            and c[-1] < c[-2]
+            and v[-1] > np.mean(v[-20:-1]) * 1.2)
 
 
 def _strategy_ma_golden_cross(c: list, h: list, v: list) -> bool:
