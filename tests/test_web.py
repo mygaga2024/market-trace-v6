@@ -49,16 +49,20 @@ async def client(db):
     mock_bus.close = AsyncMock()
 
     import main as main_mod
-    main_mod.bus = mock_bus
-    main_mod.db = db
-    main_mod.START_TIME = __import__('time').time()
+    app.state.bus = mock_bus
+    app.state.db = db
+    app.state.start_time = __import__('time').time()
+    app.state.config = main_mod.CONFIG
+    app.state.agent_tasks = []
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
 
-    main_mod.bus = None
-    main_mod.db = None
+    app.state.bus = None
+    app.state.db = None
+    app.state.config = None
+    app.state.agent_tasks = []
 
 
 @pytest.mark.asyncio

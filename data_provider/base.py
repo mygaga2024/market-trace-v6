@@ -6,7 +6,7 @@ Market Trace V6.0 — 数据源抽象基类
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from core.schema import MarketData, Level2Snapshot
@@ -116,7 +116,7 @@ class DataProviderBase(ABC):
             "event": event_type,
             "symbol": symbol,
             "source": self.source_name,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "records": len(data),
         })
 
@@ -135,7 +135,7 @@ class DataProviderBase(ABC):
             "event": event_type,
             "cache_key": cache_key,
             "source": self.source_name,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         })
 
     def stop(self) -> None:

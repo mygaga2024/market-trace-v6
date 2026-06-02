@@ -56,7 +56,7 @@ class FallbackHandler:
         try:
             result = await method(*args, **kwargs)
             if result is not None and (not isinstance(result, list) or len(result) > 0):
-                self._reset_unavailable(primary.source_name)
+                self._reset_unavailable(symbol)
                 return result
         except Exception as e:
             logger.warning("主数据源 [{}] {} 失败: {}", primary.source_name, fetch_method, e)
@@ -105,9 +105,9 @@ class FallbackHandler:
         else:
             logger.warning("数据缺失 [{}]: {} ({}次)", source_name, symbol, consecutive)
 
-    def _reset_unavailable(self, source_name: str) -> None:
-        """重置不可用计数"""
-        self._data_unavailable_count.clear()
+    def _reset_unavailable(self, symbol: str) -> None:
+        """重置指定标的的不可用计数"""
+        self._data_unavailable_count.pop(symbol, None)
 
     @staticmethod
     def _estimate_cache_age(cached: Any) -> Optional[float]:

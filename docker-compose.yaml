@@ -7,6 +7,8 @@ services:
     restart: unless-stopped
     network_mode: host
     env_file: ./env
+    environment:
+      - TZ=Asia/Shanghai
     volumes:
       - ./config/settings.yaml:/app/config/settings.yaml:ro
       - ./logs:/app/logs

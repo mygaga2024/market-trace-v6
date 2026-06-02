@@ -16,7 +16,7 @@ from agents.base_agent import BaseAgent
 
 # ---- 测试辅助 ----
 
-class TestAgent(BaseAgent):
+class DummyAgent(BaseAgent):
     """用于测试的具体 Agent 实现"""
 
     def __init__(self, name, bus, config, subscriptions=None):
@@ -76,7 +76,7 @@ def mock_bus() -> MagicMock:
 @pytest.mark.asyncio
 async def test_heartbeat_published_periodically(config, mock_bus):
     cfg = {"agents": {"heartbeat_interval": 1, "heartbeat_timeout": 15, "max_concurrent_msgs": 5}}
-    agent = TestAgent("test-agent", mock_bus, cfg)
+    agent = DummyAgent("test-agent", mock_bus, cfg)
     agent._running = True
 
     task = asyncio.create_task(agent._heartbeat_loop())
@@ -106,7 +106,7 @@ async def test_heartbeat_continues_after_error(config, mock_bus):
     mock_bus.publish_heartbeat = flaky_heartbeat
 
     cfg = {"agents": {"heartbeat_interval": 1, "heartbeat_timeout": 15, "max_concurrent_msgs": 5}}
-    agent = TestAgent("test-agent", mock_bus, cfg)
+    agent = DummyAgent("test-agent", mock_bus, cfg)
     agent._running = True
 
     task = asyncio.create_task(agent._heartbeat_loop())
@@ -125,7 +125,7 @@ async def test_heartbeat_continues_after_error(config, mock_bus):
 
 @pytest.mark.asyncio
 async def test_process_message_called(config, mock_bus):
-    agent = TestAgent("test-agent", mock_bus, config)
+    agent = DummyAgent("test-agent", mock_bus, config)
     msg = {"event": "TEST", "data": "hello"}
 
     await agent.process_message(msg)
@@ -202,7 +202,7 @@ async def test_message_loop_backpressure_semaphore(config, mock_bus):
 
 @pytest.mark.asyncio
 async def test_publish_delegates_to_bus(config, mock_bus):
-    agent = TestAgent("test-agent", mock_bus, config)
+    agent = DummyAgent("test-agent", mock_bus, config)
     payload = {"event": "CUSTOM", "value": 42}
 
     result = await agent.publish("reports:test", payload)
@@ -228,7 +228,7 @@ async def test_agent_down_detection(config, mock_bus):
 
     mock_bus.check_all_heartbeats = dead_heartbeats
 
-    agent = TestAgent("test-agent", mock_bus, config)
+    agent = DummyAgent("test-agent", mock_bus, config)
     agent._running = True
     agent._monitor_miss_threshold = 3
     agent._heartbeat_timeout = 0.01
@@ -264,7 +264,7 @@ async def test_agent_up_detection(config, mock_bus):
 
     mock_bus.check_all_heartbeats = variable_heartbeats
 
-    agent = TestAgent("test-agent", mock_bus, config)
+    agent = DummyAgent("test-agent", mock_bus, config)
     agent._running = True
     agent._monitor_miss_threshold = 3
     agent._heartbeat_timeout = 0.01
@@ -298,7 +298,7 @@ async def test_agent_does_not_monitor_self(config, mock_bus):
 
     mock_bus.check_all_heartbeats = track_call
 
-    agent = TestAgent("test-agent", mock_bus, config)
+    agent = DummyAgent("test-agent", mock_bus, config)
     agent._running = True
     agent._heartbeat_timeout = 0.01
 
@@ -318,7 +318,7 @@ async def test_agent_does_not_monitor_self(config, mock_bus):
 
 @pytest.mark.asyncio
 async def test_stats_tracking(config, mock_bus):
-    agent = TestAgent("test-agent", mock_bus, config)
+    agent = DummyAgent("test-agent", mock_bus, config)
     agent._started_at = datetime.now(timezone.utc)
     agent._msg_count = 10
     agent._error_count = 2
@@ -333,7 +333,7 @@ async def test_stats_tracking(config, mock_bus):
 
 @pytest.mark.asyncio
 async def test_cleanup_publishes_stopped_event(config, mock_bus):
-    agent = TestAgent("test-agent", mock_bus, config)
+    agent = DummyAgent("test-agent", mock_bus, config)
 
     await agent._cleanup()
 
@@ -347,7 +347,7 @@ async def test_cleanup_publishes_stopped_event(config, mock_bus):
 
 @pytest.mark.asyncio
 async def test_stop_cancels_tasks(config, mock_bus):
-    agent = TestAgent("test-agent", mock_bus, config)
+    agent = DummyAgent("test-agent", mock_bus, config)
     agent._running = True
     agent._tasks = [asyncio.create_task(asyncio.sleep(10))]
 
@@ -367,6 +367,6 @@ def test_cannot_instantiate_abstract(mock_bus, config):
 
 
 def test_concrete_subclass_instantiates(mock_bus, config):
-    agent = TestAgent("concrete", mock_bus, config)
+    agent = DummyAgent("concrete", mock_bus, config)
     assert agent.name == "concrete"
     assert agent.subscriptions == ["test:channel"]

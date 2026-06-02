@@ -152,9 +152,10 @@ class SignalAgent(BaseAgent):
     def _calc_ma(data: np.ndarray, period: int) -> np.ndarray:
         if len(data) < period:
             return np.array([])
+        kernel = np.ones(period) / period
+        conv = np.convolve(data, kernel, mode="valid")  # length = len(data) - period + 1
         ma = np.full(len(data), np.nan)
-        for i in range(period - 1, len(data)):
-            ma[i] = np.mean(data[i - period + 1 : i + 1])
+        ma[period - 1 :] = conv
         return ma
 
     @staticmethod

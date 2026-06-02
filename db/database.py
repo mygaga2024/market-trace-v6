@@ -225,3 +225,22 @@ class Database:
                 "avg_outcome": round(float(avg_outcome or 0), 4),
                 "win_rate": round(wins / max(total, 1), 4),
             }
+
+    # ---- 公开工具方法 ----
+
+    async def health_check(self) -> bool:
+        """数据库健康检查"""
+        try:
+            from sqlalchemy import text
+            async with self._session_factory() as session:
+                await session.execute(text("SELECT 1"))
+                return True
+        except Exception:
+            return False
+
+    async def get_decision_by_id(self, decision_id: str) -> Optional[DecisionModel]:
+        """按 ID 获取单条决策"""
+        async with self._session_factory() as session:
+            q = select(DecisionModel).where(DecisionModel.decision_id == decision_id)
+            result = await session.execute(q)
+            return result.scalar_one_or_none()
