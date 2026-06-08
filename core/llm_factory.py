@@ -131,6 +131,8 @@ class OpenAICompatibleLLM(LLMInterface):
                     raise
             except (json.JSONDecodeError, KeyError) as e:
                 logger.error("LLM [{}] 响应解析失败: {}", self.provider_name, e)
+                if attempt >= self.max_retries:
+                    raise RuntimeError(f"LLM [{self.provider_name}] 响应解析失败: {e}")
 
         raise RuntimeError(f"LLM [{self.provider_name}] 所有重试均失败")
 
@@ -303,6 +305,20 @@ class RuleBasedAnalyzer(LLMInterface):
             trace_score = (bull - bear) / max(bull + bear, 1)
             score += trace_score * self.weights.get("trace", 0.30)
             insights.append(f"资金痕迹: 多{bull:.1f}/空{bear:.1f}")
+
+        # Risk 报告补充评分（如果存在）
+        if "risk" in reports and reports["risk"].data:
+            risk_data = reports["risk"].data
+            risk_severity = risk_data.get("severity", "normal")
+            if risk_severity == "critical":
+                risk_score = -1.0
+            elif risk_severity == "warning":
+                risk_score = -0.5
+            else:
+                risk_score = 0.0
+            score += risk_score * self.weights.get("risk", 0.20)
+            if risk_severity != "normal":
+                insights.append(f"风控: {risk_severity}")
 
         action = DecisionAction.HOLD
         if score > 0.3:

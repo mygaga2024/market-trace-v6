@@ -7,7 +7,7 @@ Market Trace V6.0 — 微信告警推送
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 import httpx
@@ -73,7 +73,7 @@ class Notifier:
             f"## {emoji} {action} {symbol}\n\n"
             f"> 价格: **{price:.2f}** | 置信度: **{confidence:.0%}**\n\n"
             f"> {reason}\n\n"
-            f"---\n{datetime.now().strftime('%m-%d %H:%M')}"
+            f"---\n{datetime.now(timezone.utc).strftime('%m-%d %H:%M')} UTC"
         )
         return await self.send(f"{action} {symbol} 决策提醒", msg, 3)
 
@@ -83,7 +83,7 @@ class Notifier:
         msg = (
             f"## {emoji} 风控[{severity.upper()}]\n\n"
             f"> {reason}\n\n"
-            f"---\n{datetime.now().strftime('%m-%d %H:%M')}"
+            f"---\n{datetime.now(timezone.utc).strftime('%m-%d %H:%M')} UTC"
         )
         return await self.send(f"风控 {severity}", msg, 3)
 

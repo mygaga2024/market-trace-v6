@@ -5,7 +5,8 @@ Market Trace V6.0 — 相似历史案例库
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import copy
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -87,9 +88,9 @@ class CaseMemory:
         results: list[SimilarCase] = []
         for idx in top_k_indices:
             idx = int(idx)
-            case = self._cases[idx]
-            case.similarity_score = float(similarity_scores[idx])
-            results.append(case)
+            # 返回副本，避免修改共享对象的 similarity_score
+            case_copy = replace(self._cases[idx], similarity_score=float(similarity_scores[idx]))
+            results.append(case_copy)
 
         logger.debug("案例检索: k={} → 命中 {} 条", k, len(results))
         return results

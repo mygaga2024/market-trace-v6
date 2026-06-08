@@ -48,7 +48,6 @@ class RiskAgent(BaseAgent):
         risk_cfg = config.get("agents", {}).get("risk", {})
         self._conflict_multiplier: float = risk_cfg.get("conflict_multiplier", 0.3)
         self._stop_loss_percent: float = risk_cfg.get("stop_loss_percent", 0.05)
-        self._max_position_percent: float = risk_cfg.get("max_position_percent", 0.3)
         self._atr_period: int = risk_cfg.get("atr_period", 14)
         self._atr_multiplier: float = risk_cfg.get("atr_multiplier", 2.0)
         self._daily_drop_threshold: float = risk_cfg.get("daily_drop_threshold", 0.07)
@@ -84,7 +83,7 @@ class RiskAgent(BaseAgent):
             await self._emit_override(override)
             return
 
-        override = self._check_stop_loss()
+        override = self._check_bearish_divergence()
         if override:
             await self._emit_override(override)
             return
@@ -161,8 +160,8 @@ class RiskAgent(BaseAgent):
 
         return None
 
-    def _check_stop_loss(self) -> Optional[RiskOverride]:
-        """固定百分比止损检查"""
+    def _check_bearish_divergence(self) -> Optional[RiskOverride]:
+        """强势顶背离检测：背离强度超阈值时触发否决"""
         signal_report = self._latest_reports.get("signal")
         if not signal_report or not signal_report.data:
             return None
@@ -242,7 +241,7 @@ class RiskAgent(BaseAgent):
         else:
             return None
 
-        if daily_change >= self._daily_drop_threshold:
+        if daily_change >= self._daily_drop_threshold and direction == "下跌":
             return RiskOverride(
                 reason=f"单日熔断: {direction}{daily_change*100:.1f}% (阈值{self._daily_drop_threshold*100:.0f}%)",
                 action="FORCE_SELL",

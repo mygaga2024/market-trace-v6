@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import secrets
 from typing import Any, Optional
 
 from fastapi import Header, HTTPException, Request
@@ -20,8 +21,8 @@ from loguru import logger
 _API_TOKEN = os.environ.get("API_TOKEN", "")
 SESSION_COOKIE_NAME = "mt6_session"
 
-# 生成独立的 session token（不直接暴露 API_TOKEN）
-SESSION_TOKEN = hashlib.sha256(f"mt6:{_API_TOKEN}".encode()).hexdigest()[:32] if _API_TOKEN else ""
+# 生成独立的 session token（不从 API_TOKEN 派生，用 secrets 安全生成）
+SESSION_TOKEN = secrets.token_hex(32) if _API_TOKEN else ""
 
 
 async def verify_token(request: Request, authorization: str = Header(None)) -> None:

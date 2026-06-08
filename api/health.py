@@ -17,7 +17,37 @@ router = APIRouter(tags=["health"])
 
 @router.get("/health")
 async def health(request: Request):
-    """健康检查（公开端点，运维探活用）"""
+    """健康检查（公开端点，运维探活用，精简返回避免泄露内部架构）"""
+    bus = request.app.state.bus
+    db = request.app.state.db
+
+    redis_ok = False
+    db_ok = False
+    if bus:
+        try:
+            redis_ok = await bus.health_check()
+        except Exception:
+            pass
+
+    if db:
+        try:
+            db_ok = await db.health_check()
+        except Exception:
+            pass
+
+    all_ok = redis_ok and db_ok
+    uptime = time.time() - request.app.state.start_time
+
+    return {
+        "status": "ok" if all_ok else "degraded",
+        "version": "1.0.0",
+        "uptime_seconds": round(uptime, 1),
+    }
+
+
+@router.get("/health/detail", dependencies=[Depends(verify_token)])
+async def health_detail(request: Request):
+    """详细健康检查（需认证，包含 Agent/LLM/Redis 状态）"""
     bus = request.app.state.bus
     db = request.app.state.db
     config = request.app.state.config

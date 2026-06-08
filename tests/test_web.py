@@ -67,7 +67,21 @@ async def client(db):
 
 @pytest.mark.asyncio
 async def test_health_ok(client):
+    """公开端点仅返回精简状态"""
     response = await client.get("/health")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "ok"
+    assert data["version"] == "1.0.0"
+    # 精简端点不再暴露 redis/database/agents 等内部细节
+    assert "redis" not in data
+    assert "agents" not in data
+
+
+@pytest.mark.asyncio
+async def test_health_detail(client):
+    """认证端点返回完整健康信息"""
+    response = await client.get("/health/detail")
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "ok"

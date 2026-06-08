@@ -10,7 +10,7 @@ import os
 import re
 import sys
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from contextlib import asynccontextmanager
 
@@ -107,6 +107,7 @@ def _start_agents(bus, config: dict, llm_chain, risk_manager=None) -> list[async
 
     tushare_cfg = [p for p in config.get("data_providers", []) if p.get("name") == "tushare" and p.get("enabled")]
     if tushare_cfg and tushare_cfg[0].get("token"):
+        # TushareProvider 构造函数将自身注册为备用数据源，无需保存引用
         TushareProvider(bus, config, token=tushare_cfg[0]["token"])
         logger.info("Tushare 数据源已启用")
 
@@ -138,7 +139,7 @@ async def _backtest_scheduler(_bus, config: dict, _sm, schedule_cfg: dict):
         hour, minute = 18, 0
 
     while True:
-        now = datetime.now()
+        now = datetime.now().astimezone()  # 本地时区 aware datetime
         next_run = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
         if next_run <= now:
             next_run += timedelta(days=1)
@@ -305,6 +306,14 @@ app.include_router(kline_router)
 
 def main():
     logger.info("Market Trace V6.0 正在启动...")
+
+    # M1: 必需环境变量启动校验
+    llm_cfg = CONFIG.get("llm", {})
+    for tier, key in [("主力", "primary"), ("备用", "secondary"), ("三级", "tertiary")]:
+        api_key = llm_cfg.get(key, {}).get("api_key", "")
+        if not api_key or "your-" in api_key:
+            logger.warning("⚠️ {} LLM ({}) API Key 未配置，该级别将无法使用", tier, key)
+
     logger.info("LLM: {}::{}", CONFIG["llm"]["primary"]["provider"], CONFIG["llm"]["primary"]["model"])
     logger.info("数据源: {}", [p["name"] for p in CONFIG["data_providers"] if p.get("enabled")])
     uvicorn.run("main:app", host="0.0.0.0", port=19377, log_config=None, access_log=False)

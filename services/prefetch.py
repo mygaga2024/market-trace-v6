@@ -15,11 +15,11 @@ from loguru import logger
 from core.schema import MarketData
 
 
-# 共享状态
-_prefetch_sem = asyncio.Semaphore(5)
+# 共享状态（asyncio 原语在事件循环中懒初始化，避免绑定到错误的 loop）
+_prefetch_sem: asyncio.Semaphore | None = None
 _cached_symbols: set = set()
-_prefetch_queue: asyncio.Queue = asyncio.Queue()
-_prefetch_done = asyncio.Event()
+_prefetch_queue: asyncio.Queue | None = None
+_prefetch_done: asyncio.Event | None = None
 
 _prefetch_tp = None
 _prefetch_ap = None
@@ -28,6 +28,17 @@ _prefetch_last_ts_call = 0.0
 
 # 管理的后台 task 引用（防止 GC 回收 + 异常静默丢失）
 _background_tasks: list[asyncio.Task] = []
+
+
+def _ensure_asyncio_primitives():
+    """确保 asyncio 原语已在当前事件循环中创建"""
+    global _prefetch_sem, _prefetch_queue, _prefetch_done
+    if _prefetch_sem is None:
+        _prefetch_sem = asyncio.Semaphore(5)
+    if _prefetch_queue is None:
+        _prefetch_queue = asyncio.Queue()
+    if _prefetch_done is None:
+        _prefetch_done = asyncio.Event()
 
 
 def _build_cache_entry(klines: list) -> list[dict]:
@@ -119,6 +130,7 @@ async def prefetch_stock_pool(bus, config: dict) -> None:
     """后台并发预加载股票池K线到Redis缓存"""
     global _prefetch_tp, _prefetch_ap, _prefetch_tushare_token
 
+    _ensure_asyncio_primitives()
     await asyncio.sleep(3)
 
     stock_pool = config.get("stock_pool", [])

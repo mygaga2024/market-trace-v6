@@ -6,7 +6,7 @@ Market Trace V6.0 — 数据交换协议
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Optional
 
@@ -83,7 +83,7 @@ class Level2Snapshot:
 class AgentReport:
     """Agent 分析报告"""
     agent: AgentName
-    timestamp: datetime = field(default_factory=datetime.now)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     report_id: str = ""
     summary: str = ""
     status: ReportStatus = ReportStatus.OK
@@ -103,7 +103,7 @@ class RiskOverride:
     reason: str
     action: str
     severity: str = "critical"
-    timestamp: datetime = field(default_factory=datetime.now)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     source_agent: AgentName = AgentName.RISK
 
 
@@ -118,12 +118,12 @@ class Decision:
     risk_override: Optional[RiskOverride] = None
     provider_label: str = "unknown"
     provider_status: ProviderStatus = ProviderStatus.HEALTHY
-    timestamp: datetime = field(default_factory=datetime.now)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     decision_id: str = ""
 
     def __post_init__(self):
         if not self.decision_id:
-            self.decision_id = f"decision_{self.timestamp.isoformat()}"
+            self.decision_id = f"decision_{self.timestamp.strftime('%Y%m%d%H%M%S%f')}"
 
 
 @dataclass
@@ -140,7 +140,7 @@ class SimilarCase:
 class HeartbeatMessage:
     """心跳消息"""
     agent: AgentName
-    timestamp: datetime = field(default_factory=datetime.now)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     status: str = "alive"
     uptime_seconds: float = 0.0
 
