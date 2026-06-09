@@ -40,7 +40,7 @@ async def health(request: Request):
 
     return {
         "status": "ok" if all_ok else "degraded",
-        "version": "1.1.3",
+        "version": "1.1.5",
         "uptime_seconds": round(uptime, 1),
     }
 
@@ -89,7 +89,7 @@ async def health_detail(request: Request):
 
     return {
         "status": "ok" if all_ok else "degraded",
-        "version": "1.1.3",
+        "version": "1.1.5",
         "uptime_seconds": round(uptime, 1),
         "redis": "connected" if redis_ok else "disconnected",
         "database": "connected" if db_ok else "disconnected",

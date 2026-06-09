@@ -115,6 +115,9 @@ def test_static_file_exists(filepath, content_type):
 
 def test_dashboard_js_syntax():
     """dashboard.js 通过 Node.js 语法检查"""
+    import shutil
+    if not shutil.which("node"):
+        pytest.skip("Node.js 未安装，跳过 JS 语法检查")
     result = subprocess.run(
         ["node", "--check", str(ROOT / "static/js/dashboard.js")],
         capture_output=True, text=True,
@@ -124,6 +127,9 @@ def test_dashboard_js_syntax():
 
 def test_charts_js_syntax():
     """charts.js 通过 Node.js 语法检查"""
+    import shutil
+    if not shutil.which("node"):
+        pytest.skip("Node.js 未安装，跳过 JS 语法检查")
     result = subprocess.run(
         ["node", "--check", str(ROOT / "static/js/charts.js")],
         capture_output=True, text=True,
