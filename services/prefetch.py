@@ -242,32 +242,57 @@ async def prefetch_stock_names(bus, config: dict) -> dict[str, str]:
         logger.info("批量获取 A 股名称 (akshare)...")
         df = await asyncio.to_thread(ak.stock_zh_a_spot_em)
         if df is None or df.empty:
-            return {}
-
+            raise ValueError("akshare 返回空数据")
         name_map: dict[str, str] = {}
         for _, row in df.iterrows():
             code = str(row.get("代码", "")).strip()
             name = str(row.get("名称", "")).strip()
             if code and name and code in set(stock_pool):
                 name_map[code] = name
-
-        if name_map:
-            await bus.cache_set("stock:names", name_map, ttl=86400)
-            logger.info("股票名称已缓存: {} 只", len(name_map))
-        else:
-            logger.warning("未获取到任何股票名称")
-
-        return name_map
     except Exception as e:
-        logger.warning("批量获取股票名称失败: {}", e)
-        return {}
+        logger.warning("akshare 批量获取股票名称失败: {}，回退到新浪逐个查询", e)
+        name_map: dict[str, str] = {}
+        for sym in stock_pool:
+            nm = await _fetch_name_via_sina(sym)
+            if nm:
+                name_map[sym] = nm
+            await asyncio.sleep(0.1)
+
+    if name_map:
+        try:
+            await bus.cache_set("stock:names", name_map, ttl=86400)
+        except Exception:
+            pass
+        logger.info("股票名称已缓存: {} 只", len(name_map))
+    else:
+        logger.warning("未获取到任何股票名称")
+
+    return name_map
 
 
 _stock_name_cache: dict[str, str] = {}  # 进程内缓存，兜底
 
 
+async def _fetch_name_via_sina(symbol: str) -> str:
+    """通过新浪行情接口获取单只股票名称"""
+    prefix = "sh" if symbol.startswith(("6", "9")) else "sz"
+    url = f"http://hq.sinajs.cn/list={prefix}{symbol}"
+    try:
+        import requests
+        r = await asyncio.to_thread(requests.get, url, headers={"Referer": "https://finance.sina.com.cn"}, timeout=5)
+        r.encoding = "gbk"
+        text = r.text
+        if text and '="' in text:
+            name = text.split('="')[1].split(",")[0].strip()
+            if name and name != symbol:
+                return name
+    except Exception:
+        pass
+    return ""
+
+
 async def get_stock_name(symbol: str, bus) -> str:
-    """获取股票名称（Redis → 进程缓存 → akshare 实时查询）"""
+    """获取股票名称（Redis → 进程缓存 → 新浪实时查询）"""
     if symbol in _stock_name_cache:
         return _stock_name_cache[symbol]
 
@@ -280,21 +305,9 @@ async def get_stock_name(symbol: str, bus) -> str:
         except Exception:
             pass
 
-    try:
-        import akshare as ak
-        logger.debug("实时查询股票名称: {}", symbol)
-        df = await asyncio.to_thread(ak.stock_zh_a_spot_em)
-        if df is not None:
-            import pandas as pd
-            if isinstance(df, pd.DataFrame):
-                for _, r in df.iterrows():
-                    code = str(r.get("代码", "")).strip()
-                    nm = str(r.get("名称", "")).strip()
-                    if code and nm:
-                        _stock_name_cache[code] = nm
-                if symbol in _stock_name_cache:
-                    return _stock_name_cache[symbol]
-    except Exception as e:
-        logger.debug("实时查询股票名称失败 {}: {}", symbol, e)
+    name = await _fetch_name_via_sina(symbol)
+    if name:
+        _stock_name_cache[symbol] = name
+        return name
 
     return ""
