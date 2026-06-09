@@ -226,9 +226,12 @@ async def lifespan(app: FastAPI):
     logger.info("{} 个 Agent 已启动", len(agent_tasks))
 
     # Prefetch (保存 task 引用防止 GC)
-    from services.prefetch import prefetch_stock_pool
+    from services.prefetch import prefetch_stock_pool, prefetch_stock_names
     prefetch_task = asyncio.create_task(prefetch_stock_pool(app.state.bus, CONFIG))
     agent_tasks.append(prefetch_task)
+
+    name_task = asyncio.create_task(prefetch_stock_names(app.state.bus, CONFIG))
+    agent_tasks.append(name_task)
 
     # Strategy Manager
     from backtest.strategy_manager import StrategyManager
@@ -295,6 +298,7 @@ from api.analyze import router as analyze_router
 from api.backtest import router as backtest_router
 from api.risk import router as risk_router
 from api.kline import router as kline_router
+from api.watchlist import router as watchlist_router
 
 app.include_router(health_router)
 app.include_router(reports_router)
@@ -302,6 +306,7 @@ app.include_router(analyze_router)
 app.include_router(backtest_router)
 app.include_router(risk_router)
 app.include_router(kline_router)
+app.include_router(watchlist_router)
 
 
 def main():

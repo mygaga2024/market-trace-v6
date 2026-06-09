@@ -80,3 +80,18 @@ class SimilarCaseModel(Base):
 
     def __repr__(self) -> str:
         return f"<SimilarCase id={self.case_id} score={self.similarity_score}>"
+
+
+class WatchlistModel(Base):
+    """持仓/关注股票列表"""
+
+    __tablename__ = "watchlist"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    symbol: Mapped[str] = mapped_column(String(16), unique=True, index=True, nullable=False)
+    name: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    added_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    def __repr__(self) -> str:
+        return f"<Watchlist symbol={self.symbol} name={self.name}>"

@@ -4,6 +4,7 @@ Market Trace V6.0 — K线数据与仪表盘路由
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -16,18 +17,22 @@ from services.analyzer import build_kline_json, render_kline_svg
 
 router = APIRouter(tags=["kline"])
 
-# 仪表盘模板缓存
+# 仪表盘模板缓存（开发模式下每次重新读取）
 _DASHBOARD_TEMPLATE: Optional[str] = None
+_DASHBOARD_MTIME: float = 0.0
 
 
 def _get_dashboard_html() -> str:
-    global _DASHBOARD_TEMPLATE
-    if _DASHBOARD_TEMPLATE is None:
-        template_path = Path("templates/dashboard.html")
-        if not template_path.exists():
-            return "<html><body><h1>模板文件未找到</h1></body></html>"
+    global _DASHBOARD_TEMPLATE, _DASHBOARD_MTIME
+    template_path = Path("templates/dashboard.html")
+    if not template_path.exists():
+        return "<html><body><h1>模板文件未找到</h1></body></html>"
+    mtime = template_path.stat().st_mtime
+    # API_TOKEN 环境变量总是从 env 读取
+    dev_mode = os.environ.get("MT6_DEV", "").lower() in ("1", "true", "yes")
+    if dev_mode or _DASHBOARD_TEMPLATE is None or mtime != _DASHBOARD_MTIME:
         _DASHBOARD_TEMPLATE = template_path.read_text(encoding="utf-8")
-    # 不再注入 API_TOKEN 到 HTML，改用 httpOnly cookie
+        _DASHBOARD_MTIME = mtime
     return _DASHBOARD_TEMPLATE.replace("{{API_TOKEN}}", "")
 
 

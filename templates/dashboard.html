@@ -60,6 +60,28 @@
       <h2 class="card-title">&#x1F4E1; AI 决策链</h2>
       <div id="llm-chain" aria-live="polite">加载中...</div>
     </section>
+
+    <section class="card risk-card" aria-label="风控闭环">
+      <h2 class="card-title">&#x1F6E1; 风控闭环</h2>
+      <div id="risk-level-display" aria-live="polite">
+        <span class="risk-indicator risk-loading">加载中...</span>
+      </div>
+      <div id="risk-stats" style="margin-top:12px;font-size:13px;color:var(--text-secondary);display:flex;gap:16px;flex-wrap:wrap">
+        <span>否决: <strong id="risk-override-count">&mdash;</strong></span>
+        <span>事件: <strong id="risk-event-count">&mdash;</strong></span>
+      </div>
+    </section>
+
+    <section class="card" aria-label="持仓列表">
+      <h2 class="card-title">&#x1F4BC; 持仓列表</h2>
+      <div style="display:flex;gap:6px;margin-bottom:10px">
+        <input id="watchlist-input" type="text" placeholder="股票代码 如 000001" style="flex:1;padding:6px 10px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-input);color:var(--text-primary);font-size:13px" aria-label="添加股票代码">
+        <button id="watchlist-add-btn" onclick="addToWatchlist()" style="padding:6px 12px;background:var(--btn-primary-bg);border:none;border-radius:6px;color:#fff;font-size:13px;cursor:pointer;white-space:nowrap">+ 添加</button>
+      </div>
+      <div id="watchlist-items" aria-live="polite" style="max-height:280px;overflow-y:auto">
+        <div style="color:var(--text-muted);font-size:13px">加载中...</div>
+      </div>
+    </section>
   </div>
 
   <section id="decision-area" class="decision-box" style="display:none" aria-live="polite" aria-label="最新决策">
@@ -79,6 +101,7 @@
     <button class="tab-btn" role="tab" aria-selected="false" data-tab="signal" onclick="switchTab('signal')">&#x1F4C9; 信号报告</button>
     <button class="tab-btn" role="tab" aria-selected="false" data-tab="trace" onclick="switchTab('trace')">&#x1F4B9; 资金报告</button>
     <button class="tab-btn" role="tab" aria-selected="false" data-tab="decisions" onclick="switchTab('decisions')">&#x1F9E0; 决策历史</button>
+    <button class="tab-btn" role="tab" aria-selected="false" data-tab="risk-history" onclick="switchTab('risk-history')">&#x1F6E1; 风控历史</button>
     <button class="tab-btn" role="tab" aria-selected="false" data-tab="backtest" onclick="switchTab('backtest')">&#x1F4CA; 策略回测</button>
   </nav>
   <section class="tab-panel active" id="tab-panel" role="tabpanel" aria-label="数据面板内容">
@@ -103,6 +126,16 @@
   版本 1.0.0 &nbsp;|&nbsp;
   <a href="<your-repo-url>" style="color:var(--text-muted)">GitHub</a>
 </footer>
+
+<div id="decision-modal" class="modal-overlay" style="display:none" role="dialog" aria-modal="true" aria-label="决策详情">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>&#x1F9E0; 决策详情</h2>
+      <button class="modal-close" onclick="closeDecisionModal()" aria-label="关闭">&times;</button>
+    </div>
+    <div id="decision-modal-body" class="modal-body"></div>
+  </div>
+</div>
 
 <script src="/static/js/charts.js"></script>
 <script src="/static/js/dashboard.js"></script>

@@ -182,3 +182,58 @@ async def ensure_symbol_cached(symbol: str, bus, config: dict) -> None:
 def get_prefetch_providers():
     """获取预加载使用的 Provider 实例（供 analyzer 复用）"""
     return _prefetch_tp, _prefetch_ap
+
+
+async def prefetch_stock_names(bus, config: dict) -> dict[str, str]:
+    """启动时批量获取 A 股名称并缓存到 Redis key stock:names"""
+    if not bus:
+        return {}
+    try:
+        cached = await bus.cache_get("stock:names")
+        if cached and isinstance(cached, dict) and cached:
+            logger.info("股票名称已从 Redis 加载: {} 只", len(cached))
+            return cached
+    except Exception:
+        pass
+
+    stock_pool = config.get("stock_pool", [])
+    if not stock_pool:
+        return {}
+
+    try:
+        import akshare as ak
+        logger.info("批量获取 A 股名称 (akshare)...")
+        df = await asyncio.to_thread(ak.stock_zh_a_spot_em)
+        if df is None or df.empty:
+            return {}
+
+        name_map: dict[str, str] = {}
+        for _, row in df.iterrows():
+            code = str(row.get("代码", "")).strip()
+            name = str(row.get("名称", "")).strip()
+            if code and name and code in set(stock_pool):
+                name_map[code] = name
+
+        if name_map:
+            await bus.cache_set("stock:names", name_map, ttl=86400)
+            logger.info("股票名称已缓存: {} 只", len(name_map))
+        else:
+            logger.warning("未获取到任何股票名称")
+
+        return name_map
+    except Exception as e:
+        logger.warning("批量获取股票名称失败: {}", e)
+        return {}
+
+
+async def get_stock_name(symbol: str, bus) -> str:
+    """从 Redis 缓存获取股票名称"""
+    if not bus:
+        return ""
+    try:
+        names = await bus.cache_get("stock:names")
+        if isinstance(names, dict):
+            return names.get(symbol, "")
+    except Exception:
+        pass
+    return ""

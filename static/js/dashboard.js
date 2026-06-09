@@ -73,9 +73,11 @@ async function load() {
       fetchAuth('/reports/macro/latest').then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; }),
       fetchAuth('/reports/signal/latest').then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; }),
       fetchAuth('/reports/trace/latest').then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; }),
+      fetchAuth('/risk/status').then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; }),
+      fetchAuth('/watchlist').then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; }),
     ]);
 
-    var h = results[0], st = results[1], mr = results[2], lr = results[3], dr = results[4];
+    var h = results[0], st = results[1], mr = results[2], lr = results[3], dr = results[4], rk = results[5], wl = results[6];
 
     if (!h) return;
 
@@ -105,6 +107,43 @@ async function load() {
       });
     }
     $id('llm-chain').innerHTML = llmHtml || '未配置';
+
+    if (rk) {
+      var riskLevel = rk.level || 'normal';
+      var levelLabels = { normal: '正常', elevated: '关注', critical: '危险' };
+      var levelCls = 'risk-' + riskLevel;
+      $id('risk-level-display').innerHTML = '<span class="risk-indicator ' + levelCls + '">' + (levelLabels[riskLevel] || riskLevel) + '</span>';
+      $id('risk-override-count').textContent = rk.override_count || 0;
+      $id('risk-event-count').textContent = rk.event_count || 0;
+    } else {
+      $id('risk-level-display').innerHTML = '<span class="risk-indicator risk-loading">无数据</span>';
+      $id('risk-override-count').textContent = '\u2014';
+      $id('risk-event-count').textContent = '\u2014';
+    }
+
+    if (wl && wl.items) {
+      var wlHtml = '';
+      if (wl.items.length === 0) {
+        wlHtml = '<div style="color:var(--text-muted);font-size:13px">暂无持仓</div>';
+      } else {
+        wl.items.forEach(function(item) {
+          var changeCls = item.change_pct != null ? (item.change_pct >= 0 ? 'trend-up' : 'trend-down') : '';
+          var changeStr = item.change_pct != null ? '<span class="' + changeCls + '"><span aria-hidden="true">' + (item.change_pct >= 0 ? '\u2191' : '\u2193') + '</span> ' + item.change_pct.toFixed(2) + '%</span>' : '\u2014';
+          var priceStr = item.price != null ? item.price.toFixed(2) : '\u2014';
+          var nameStr = item.name || '';
+          var displayName = nameStr ? escapeHtml(nameStr) + ' <span style="color:var(--text-secondary);font-size:11px">' + escapeHtml(item.symbol) + '</span>' : escapeHtml(item.symbol);
+          wlHtml += '<div class="wl-row" style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--bg-tag);font-size:13px">';
+          wlHtml += '<span style="cursor:pointer;flex:1" onclick="document.getElementById(\'stock-input\').value=\'' + escapeHtml(item.symbol) + '\';analyzeStock()" title="点击诊股">' + displayName + '</span>';
+          wlHtml += '<span style="margin:0 8px">' + priceStr + '</span>';
+          wlHtml += '<span style="margin:0 8px;min-width:60px;text-align:right">' + changeStr + '</span>';
+          wlHtml += '<button onclick="event.stopPropagation();removeFromWatchlist(\'' + escapeHtml(item.symbol) + '\')" style="background:none;border:none;color:var(--color-red);cursor:pointer;font-size:16px;padding:0 4px" title="移除" aria-label="移除 ' + escapeHtml(item.symbol) + '">\u00D7</button>';
+          wlHtml += '</div>';
+        });
+      }
+      $id('watchlist-items').innerHTML = wlHtml;
+    } else {
+      $id('watchlist-items').innerHTML = '<div style="color:var(--text-muted);font-size:13px">加载中...</div>';
+    }
 
     if (mr && mr.data && mr.data.risk_appetite_index != null) {
       var rai = mr.data.risk_appetite_index;
@@ -168,6 +207,10 @@ function analyzeStock() {
       } else {
         var dec = d.decision;
         html = '<div class="result-card">';
+        html += '<div style="font-size:18px;font-weight:700;margin-bottom:8px">';
+        if (d.name) html += escapeHtml(d.name) + ' ';
+        html += '<span style="color:var(--text-secondary);font-size:14px">' + escapeHtml(d.symbol) + '</span>';
+        html += '</div>';
         html += '<div class="result-stats">';
         html += '<div class="result-stat"><div>价格</div><div>' + d.price.toFixed(2) + '</div></div>';
         html += '<div class="result-stat"><div>涨跌</div><div class="' + (d.change_pct >= 0 ? 'trend-up' : 'trend-down') + '"><span aria-hidden="true">' + (d.change_pct >= 0 ? '\u2191' : '\u2193') + '</span> ' + d.change_pct + '%</div></div>';
@@ -207,6 +250,27 @@ function analyzeStock() {
           .then(function(r) { return r.json(); })
           .then(function(kd) { Charts.renderKline('kline-chart', kd); })
           .catch(function() { $id('kline-chart').classList.add('chart-container--hidden'); Charts.destroy('kline-chart'); });
+
+        fetchAuth('/risk/position/' + sym + '?price=' + d.price)
+          .then(function(r) { return r.json(); })
+          .then(function(pos) {
+            if (pos && !pos.error && $id('analyze-result').style.display !== 'none') {
+              var levelCls = 'pos-level-' + (pos.risk_level || 'normal');
+              var box = document.createElement('div');
+              box.className = 'position-box';
+              box.innerHTML = '<div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">\uD83D\uDCC8 仓位建议</div>' +
+                '<span class="pos-level ' + levelCls + '">风控等级: ' + escapeHtml(pos.risk_level || 'normal') + '</span> ' +
+                '<span style="color:var(--text-muted)">|</span> ' +
+                '建议: <strong>' + (pos.position_shares || 0) + '</strong> 股 (' +
+                '<strong>' + (pos.suggested_amount || 0).toLocaleString() + '</strong> 元)' +
+                '<div style="margin-top:4px;font-size:11px;color:var(--text-muted)">' +
+                '风险权重: ' + (pos.risk_multiplier || 1).toFixed(2) + 'x | ' +
+                '方法: ' + escapeHtml(pos.method || 'kelly') +
+                '</div>';
+              $id('analyze-result').appendChild(box);
+            }
+          })
+          .catch(function() {});
       } else {
         $id('kline-chart').classList.add('chart-container--hidden');
         Charts.destroy('kline-chart');
@@ -240,7 +304,8 @@ async function screenStocks(strategy) {
 
     var html = '<div style="font-size:13px;color:var(--text-secondary);margin-bottom:10px"><span aria-hidden="true">\uD83D\uDCCB</span> ' + escapeHtml(d.strategy) + ' — 匹配 ' + d.matched + ' 只</div>';
     d.results.forEach(function(s) {
-      html += '<div class="strat-result" tabindex="0" role="button" aria-label="分析 ' + escapeHtml(s.symbol) + '" onclick="document.getElementById(\'stock-input\').value=\'' + escapeHtml(s.symbol) + '\';analyzeStock()" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){document.getElementById(\'stock-input\').value=\'' + escapeHtml(s.symbol) + '\';analyzeStock()}"><span class="price">' + escapeHtml(s.symbol) + '</span> ' + s.price.toFixed(2) + ' <span class="' + (s.change_pct >= 0 ? 'trend-up' : 'trend-down') + '"><span aria-hidden="true">' + (s.change_pct >= 0 ? '\u2191' : '\u2193') + '</span> ' + s.change_pct + '%</span> <span style="color:var(--text-secondary)">量比 ' + s.vol_ratio + 'x</span></div>';
+      var nameDisplay = s.name ? escapeHtml(s.name) + ' ' : '';
+      html += '<div class="strat-result" tabindex="0" role="button" aria-label="分析 ' + escapeHtml(s.symbol) + '" onclick="document.getElementById(\'stock-input\').value=\'' + escapeHtml(s.symbol) + '\';analyzeStock()" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){document.getElementById(\'stock-input\').value=\'' + escapeHtml(s.symbol) + '\';analyzeStock()}"><span class="price">' + nameDisplay + escapeHtml(s.symbol) + '</span> ' + s.price.toFixed(2) + ' <span class="' + (s.change_pct >= 0 ? 'trend-up' : 'trend-down') + '"><span aria-hidden="true">' + (s.change_pct >= 0 ? '\u2191' : '\u2193') + '</span> ' + s.change_pct + '%</span> <span style="color:var(--text-secondary)">量比 ' + s.vol_ratio + 'x</span></div>';
     });
     container.innerHTML = html;
   } catch (e) {
@@ -272,13 +337,19 @@ function loadTab(tab) {
   }
 
   var fetchers = {
-    health:    function() { return fetchAuth('/health/detail').then(function(r) { return r.json(); }); },
-    status:    function() { return fetchAuth('/status').then(function(r) { return r.json(); }); },
-    reports:   function() { return fetchAuth('/reports/macro?limit=5').then(function(r) { return r.json(); }); },
-    signal:    function() { return fetchAuth('/reports/signal?limit=5').then(function(r) { return r.json(); }); },
-    trace:     function() { return fetchAuth('/reports/trace?limit=5').then(function(r) { return r.json(); }); },
-    decisions: function() { return fetchAuth('/decisions?limit=10').then(function(r) { return r.json(); }); },
-    backtest:  function() { return fetchAuth('/backtest/summary').then(function(r) { return r.json(); }); },
+    health:       function() { return fetchAuth('/health/detail').then(function(r) { return r.json(); }); },
+    status:       function() { return fetchAuth('/status').then(function(r) { return r.json(); }); },
+    reports:      function() { return fetchAuth('/reports/macro?limit=5').then(function(r) { return r.json(); }); },
+    signal:       function() { return fetchAuth('/reports/signal?limit=5').then(function(r) { return r.json(); }); },
+    trace:        function() { return fetchAuth('/reports/trace?limit=5').then(function(r) { return r.json(); }); },
+    decisions:    function() { return fetchAuth('/decisions?limit=10').then(function(r) { return r.json(); }); },
+    'risk-history': function() { return fetchAuth('/risk/overrides?limit=20').then(function(r) { return r.json(); }); },
+    backtest:     function() {
+      return Promise.all([
+        fetchAuth('/backtest/summary').then(function(r) { return r.json(); }),
+        fetchAuth('/backtest/strategies').then(function(r) { return r.json(); }).catch(function() { return null; })
+      ]).then(function(results) { return { summary: results[0], strategies: results[1] }; });
+    },
   };
 
   var fn = fetchers[tab];
@@ -287,13 +358,14 @@ function loadTab(tab) {
   fn().then(function(data) {
     var html;
     switch(tab) {
-      case 'health':    html = renderHealth(data); break;
-      case 'status':    html = renderStatus(data); break;
-      case 'reports':   html = renderReportList(data, '宏观报告'); break;
-      case 'signal':    html = renderReportList(data, '信号报告'); break;
-      case 'trace':     html = renderReportList(data, '资金报告'); break;
-      case 'decisions': html = renderDecisions(data); break;
-      case 'backtest':  html = renderBacktest(data); break;
+      case 'health':       html = renderHealth(data); break;
+      case 'status':       html = renderStatus(data); break;
+      case 'reports':      html = renderReportList(data, '宏观报告'); break;
+      case 'signal':       html = renderReportList(data, '信号报告'); break;
+      case 'trace':        html = renderReportList(data, '资金报告'); break;
+      case 'decisions':    html = renderDecisions(data); break;
+      case 'risk-history': html = renderRiskHistory(data); break;
+      case 'backtest':     html = renderBacktest(data); break;
       default: html = '<pre>' + escapeHtml(JSON.stringify(data, null, 2)) + '</pre>';
     }
     _tabCache[tab] = html;
@@ -367,7 +439,8 @@ function renderDecisions(d) {
   html += '<table class="tab-table"><tr><th>时间</th><th>决策</th><th>置信度</th><th>AI</th><th>理由</th></tr>';
   d.items.forEach(function(dec) {
     var ts = dec.timestamp ? new Date(dec.timestamp).toLocaleString('zh') : '\u2014';
-    html += '<tr>';
+    var did = dec.decision_id ? escapeHtml(dec.decision_id) : '';
+    html += '<tr class="decision-row" data-id="' + did + '" onclick="showDecisionModal(\'' + did + '\')" tabindex="0" role="button" aria-label="查看决策详情" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){showDecisionModal(\'' + did + '\')}">';
     html += '<td class="kv-dim">' + escapeHtml(ts) + '</td>';
     html += '<td><span class="decision-action action-' + escapeHtml(dec.action) + '">' + escapeHtml(dec.action) + '</span></td>';
     html += '<td>' + (dec.confidence * 100).toFixed(0) + '%</td>';
@@ -379,8 +452,16 @@ function renderDecisions(d) {
   return html;
 }
 
-function renderBacktest(d) {
-  var html = '<div style="margin-bottom:8px;font-size:13px;color:var(--text-secondary)">\uD83D\uDCCA 股票池 × 7策略回测 — ' + d.count + ' 只股票</div>';
+function renderBacktest(data) {
+  var d = data.summary || data;
+  var strategies = data.strategies;
+  var html = '';
+
+  if (strategies && strategies.strategies) {
+    html += _renderStrategyMgmt(strategies.strategies);
+  }
+
+  html += '<div style="margin-bottom:8px;font-size:13px;color:var(--text-secondary)">\uD83D\uDCCA 股票池 × 7策略回测 — ' + d.count + ' 只股票</div>';
   if (!d.results || !Object.keys(d.results).length) {
     html += '<div class="tab-empty">暂无回测数据（需先刷新缓存生成K线）</div>';
     return html;
@@ -432,7 +513,170 @@ function renderBacktest(d) {
   return html;
 }
 
-/* ── Keyboard Submit ── */
+function renderRiskHistory(d) {
+  if (!d || d.error) {
+    return '<div class="tab-empty">\u26A0\uFE0F ' + escapeHtml(d && d.error || '暂无风控数据') + '</div>';
+  }
+  var html = '<div style="margin-bottom:8px;font-size:13px;color:var(--text-secondary)">\uD83D\uDEE1 风控否决历史 — 共 ' + (d.count || (d.overrides ? d.overrides.length : 0)) + ' 条</div>';
+  var items = d.overrides || [];
+  if (!items.length) {
+    html += '<div class="tab-empty">暂无风控否决记录</div>';
+    return html;
+  }
+  html += '<table class="tab-table"><tr><th>时间</th><th>级别</th><th>规则</th><th>股票</th><th>详情</th></tr>';
+  items.forEach(function(ev) {
+    var ts = ev.timestamp ? new Date(ev.timestamp).toLocaleString('zh') : '\u2014';
+    var levelCls = ev.level === 'critical' ? 'kv-err' : ev.level === 'elevated' ? 'kv-warn' : '';
+    html += '<tr>';
+    html += '<td class="kv-dim">' + escapeHtml(ts) + '</td>';
+    html += '<td class="' + levelCls + '"><strong>' + escapeHtml(ev.level || '\u2014') + '</strong></td>';
+    html += '<td>' + escapeHtml(ev.rule || '\u2014') + '</td>';
+    html += '<td>' + escapeHtml(ev.symbol || '\u2014') + '</td>';
+    html += '<td class="kv-dim">' + escapeHtml((ev.detail || '').substring(0, 80)) + '</td>';
+    html += '</tr>';
+  });
+  html += '</table>';
+  return html;
+}
+
+function _renderStrategyMgmt(strategies) {
+  var html = '<div class="strat-mgmt">';
+  html += '<div class="strat-mgmt-header"><h3>\u2699\uFE0F 策略管理</h3>';
+  html += '<button class="strat-btn" onclick="runManualBacktest()" style="font-size:12px;padding:6px 12px">\uD83D\uDD04 手动回测</button>';
+  html += '</div>';
+  html += '<table class="tab-table" style="font-size:13px"><tr><th>策略</th><th>状态</th><th>连续失败</th><th>上次评分</th><th>操作</th></tr>';
+  var labels = {breakout: '强势突破', oversold: '超跌反弹', strength: '主力介入', risk: '风险预警', ma_golden_cross: '均线金叉', volume_breakout: '放量突破', rsi_reversal: 'RSI反转'};
+  strategies.forEach(function(s) {
+    var active = s.status === 'active';
+    var scoreStr = s.last_score != null ? s.last_score.toFixed(2) : '\u2014';
+    html += '<tr>';
+    html += '<td>' + escapeHtml(labels[s.name] || s.name) + '</td>';
+    html += '<td class="' + (active ? 'kv-ok' : 'kv-err') + '">' + (active ? '\u2713 活跃' : '\u2717 禁用') + '</td>';
+    html += '<td class="' + (s.consecutive_losses > 3 ? 'kv-err' : '') + '">' + (s.consecutive_losses || 0) + '</td>';
+    html += '<td>' + scoreStr + '</td>';
+    html += '<td>' + (active ? '<span style="color:var(--text-muted);font-size:12px">运行中</span>' : '<button class="toggle-btn toggle-btn-enable" onclick="event.stopPropagation();enableStrategy(\'' + escapeHtml(s.name) + '\')">\u25B6 启用</button>') + '</td>';
+    html += '</tr>';
+  });
+  html += '</table></div>';
+  return html;
+}
+
+function runManualBacktest() {
+  var panel = $id('tab-panel');
+  panel.innerHTML = '<div class="spinner">\u23F3 回测运行中...</div>';
+
+  fetchAuth('/backtest/run', { method: 'POST' })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.error) {
+        panel.innerHTML = '<div class="error-banner" role="alert">' + escapeHtml(d.error) + '</div>';
+        return;
+      }
+      showToast('\u2705 回测完成: ' + d.count + ' 只股票, 变更: ' + (d.strategy_changes ? Object.keys(d.strategy_changes).length : 0), 'success');
+      delete _tabCache['backtest'];
+      loadTab('backtest');
+    })
+    .catch(function(e) {
+      panel.innerHTML = '<div class="error-banner" role="alert">\u26A0\uFE0F ' + escapeHtml(e.message) + '</div>';
+    });
+}
+
+function enableStrategy(name) {
+  fetchAuth('/backtest/strategies/' + name + '/enable', { method: 'POST' })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.status === 'active') {
+        showToast('\u2705 策略已启用: ' + escapeHtml(name), 'success');
+        delete _tabCache['backtest'];
+        loadTab('backtest');
+      }
+    })
+    .catch(function(e) {
+      showToast('\u26A0\uFE0F ' + escapeHtml(e.message), 'warning');
+    });
+}
+
+/* ── Risk history click on card ── */
+$id('risk-level-display').parentElement.addEventListener('click', function() {
+  switchTab('risk-history');
+});
+function showDecisionModal(decisionId) {
+  var modal = $id('decision-modal');
+  var body = $id('decision-modal-body');
+  modal.style.display = 'flex';
+  body.innerHTML = '<div class="spinner">\u23F3 加载中...</div>';
+
+  fetchAuth('/decisions/' + decisionId)
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.error) {
+        body.innerHTML = '<div class="error-banner" role="alert">' + escapeHtml(d.error) + '</div>';
+        return;
+      }
+      var html = '';
+      html += '<div class="modal-section"><div class="modal-label">决策</div><div class="modal-value"><span class="decision-action action-' + escapeHtml(d.action) + '">' + escapeHtml(d.action) + '</span> 置信度 ' + (d.confidence * 100).toFixed(0) + '%</div></div>';
+      html += '<div class="modal-section"><div class="modal-label">AI 模型</div><div class="modal-value">' + escapeHtml(d.provider_label || '\u2014') + ' (' + escapeHtml(d.provider_status || '\u2014') + ')</div></div>';
+      html += '<div class="modal-section"><div class="modal-label">时间</div><div class="modal-value">' + escapeHtml(d.timestamp ? new Date(d.timestamp).toLocaleString('zh') : '\u2014') + '</div></div>';
+      html += '<div class="modal-section"><div class="modal-label">完整理由</div><div class="modal-value">' + escapeHtml(d.reasoning || '\u2014') + '</div></div>';
+      if (d.evidence_sources && d.evidence_sources.length) {
+        html += '<div class="modal-section"><div class="modal-label">证据来源</div><div class="modal-value">' + d.evidence_sources.map(function(s) { return '<div class="modal-chain-item">' + escapeHtml(s) + '</div>'; }).join('') + '</div></div>';
+      }
+      if (d.evidence_chain && d.evidence_chain.length) {
+        html += '<div class="modal-section"><div class="modal-label">证据链</div><div class="modal-value">' + d.evidence_chain.map(function(s) { return '<div class="modal-chain-item">' + escapeHtml(typeof s === 'string' ? s : JSON.stringify(s)) + '</div>'; }).join('') + '</div></div>';
+      }
+      if (d.risk_override) {
+        html += '<div class="modal-section"><div class="modal-label">\u26A0\uFE0F 风控否决</div><div class="modal-value" style="color:var(--color-yellow)">' + escapeHtml(JSON.stringify(d.risk_override)) + '</div></div>';
+      }
+      body.innerHTML = html;
+    })
+    .catch(function(e) {
+      body.innerHTML = '<div class="error-banner" role="alert">\u26A0\uFE0F 加载失败: ' + escapeHtml(e.message) + '</div>';
+    });
+}
+
+function closeDecisionModal() {
+  $id('decision-modal').style.display = 'none';
+}
+
+$id('decision-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeDecisionModal();
+});
+
+/* ── Watchlist ── */
+function addToWatchlist() {
+  var input = $id('watchlist-input');
+  var sym = input.value.trim();
+  if (!sym) { showToast('请输入股票代码', 'warning'); return; }
+  var btn = $id('watchlist-add-btn');
+  btn.disabled = true;
+  btn.textContent = '...';
+
+  fetchAuth('/watchlist', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbol: sym }) })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.error) { showToast(d.error, 'warning'); return; }
+      input.value = '';
+      showToast('\u2705 已添加: ' + escapeHtml(sym), 'success');
+      load();
+    })
+    .catch(function(e) { showToast('\u26A0\uFE0F ' + escapeHtml(e.message), 'warning'); })
+    .finally(function() { btn.disabled = false; btn.textContent = '+ \u6DFB\u52A0'; });
+}
+
+function removeFromWatchlist(symbol) {
+  if (!confirm('确认移除 ' + symbol + '？')) return;
+  fetchAuth('/watchlist/' + symbol, { method: 'DELETE' })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.removed) { showToast('\u2705 已移除: ' + escapeHtml(symbol), 'success'); load(); }
+    })
+    .catch(function(e) { showToast('\u26A0\uFE0F ' + escapeHtml(e.message), 'warning'); });
+}
+
+$id('watchlist-input').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') addToWatchlist();
+});
+
 $id('stock-input').addEventListener('keydown', function(e) {
   if (e.key === 'Enter') analyzeStock();
 });

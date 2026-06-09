@@ -14,7 +14,7 @@ from loguru import logger
 
 from api.deps import verify_token
 from services.analyzer import STRATEGIES, analyze_single
-from services.prefetch import ensure_symbol_cached, get_prefetch_providers
+from services.prefetch import ensure_symbol_cached, get_prefetch_providers, get_stock_name
 
 router = APIRouter(tags=["analyze"], dependencies=[Depends(verify_token)])
 
@@ -59,8 +59,9 @@ async def screen_stocks(request: Request, strategy: str):
             highs = [float(r["high"]) for r in cached]
             vols = [float(r["volume"]) for r in cached]
             if condition(closes, highs, vols):
+                stock_name = await get_stock_name(symbol, bus)
                 return {
-                    "symbol": symbol, "price": closes[-1],
+                    "symbol": symbol, "name": stock_name, "price": closes[-1],
                     "change_pct": round((closes[-1] - closes[-2]) / closes[-2] * 100, 2) if len(closes) > 1 else 0,
                     "vol_ratio": round(vols[-1] / np.mean(vols[:-1]), 2) if len(vols) > 1 and np.mean(vols[:-1]) > 0 else 1,
                 }

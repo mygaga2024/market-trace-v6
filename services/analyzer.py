@@ -281,8 +281,12 @@ async def analyze_single(
             logger.debug("LLM 分析异常: {}", e)
 
     latest_ts = cached[-1]["timestamp"] if cached else None
+
+    from services.prefetch import get_stock_name
+    stock_name = await get_stock_name(symbol, bus)
+
     return {
-        "symbol": symbol, "price": float(price), "change_pct": change_pct,
+        "symbol": symbol, "name": stock_name, "price": float(price), "change_pct": change_pct,
         "indicators": {"ma5": ma5, "ma10": ma10, "ma20": ma20, "macd": macd, "rsi": rsi, "vol_ratio": vol_ratio},
         "trace_signals": [{"type": s["type"], "direction": s["direction"], "strength": s.get("strength", 0)} for s in trace_signals],
         "macro_rai": macro_rai, "decision": decision,

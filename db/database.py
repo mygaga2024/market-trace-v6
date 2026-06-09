@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from db.models import Base, AgentReportModel, DecisionModel, SimilarCaseModel
+from db.models import Base, AgentReportModel, DecisionModel, SimilarCaseModel, WatchlistModel
 
 
 class Database:
@@ -244,3 +244,55 @@ class Database:
             q = select(DecisionModel).where(DecisionModel.decision_id == decision_id)
             result = await session.execute(q)
             return result.scalar_one_or_none()
+
+    # ---- Watchlist CRUD ----
+
+    async def get_watchlist(self) -> list[WatchlistModel]:
+        """获取全部持仓列表"""
+        async with self._session_factory() as session:
+            q = select(WatchlistModel).order_by(WatchlistModel.added_at.desc())
+            result = await session.execute(q)
+            return list(result.scalars().all())
+
+    async def add_to_watchlist(self, symbol: str, name: str = "", notes: str = "") -> WatchlistModel:
+        """添加股票到持仓列表"""
+        async with self._session_factory() as session:
+            q = select(WatchlistModel).where(WatchlistModel.symbol == symbol)
+            r = await session.execute(q)
+            existing = r.scalar_one_or_none()
+            if existing:
+                if name:
+                    existing.name = name
+                if notes:
+                    existing.notes = notes
+                await session.commit()
+                return existing
+            item = WatchlistModel(symbol=symbol, name=name, notes=notes)
+            session.add(item)
+            await session.commit()
+            await session.refresh(item)
+            return item
+
+    async def remove_from_watchlist(self, symbol: str) -> bool:
+        """从持仓列表移除股票"""
+        async with self._session_factory() as session:
+            q = select(WatchlistModel).where(WatchlistModel.symbol == symbol)
+            r = await session.execute(q)
+            item = r.scalar_one_or_none()
+            if not item:
+                return False
+            await session.delete(item)
+            await session.commit()
+            return True
+
+    async def update_watchlist_name(self, symbol: str, name: str) -> bool:
+        """更新持仓股票名称"""
+        async with self._session_factory() as session:
+            q = select(WatchlistModel).where(WatchlistModel.symbol == symbol)
+            r = await session.execute(q)
+            item = r.scalar_one_or_none()
+            if not item:
+                return False
+            item.name = name
+            await session.commit()
+            return True
