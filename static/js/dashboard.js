@@ -68,8 +68,8 @@ function showToast(msg, type) {
 async function load() {
   try {
     var results = await Promise.all([
-      fetchAuth('/health').then(function(r) { return r.json(); }).catch(function() { return null; }),
-      fetchAuth('/status').then(function(r) { return r.json(); }).catch(function() { return null; }),
+      fetchAuth('/health/detail').then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; }),
+      fetchAuth('/status').then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; }),
       fetchAuth('/reports/macro/latest').then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; }),
       fetchAuth('/reports/signal/latest').then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; }),
       fetchAuth('/reports/trace/latest').then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; }),
@@ -272,7 +272,7 @@ function loadTab(tab) {
   }
 
   var fetchers = {
-    health:    function() { return fetchAuth('/health').then(function(r) { return r.json(); }); },
+    health:    function() { return fetchAuth('/health/detail').then(function(r) { return r.json(); }); },
     status:    function() { return fetchAuth('/status').then(function(r) { return r.json(); }); },
     reports:   function() { return fetchAuth('/reports/macro?limit=5').then(function(r) { return r.json(); }); },
     signal:    function() { return fetchAuth('/reports/signal?limit=5').then(function(r) { return r.json(); }); },

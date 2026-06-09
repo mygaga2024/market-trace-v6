@@ -13,6 +13,7 @@ services:
       - ./config/settings.yaml:/app/config/settings.yaml:ro
       - ./logs:/app/logs
       - ./data:/app/data
+      - ./static:/app/static
     deploy:
       resources:
         limits:
