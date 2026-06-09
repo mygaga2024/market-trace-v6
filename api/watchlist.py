@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from loguru import logger
 
 from api.deps import verify_token
+from services.prefetch import get_stock_name
 
 router = APIRouter(prefix="/watchlist", tags=["watchlist"], dependencies=[Depends(verify_token)])
 
@@ -24,9 +25,12 @@ async def get_watchlist(request: Request):
         items = await db.get_watchlist()
         result: list[dict] = []
         for item in items:
+            name = item.name or ""
+            if not name and bus:
+                name = await get_stock_name(item.symbol, bus)
             entry = {
                 "symbol": item.symbol,
-                "name": item.name or "",
+                "name": name,
                 "notes": item.notes or "",
                 "added_at": item.added_at.isoformat() if item.added_at else None,
                 "price": None,
@@ -52,6 +56,7 @@ async def get_watchlist(request: Request):
 async def add_to_watchlist(request: Request):
     """添加股票到持仓列表"""
     db = request.app.state.db
+    bus = request.app.state.bus
     if not db:
         return JSONResponse({"error": "数据库未就绪"}, status_code=503)
     try:
@@ -63,6 +68,8 @@ async def add_to_watchlist(request: Request):
             return JSONResponse({"error": "请提供股票代码"}, status_code=400)
 
         name = str(data.get("name", "")).strip()
+        if not name and bus:
+            name = await get_stock_name(symbol, bus)
         notes = str(data.get("notes", "")).strip()
 
         item = await db.add_to_watchlist(symbol, name=name, notes=notes)

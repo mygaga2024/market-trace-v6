@@ -263,14 +263,38 @@ async def prefetch_stock_names(bus, config: dict) -> dict[str, str]:
         return {}
 
 
+_stock_name_cache: dict[str, str] = {}  # 进程内缓存，兜底
+
+
 async def get_stock_name(symbol: str, bus) -> str:
-    """从 Redis 缓存获取股票名称"""
-    if not bus:
-        return ""
+    """获取股票名称（Redis → 进程缓存 → akshare 实时查询）"""
+    if symbol in _stock_name_cache:
+        return _stock_name_cache[symbol]
+
+    if bus:
+        try:
+            names = await bus.cache_get("stock:names")
+            if isinstance(names, dict) and symbol in names:
+                _stock_name_cache[symbol] = names[symbol]
+                return names[symbol]
+        except Exception:
+            pass
+
     try:
-        names = await bus.cache_get("stock:names")
-        if isinstance(names, dict):
-            return names.get(symbol, "")
-    except Exception:
-        pass
+        import akshare as ak
+        logger.debug("实时查询股票名称: {}", symbol)
+        df = await asyncio.to_thread(ak.stock_zh_a_spot_em)
+        if df is not None:
+            import pandas as pd
+            if isinstance(df, pd.DataFrame):
+                for _, r in df.iterrows():
+                    code = str(r.get("代码", "")).strip()
+                    nm = str(r.get("名称", "")).strip()
+                    if code and nm:
+                        _stock_name_cache[code] = nm
+                if symbol in _stock_name_cache:
+                    return _stock_name_cache[symbol]
+    except Exception as e:
+        logger.debug("实时查询股票名称失败 {}: {}", symbol, e)
+
     return ""
