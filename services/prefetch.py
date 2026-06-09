@@ -57,10 +57,10 @@ async def _ts_rate_limit() -> None:
     _prefetch_last_ts_call = time.monotonic()
 
 
-async def _fetch_one_symbol(symbol: str, bus, config: dict) -> bool:
+async def _fetch_one_symbol(symbol: str, bus, config: dict, force: bool = False) -> bool:
     """拉取并缓存单只股票K线 (Tushare优先 → AkShare备用)"""
     cache_key = f"market:raw:{symbol}"
-    if symbol in _cached_symbols:
+    if not force and symbol in _cached_symbols:
         return True
 
     async with _prefetch_sem:
@@ -164,6 +164,43 @@ async def prefetch_stock_pool(bus, config: dict) -> None:
         logger.info("温数据 {} 只进入后台队列，逐步补全…", len(warm_symbols))
         task = asyncio.create_task(_prefetch_worker(bus, config))
         _background_tasks.append(task)
+
+    # 启动交易时段定期刷新
+    refresh_task = asyncio.create_task(_periodic_refresh_loop(bus, config, stock_pool))
+    _background_tasks.append(refresh_task)
+
+
+def _is_trading_time() -> bool:
+    """判断当前是否在 A 股交易时段内（周一~周五 9:30-15:05 北京时间）"""
+    from datetime import datetime, timezone, timedelta
+    tz = timezone(timedelta(hours=8))
+    now = datetime.now(tz)
+    if now.weekday() >= 5:
+        return False
+    t = now.time()
+    from datetime import time as ttime
+    return ttime(9, 29) <= t <= ttime(15, 5)
+
+
+async def _periodic_refresh_loop(bus, config: dict, stock_pool: list[str]) -> None:
+    """交易时段每 5 分钟刷新一次热门股票 K 线缓存"""
+    while True:
+        try:
+            if _is_trading_time():
+                hot = stock_pool[:min(20, len(stock_pool))]
+                logger.info("交易时段刷新 {} 只热门股票缓存", len(hot))
+                results = await asyncio.gather(
+                    *[_fetch_one_symbol(s, bus, config, force=True) for s in hot],
+                    return_exceptions=True,
+                )
+                refreshed = sum(1 for r in results if r is True)
+                logger.info("交易时段刷新完成: {}/{} 只", refreshed, len(hot))
+            await asyncio.sleep(300)
+        except asyncio.CancelledError:
+            return
+        except Exception as e:
+            logger.warning("定期刷新异常: {}", e)
+            await asyncio.sleep(60)
 
 
 async def ensure_symbol_cached(symbol: str, bus, config: dict) -> None:

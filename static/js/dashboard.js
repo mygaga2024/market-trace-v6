@@ -235,7 +235,9 @@ function analyzeStock() {
           html += '<div style="margin-top:6px;font-size:13px;color:var(--text-secondary)">' + escapeHtml(dec.reasoning) + '</div>';
           html += '<div style="font-size:11px;color:var(--text-muted);margin-top:4px">AI: ' + escapeHtml(dec.provider) + ' | RAI宏观: ' + d.macro_rai.toFixed(2) + '</div>';
           if (d.data_timestamp) {
-            html += '<div style="font-size:10px;color:var(--text-muted);margin-top:2px">\uD83D\uDCC5 数据: ' + escapeHtml(d.data_timestamp.substring(0, 16).replace('T', ' ')) + '</div>';
+            var tsStr = d.data_timestamp.substring(0, 16).replace('T', ' ');
+            var isLive = d.data_source === 'akshare' && tsStr.indexOf(new Date().toISOString().substring(0, 10)) >= 0;
+            html += '<div style="font-size:10px;color:var(--text-muted);margin-top:2px">\uD83D\uDCC5 数据: ' + escapeHtml(tsStr) + (isLive ? ' <span style="color:var(--color-green)">(\u5B9E\u65F6)</span>' : '') + '</div>';
           }
           html += '</div>';
         }

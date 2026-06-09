@@ -186,6 +186,7 @@ async def analyze_single(
                         "close": live_price,
                         "high": max(float(cached[-1]["high"]), live_price),
                         "low": min(float(cached[-1]["low"]), live_price),
+                        "timestamp": datetime.now().isoformat(),
                     }
         except Exception as e:
             logger.debug("腾讯实时价获取失败 ({}): {}", symbol, e)
