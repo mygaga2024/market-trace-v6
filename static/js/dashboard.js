@@ -645,6 +645,48 @@ $id('decision-modal').addEventListener('click', function(e) {
 });
 
 /* ── Watchlist ── */
+function refreshWatchlist() {
+  var btn = $id('watchlist-refresh-btn');
+  btn.disabled = true;
+  btn.textContent = '\u23F3';
+  $id('watchlist-items').innerHTML = '<div style="color:var(--text-muted);font-size:13px">刷新中...</div>';
+
+  fetchAuth('/watchlist')
+    .then(function(r) { return r.ok ? r.json() : null; })
+    .then(function(wl) {
+      if (wl && wl.items) {
+        var wlHtml = '';
+        if (wl.items.length === 0) {
+          wlHtml = '<div style="color:var(--text-muted);font-size:13px">暂无持仓</div>';
+        } else {
+          wl.items.forEach(function(item) {
+            var changeCls = item.change_pct != null ? (item.change_pct >= 0 ? 'trend-up' : 'trend-down') : '';
+            var changeStr = item.change_pct != null ? '<span class="' + changeCls + '"><span aria-hidden="true">' + (item.change_pct >= 0 ? '\u2191' : '\u2193') + '</span> ' + item.change_pct.toFixed(2) + '%</span>' : '\u2014';
+            var priceStr = item.price != null ? item.price.toFixed(2) : '\u2014';
+            var nameStr = item.name || '';
+            var displayName = nameStr ? escapeHtml(nameStr) + ' <span style="color:var(--text-secondary);font-size:11px">' + escapeHtml(item.symbol) + '</span>' : escapeHtml(item.symbol);
+            wlHtml += '<div class="wl-row" style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--bg-tag);font-size:13px">';
+            wlHtml += '<span style="cursor:pointer;flex:1" onclick="document.getElementById(\'stock-input\').value=\'' + escapeHtml(item.symbol) + '\';analyzeStock()" title="点击诊股">' + displayName + '</span>';
+            wlHtml += '<span style="margin:0 8px">' + priceStr + '</span>';
+            wlHtml += '<span style="margin:0 8px;min-width:60px;text-align:right">' + changeStr + '</span>';
+            wlHtml += '<button onclick="event.stopPropagation();removeFromWatchlist(\'' + escapeHtml(item.symbol) + '\')" style="background:none;border:none;color:var(--color-red);cursor:pointer;font-size:16px;padding:0 4px" title="移除" aria-label="移除 ' + escapeHtml(item.symbol) + '">\u00D7</button>';
+            wlHtml += '</div>';
+          });
+        }
+        $id('watchlist-items').innerHTML = wlHtml;
+      } else {
+        $id('watchlist-items').innerHTML = '<div style="color:var(--text-muted);font-size:13px">加载失败</div>';
+      }
+    })
+    .catch(function() {
+      $id('watchlist-items').innerHTML = '<div style="color:var(--text-muted);font-size:13px">加载失败</div>';
+    })
+    .finally(function() {
+      btn.disabled = false;
+      btn.textContent = '\u21BB';
+    });
+}
+
 function addToWatchlist() {
   var input = $id('watchlist-input');
   var sym = input.value.trim();

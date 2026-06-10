@@ -77,6 +77,7 @@
       <div style="display:flex;gap:6px;margin-bottom:10px">
         <input id="watchlist-input" type="text" placeholder="股票代码 如 000001" style="flex:1;padding:6px 10px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-input);color:var(--text-primary);font-size:13px" aria-label="添加股票代码">
         <button id="watchlist-add-btn" onclick="addToWatchlist()" style="padding:6px 12px;background:var(--btn-primary-bg);border:none;border-radius:6px;color:#fff;font-size:13px;cursor:pointer;white-space:nowrap">+ 添加</button>
+        <button id="watchlist-refresh-btn" onclick="refreshWatchlist()" style="padding:6px 10px;background:var(--bg-tag);border:1px solid var(--border-color);border-radius:6px;color:var(--text-secondary);font-size:13px;cursor:pointer;white-space:nowrap" title="刷新价格">&#x21BB;</button>
       </div>
       <div id="watchlist-items" aria-live="polite" style="max-height:280px;overflow-y:auto">
         <div style="color:var(--text-muted);font-size:13px">加载中...</div>
