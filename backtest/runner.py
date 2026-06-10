@@ -41,12 +41,11 @@ class Position:
     stop_loss_price: float = 0.0
 
     @property
-    def market_value(self, current_price: float) -> float:
-        return self.quantity * current_price
-
-    @property
     def cost_basis(self) -> float:
         return self.quantity * self.avg_cost
+
+    def market_value(self, current_price: float) -> float:
+        return self.quantity * current_price
 
     def add(self, qty: int, cost: float, bar_time: str) -> None:
         if self.quantity == 0:
