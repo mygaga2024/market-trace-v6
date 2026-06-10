@@ -4,7 +4,6 @@ Market Trace V6.0 — 回测引擎单元测试
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import numpy as np
@@ -12,7 +11,14 @@ import pytest
 
 from core.bus import MessageBus
 from backtest.replay import MarketReplay, ReplayConfig, ReplayProgress
-from backtest.runner import BacktestRunner, BacktestResult, Trade
+from backtest.runner import PortfolioRunner, BacktestResult, Trade
+
+
+def _make_bar(time: str = "2026-01-05", close: float = 10.0, **kw) -> dict:
+    bar = {"time": time, "open": close - 0.1, "high": close + 0.2,
+            "low": close - 0.3, "close": close, "volume": 1000000}
+    bar.update(kw)
+    return bar
 
 
 # ---- Replay Tests ----
@@ -75,59 +81,69 @@ class TestMarketReplay:
 
 # ---- Runner Tests ----
 
-class TestBacktestRunner:
+class TestPortfolioRunner:
     @pytest.fixture
-    def runner(self) -> BacktestRunner:
-        return BacktestRunner(initial_capital=100_000, commission_rate=0.0003, slippage=0.001)
+    def runner(self) -> PortfolioRunner:
+        return PortfolioRunner(initial_capital=100_000, commission_rate=0.0003, slippage=0.001)
 
     def test_initial_state(self, runner):
         assert runner.capital == 100_000
         assert runner.position.quantity == 0
         assert len(runner.trades) == 0
 
+    def test_step_records_equity(self, runner):
+        bar = _make_bar(close=10.0)
+        snapshot = runner.step(bar)
+        assert snapshot is not None
+        assert snapshot["equity"] == 100_000
+        assert len(runner.equity_curve) == 1
+
     def test_buy_execution(self, runner):
-        trade = runner.execute("BUY", 10.0, confidence=0.8, reason="测试买入")
+        bar = _make_bar(close=10.0)
+        runner.step(bar)
+        trade = runner.buy(bar, size_pct=0.8, reason="测试买入")
 
         assert trade is not None
         assert trade.action == "BUY"
-        assert trade.price == pytest.approx(10.01, rel=0.01)
         assert trade.quantity > 0
         assert runner.position.quantity > 0
         assert runner.capital < 100_000
 
     def test_sell_execution(self, runner):
-        runner.execute("BUY", 10.0, confidence=1.0)
-        qty_before = runner.position.quantity
+        bar = _make_bar(close=10.0)
+        runner.step(bar)
+        runner.buy(bar, size_pct=1.0)
 
-        trade = runner.execute("SELL", 11.0, reason="止盈")
+        bar2 = _make_bar(close=11.0, time="2026-01-06")
+        runner.step(bar2)
+        trade = runner.sell(bar2, reason="止盈")
 
         assert trade is not None
         assert trade.action == "SELL"
+        assert trade.pnl > 0
         assert runner.position.quantity == 0
-        assert runner.capital > 0
 
-    def test_hold_does_nothing(self, runner):
-        trade = runner.execute("HOLD", 10.0)
-        assert trade is None
+    def test_buy_when_holding_does_nothing(self, runner):
+        bar = _make_bar(close=10.0)
+        runner.step(bar)
+        runner.buy(bar, size_pct=1.0)
 
-    def test_wait_does_nothing(self, runner):
-        trade = runner.execute("WAIT", 10.0)
-        assert trade is None
-
-    def test_buy_with_insufficient_capital(self, runner):
-        runner.capital = 50
-        trade = runner.execute("BUY", 10.0, confidence=1.0, reason="资金不足测试")
-        assert trade is not None
-        assert trade.quantity == 0
+        bar2 = _make_bar(close=10.5, time="2026-01-06")
+        runner.step(bar2)
+        trade = runner.buy(bar2, size_pct=0.5)
+        assert trade is None  # already holding
 
     def test_sell_without_position(self, runner):
-        trade = runner.execute("SELL", 10.0, reason="无持仓")
+        bar = _make_bar(close=10.0)
+        runner.step(bar)
+        trade = runner.sell(bar, reason="无持仓")
         assert trade is None
 
     def test_reset(self, runner):
-        runner.execute("BUY", 10.0, confidence=1.0)
-        runner.execute("SELL", 11.0)
-        assert len(runner.trades) > 0
+        bar = _make_bar(close=10.0)
+        runner.step(bar)
+        runner.buy(bar, size_pct=1.0)
+        runner.sell(_make_bar(close=11.0, time="2026-01-06"))
 
         runner.reset()
         assert runner.capital == 100_000
@@ -135,76 +151,131 @@ class TestBacktestRunner:
         assert len(runner.trades) == 0
 
     def test_finalize_metrics(self, runner):
-        prices = np.linspace(10.0, 15.0, 20)
-        for p in prices[:5]:
-            runner.execute("BUY", p, confidence=0.8)
+        for i, close in enumerate([10.0, 10.5, 11.0, 10.8, 12.0]):
+            bar = _make_bar(close=close, time=f"2026-01-{i+5:02d}")
+            runner.step(bar)
 
-        runner.execute("SELL", prices[10], confidence=1.0)
+        runner.buy(_make_bar(close=10.0, time="2026-01-05"), size_pct=1.0)
+        runner.sell(_make_bar(close=12.0, time="2026-01-10"), reason="卖出")
 
-        result = runner.finalize()
+        result = runner.finalize(symbol="000001", strategy="test")
 
         assert isinstance(result, BacktestResult)
-        assert result.initial_capital == 100_000
-        assert result.final_equity > 0
+        assert result.symbol == "000001"
+        assert result.final_equity > 100_000
         assert result.total_trades == 1
-        assert -1.0 <= result.total_return <= 1.0
-
-    def test_finalize_no_trades(self, runner):
-        result = runner.finalize()
-        assert result.sharpe_ratio == 0.0
-        assert result.max_drawdown == 0.0
-        assert result.win_rate == 0.0
-
-    def test_profit_factor(self, runner):
-        runner.execute("BUY", 10.0, confidence=1.0)
-        runner.execute("SELL", 11.0)
-        result = runner.finalize()
         assert result.win_rate == 1.0
 
-    def test_to_dict(self, runner):
-        runner.execute("BUY", 10.0, confidence=1.0)
-        runner.execute("SELL", 11.0)
+    def test_finalize_no_trades(self, runner):
+        bar = _make_bar(close=10.0)
+        runner.step(bar)
         result = runner.finalize()
+        assert result.total_trades == 0
+        assert result.max_drawdown >= 0
+
+    def test_check_exits_stop_loss(self, runner):
+        bar = _make_bar(close=10.0)
+        runner.step(bar)
+        runner.buy(bar, size_pct=1.0)
+
+        # 价格跌到止损线以下
+        bar2 = _make_bar(close=9.4, time="2026-01-06", low=9.3)
+        runner.step(bar2)
+        trade = runner.check_exits(bar2)
+        assert trade is not None
+        assert trade.action == "SELL"
+        assert "止损" in trade.reason
+        assert trade.pnl < 0
+
+    def test_take_profit_and_trailing_stop(self, runner):
+        bar = _make_bar(close=10.0)
+        runner.step(bar)
+        runner.buy(bar, size_pct=1.0)
+
+        # 涨到 12 触发止盈监控，再跌到 11.4 触发移动止盈
+        bar2 = _make_bar(close=12.0, high=12.5, time="2026-01-06")
+        runner.step(bar2)
+        runner.check_exits(bar2)
+
+        bar3 = _make_bar(close=11.3, low=11.3, high=11.5, time="2026-01-07")
+        runner.step(bar3)
+        trade = runner.check_exits(bar3)
+        assert trade is not None
+        assert "移动止盈" in trade.reason
+
+    def test_benchmark_tracking(self, runner):
+        for close in [10.0, 10.5, 11.0, 10.8, 12.0]:
+            bar = _make_bar(close=close, time=f"2026-01-{1+len(runner.equity_curve):02d}")
+            runner.step(bar)
+
+        result = runner.finalize()
+        assert len(result.benchmark_curve) == 5
+        # 基准收益 (10→12)
+        assert result.benchmark_return > 0.15
+
+    def test_to_dict(self, runner):
+        bar = _make_bar(close=10.0)
+        runner.step(bar)
+        runner.buy(bar, size_pct=1.0)
+        runner.sell(_make_bar(close=11.0, time="2026-01-06"))
+
+        result = runner.finalize(symbol="000001", strategy="test")
         d = result.to_dict()
         assert "sharpe_ratio" in d
+        assert "sortino_ratio" in d
         assert "max_drawdown_pct" in d
         assert "win_rate_pct" in d
+        assert "alpha" in d
+        assert "beta" in d
+        assert "equity_curve" in d
+        assert "drawdown_curve" in d
+        assert "trade_markers" in d
         assert d["total_trades"] == 1
 
 
 class TestBacktestScenarios:
-    """场景回测：连续盈利 vs 连续亏损"""
-
     def test_winning_streak(self):
-        runner = BacktestRunner(initial_capital=100_000)
-
+        runner = PortfolioRunner(initial_capital=100_000)
         for i in range(5):
-            runner.execute("BUY", 10.0 + i, confidence=1.0)
-            runner.execute("SELL", 10.5 + i, confidence=1.0)
+            bar = _make_bar(close=10.0 + i, time=f"2026-01-{i*2+5:02d}")
+            runner.step(bar)
+            runner.buy(bar, size_pct=1.0)
+            bar2 = _make_bar(close=10.5 + i, time=f"2026-01-{i*2+6:02d}")
+            runner.step(bar2)
+            runner.sell(bar2, reason="卖出")
 
         result = runner.finalize()
         assert result.win_rate == 1.0
         assert result.total_return > 0
-        assert result.sharpe_ratio > 0
+        assert result.max_consecutive_wins == 5
 
     def test_losing_streak(self):
-        runner = BacktestRunner(initial_capital=100_000)
-
+        runner = PortfolioRunner(initial_capital=100_000)
         for i in range(3):
-            runner.execute("BUY", 10.0 + i, confidence=1.0)
-            runner.execute("SELL", 9.5 + i, confidence=1.0)
+            bar = _make_bar(close=10.0 + i, time=f"2026-01-{i*2+5:02d}")
+            runner.step(bar)
+            runner.buy(bar, size_pct=1.0)
+            bar2 = _make_bar(close=9.5 + i, time=f"2026-01-{i*2+6:02d}")
+            runner.step(bar2)
+            runner.sell(bar2, reason="卖出")
 
         result = runner.finalize()
         assert result.win_rate == 0.0
         assert result.total_return < 0
+        assert result.max_consecutive_losses == 3
 
-    def test_drawdown_tracking(self):
-        runner = BacktestRunner(initial_capital=100_000)
+    def test_drawdown_tracking(self, runner=None):
+        runner = PortfolioRunner(initial_capital=100_000)
+        bar = _make_bar(close=10.0)
+        runner.step(bar)
+        runner.buy(bar, size_pct=1.0)
+        runner.sell(_make_bar(close=8.0, time="2026-01-06"))
 
-        runner.execute("BUY", 10.0, confidence=1.0)
-        runner.execute("SELL", 8.0)
-        runner.execute("BUY", 9.0, confidence=1.0)
-        runner.execute("SELL", 12.0)
+        bar2 = _make_bar(close=9.0, time="2026-01-07")
+        runner.step(bar2)
+        runner.buy(bar2, size_pct=1.0)
+        runner.sell(_make_bar(close=12.0, time="2026-01-08"))
 
         result = runner.finalize()
         assert result.max_drawdown > 0
+        assert len(result.equity_curve) > 0

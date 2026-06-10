@@ -265,6 +265,7 @@ class PortfolioRunner:
         self.equity_curve.append({
             "time": t, "equity": round(equity, 2),
             "capital": round(self.capital, 2), "position_value": round(self.position.market_value(close), 2),
+            "close": close,
         })
         self.benchmark_curve.append({
             "time": t,
