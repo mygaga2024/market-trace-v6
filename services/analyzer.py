@@ -222,6 +222,18 @@ async def analyze_single(
         except Exception:
             pass
 
+    # ── Signal Agent 实时信号(从缓存读取) ──
+    signal_agent_signals: list[dict] = []
+    signal_agent_confidence = 0.5
+    if bus:
+        try:
+            sig_cache = await bus.cache_get(f"reports:signal:{symbol}")
+            if sig_cache and isinstance(sig_cache, dict):
+                signal_agent_signals = sig_cache.get("signals", [])
+                signal_agent_confidence = sig_cache.get("confidence", 0.5)
+        except Exception:
+            pass
+
     # ── 量价异动检测 ──
     trace_signals: list[dict] = []
     if len(volumes) >= 3:
@@ -271,14 +283,15 @@ async def analyze_single(
                 ] if raw_indices else [],
             }
 
-            # Signal报告: 完整技术指标+策略命中
+            # Signal报告: 技术指标 + 策略命中 + Signal Agent实时信号
             signal_report_data = {
                 "indicators": indicators,
                 "signals": strategy_signals,
-                "reliability": min(1.0, len(strategy_signals) * 0.2 + 0.3),
+                "agent_signals": signal_agent_signals,
+                "reliability": signal_agent_confidence,
             }
 
-            # Trace报告: 量价信号
+            # Trace报告: 量价信号 + 资金流向
             trace_report_data = {
                 "signals": trace_signals,
                 "fund_flow": {},
@@ -294,9 +307,9 @@ async def analyze_single(
                 ),
                 "signal": AgentReport(
                     agent=AgentName.SIGNAL,
-                    summary=f"价格{price:.2f} {trend} RSI={rsi} 信号命中{len(strategy_signals)}个",
+                    summary=f"价格{price:.2f} {trend} RSI={rsi} 策略命中{len(strategy_signals)}个 SignalAgent信号{len(signal_agent_signals)}个",
                     data=signal_report_data,
-                    confidence=min(1.0, len(strategy_signals) * 0.25 + 0.3),
+                    confidence=min(1.0, signal_agent_confidence),
                 ),
                 "trace": AgentReport(
                     agent=AgentName.TRACE,

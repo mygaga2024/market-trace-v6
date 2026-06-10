@@ -124,6 +124,13 @@ class SignalAgent(BaseAgent):
             "timestamp": report.timestamp.isoformat(),
         })
 
+        # 缓存到 Redis 供分析流程读取
+        await self.bus.cache_set(f"reports:signal:{symbol}", {
+            "signals": signals, "confidence": signal_strength,
+            "indicators": indicators, "reliability": reliability,
+            "symbol": symbol, "timestamp": report.timestamp.isoformat(),
+        }, ttl=3600)
+
         logger.info("Signal Agent {} 报告: {} 信号, 强度={:.2f}", symbol, signal_count, signal_strength)
 
     async def run(self) -> None:

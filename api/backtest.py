@@ -64,6 +64,22 @@ async def backtest_strategy_enable(request: Request, name: str):
         return JSONResponse({"error": "启用策略失败"}, status_code=500)
 
 
+@router.get("/rolling/{symbol}")
+async def backtest_rolling(request: Request, symbol: str, strategy: str = "breakout"):
+    """滚动窗口样本外验证"""
+    bus = request.app.state.bus
+    config = request.app.state.config
+    if not bus:
+        return JSONResponse({"error": "消息总线未就绪"}, status_code=503)
+    try:
+        from backtest.strategy_backtest import run_rolling_backtest
+        result = await run_rolling_backtest(bus, config, symbol, strategy)
+        return result
+    except Exception as e:
+        logger.error("滚动回测失败: {}", e)
+        return JSONResponse({"error": "滚动回测执行失败"}, status_code=500)
+
+
 @router.post("/run")
 async def backtest_run(request: Request, optimize: bool = False):
     """手动触发一次回测，可选参数优化"""

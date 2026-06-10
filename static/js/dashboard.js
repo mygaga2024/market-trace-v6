@@ -407,6 +407,7 @@ function loadTab(tab) {
       ]).then(function(results) { return { summary: results[0], strategies: results[1] }; });
     },
     logs:         function() { return fetchAuth('/logs?lines=100').then(function(r) { return r.json(); }); },
+    paper:        function() { return fetchAuth('/paper/account').then(function(r) { return r.json(); }); },
   };
 
   var fn = fetchers[tab];
@@ -424,6 +425,7 @@ function loadTab(tab) {
       case 'risk-history': html = renderRiskHistory(data); break;
       case 'backtest':     html = renderBacktest(data); break;
       case 'logs':         html = renderLogs(data); break;
+      case 'paper':        html = renderPaper(data); break;
       default: html = '<pre>' + escapeHtml(JSON.stringify(data, null, 2)) + '</pre>';
     }
     _tabCache[tab] = html;
@@ -773,6 +775,44 @@ function renderLogs(d) {
     html += '<span style="color:var(--text-muted)">暂无日志</span>';
   }
   html += '</div>';
+  return html;
+}
+
+function renderPaper(d) {
+  if (!d || d.error) {
+    return '<div class="tab-empty">\u26A0\uFE0F ' + escapeHtml(d && d.error || '加载失败') + '</div>';
+  }
+  var html = '<div style="margin-bottom:8px;font-size:13px;color:var(--text-secondary)">\uD83D\uDCB0 纸上交易账户 — ' + escapeHtml(d.account_id || 'default') + '</div>';
+  var pnlCls = d.total_pnl_pct >= 0 ? 'trend-up' : 'trend-down';
+  html += '<div class="result-stats" style="margin-bottom:12px">';
+  html += '<div class="result-stat"><div>初始资金</div><div>' + (d.initial_capital || 0).toLocaleString() + '</div></div>';
+  html += '<div class="result-stat"><div>当前权益</div><div>' + (d.total_equity || 0).toLocaleString() + '</div></div>';
+  html += '<div class="result-stat"><div>可用资金</div><div>' + (d.capital || 0).toLocaleString() + '</div></div>';
+  html += '<div class="result-stat"><div>盈亏</div><div class="' + pnlCls + '">' + (d.total_pnl_pct || 0) + '%</div></div>';
+  html += '<div class="result-stat"><div>持仓数</div><div>' + (d.position_count || 0) + '</div></div>';
+  html += '<div class="result-stat"><div>总订单</div><div>' + (d.total_orders || 0) + '</div></div>';
+  html += '</div>';
+
+  if (d.positions && d.positions.length) {
+    html += '<h3 class="card-title">\uD83D\uDCBC 当前持仓</h3>';
+    html += '<table class="tab-table"><tr><th>代码</th><th>数量</th><th>均价</th><th>成本</th></tr>';
+    d.positions.forEach(function(p) {
+      html += '<tr><td>' + escapeHtml(p.symbol) + '</td><td>' + p.quantity + '</td><td>' + p.avg_cost + '</td><td>' + (p.cost_basis || 0).toLocaleString() + '</td></tr>';
+    });
+    html += '</table>';
+  }
+
+  if (d.recent_orders && d.recent_orders.length) {
+    html += '<h3 class="card-title" style="margin-top:12px">\uD83D\uDCCB 最近交易</h3>';
+    html += '<table class="tab-table"><tr><th>时间</th><th>代码</th><th>方向</th><th>数量</th><th>价格</th><th>理由</th></tr>';
+    d.recent_orders.slice(-10).reverse().forEach(function(o) {
+      var actCls = o.action === 'BUY' ? 'trend-up' : 'trend-down';
+      html += '<tr><td class="kv-dim">' + escapeHtml(new Date(o.timestamp).toLocaleString('zh')) + '</td><td>' + escapeHtml(o.symbol) + '</td><td class="' + actCls + '">' + o.action + '</td><td>' + o.quantity + '</td><td>' + o.price + '</td><td class="kv-dim">' + escapeHtml((o.reason || '').substring(0, 40)) + '</td></tr>';
+    });
+    html += '</table>';
+  } else {
+    html += '<div class="tab-empty">暂无交易 — 执行AI诊股后将自动记录纸上交易</div>';
+  }
   return html;
 }
 

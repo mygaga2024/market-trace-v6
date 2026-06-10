@@ -314,3 +314,82 @@ async def _optimize_strategy(
         logger.debug("{} {} 最优参数: {} 评分={:.2f}", symbol, label, best_params, best_result.score())
 
     return best_result
+
+
+# ── 样本外验证（滚动窗口）──
+
+async def run_rolling_backtest(
+    bus, config: dict, symbol: str, strategy: str = "breakout",
+    train_size: float = 0.7, step_size: int = 20,
+) -> dict[str, Any]:
+    """滚动窗口样本外验证：前train_size用于训练/选参，后续滚动回测"""
+    from core.strategies import STRATEGIES as SINFO
+
+    label = SINFO.get(strategy, {}).get("label", strategy)
+    signal_fn = SIGNAL_FUNCTIONS.get(strategy)
+    if not signal_fn:
+        return {"error": f"策略不存在: {strategy}"}
+
+    cached = await bus.cache_get(f"market:raw:{symbol}") if bus else None
+    if not cached or len(cached) < 60:
+        return {"error": f"{symbol} 数据不足(最少60条)"}
+
+    closes = np.array([float(r["close"]) for r in cached])
+    highs = np.array([float(r["high"]) for r in cached])
+    lows = np.array([float(r["low"]) for r in cached])
+    volumes = np.array([float(r["volume"]) for r in cached])
+
+    n = len(cached)
+    train_end = int(n * train_size)
+
+    # 训练期优化参数
+    train_bars = cached[:train_end]
+    tc = closes[:train_end]
+    th = highs[:train_end]
+    tl = lows[:train_end]
+    tv = volumes[:train_end]
+    best = await _optimize_strategy(symbol, strategy, label, signal_fn, tc, th, tl, tv, train_bars)
+    best_params = best.params.get("optimized", {}) if best else {}
+
+    # 滚动窗口测试
+    windows: list[dict] = []
+    window_start = train_end
+    while window_start + 30 <= n:
+        window_end = min(n, window_start + 40)
+        test_bars = cached[window_start:window_end]
+        wc = closes[window_start:window_end]
+        wh = highs[window_start:window_end]
+        wl = lows[window_start:window_end]
+        wv = volumes[window_start:window_end]
+
+        result = _run_single_backtest(symbol, strategy, label, signal_fn, wc, wh, wl, wv, test_bars, params=best_params)
+        if result:
+            d = result.to_dict()
+            d["window_start"] = window_start
+            d["window_end"] = window_end
+            windows.append(d)
+
+        window_start += step_size
+
+    # 汇总指标
+    if not windows:
+        return {"error": "无有效测试窗口", "symbol": symbol, "strategy": strategy}
+
+    win_rates = [w["win_rate_pct"] for w in windows if w["total_trades"] > 0]
+    sharpes = [w["sharpe_ratio"] for w in windows]
+    returns = [w["total_return_pct"] for w in windows]
+
+    return {
+        "symbol": symbol, "strategy": strategy, "label": label,
+        "train_bars": train_end, "test_bars": n - train_end,
+        "total_windows": len(windows),
+        "active_windows": len(win_rates),
+        "best_params": best_params,
+        "avg_win_rate": round(np.mean(win_rates), 2) if win_rates else 0,
+        "avg_sharpe": round(np.mean(sharpes), 2),
+        "avg_return": round(np.mean(returns), 2),
+        "min_return": round(min(returns), 2),
+        "max_return": round(max(returns), 2),
+        "consistency": round(len([r for r in returns if r > 0]) / max(len(returns), 1), 2),
+        "windows": windows,
+    }

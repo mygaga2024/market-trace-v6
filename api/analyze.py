@@ -30,6 +30,22 @@ async def analyze_stock(request: Request, symbol: str):
     try:
         await ensure_symbol_cached(symbol, bus, config)
         result = await analyze_single(symbol, bus, config, llm_chain, prefetch_tp=tp, prefetch_ap=ap)
+
+        # 纸上交易: 根据决策自动执行模拟交易
+        if result.get("decision") and bus:
+            try:
+                from core.paper_trader import get_paper_manager
+                pm = get_paper_manager(bus)
+                dec = result["decision"]
+                await pm.execute_signal(
+                    symbol, dec["action"], result["price"],
+                    confidence=dec.get("confidence", 0.5),
+                    reason=f"AI诊股: {dec.get('reasoning', '')[:100]}"
+                )
+                result["paper_trade"] = pm.get_or_create_account().get_summary()
+            except Exception as e:
+                logger.warning("纸上交易执行失败: {}", e)
+
         return result
     except Exception as e:
         from fastapi import HTTPException
@@ -78,3 +94,44 @@ async def screen_stocks(request: Request, strategy: str):
     results.sort(key=lambda x: -x["vol_ratio"])
 
     return {"strategy": strategy_name, "matched": len(results), "results": results[:20]}
+
+
+@router.get("/paper/account")
+async def paper_account(request: Request):
+    """纸上交易账户摘要"""
+    bus = request.app.state.bus
+    if not bus:
+        return JSONResponse({"error": "消息总线未就绪"}, status_code=503)
+    try:
+        from core.paper_trader import get_paper_manager
+        pm = get_paper_manager(bus)
+        return pm.get_or_create_account().get_summary()
+    except Exception as e:
+        logger.error("纸上账户查询失败: {}", e)
+        return JSONResponse({"error": "获取纸上账户失败"}, status_code=500)
+
+
+@router.post("/paper/mtm")
+async def paper_mark_to_market(request: Request):
+    """按市价估值所有纸上持仓"""
+    bus = request.app.state.bus
+    if not bus:
+        return JSONResponse({"error": "消息总线未就绪"}, status_code=503)
+    try:
+        from core.paper_trader import get_paper_manager
+        pm = get_paper_manager(bus)
+        account = pm.get_or_create_account()
+        prices = {}
+        for sym in list(account.positions.keys()):
+            try:
+                from services.prefetch import fetch_stock_price_via_sina
+                _, price, _ = await fetch_stock_price_via_sina(sym)
+                if price:
+                    prices[sym] = price
+            except Exception:
+                pass
+        await pm.mark_to_market(prices)
+        return account.get_summary()
+    except Exception as e:
+        logger.error("市价估值失败: {}", e)
+        return JSONResponse({"error": "市价估值失败"}, status_code=500)
