@@ -330,6 +330,24 @@ def handle_logs():
     return json_response({"file": "market_trace_dev.log", "count": len(mock_lines), "lines": mock_lines})
 
 
+def handle_paper_account():
+    """返回 mock 纸上交易账户"""
+    return json_response({
+        "account_id": "default",
+        "initial_capital": 100000, "capital": 95680.50, "total_equity": 102430.20,
+        "total_pnl": 2430.20, "total_pnl_pct": 2.43, "position_count": 2,
+        "total_orders": 5,
+        "positions": [
+            {"symbol": "000001", "quantity": 300, "avg_cost": 11.23, "cost_basis": 3369, "entry_time": "2026-06-10T09:30:00"},
+            {"symbol": "600519", "quantity": 100, "avg_cost": 1785.50, "cost_basis": 178550, "entry_time": "2026-06-09T14:00:00"},
+        ],
+        "recent_orders": [
+            {"order_id": "o1", "symbol": "000001", "action": "BUY", "quantity": 300, "price": 11.23, "reason": "AI诊股: 强势突破信号", "timestamp": "2026-06-10T09:30:00"},
+            {"order_id": "o2", "symbol": "600519", "action": "BUY", "quantity": 100, "price": 1785.50, "reason": "AI诊股: 超跌反弹", "timestamp": "2026-06-09T14:00:00"},
+        ],
+    })
+
+
 # ── Route table ──
 
 ROUTES = {
@@ -377,6 +395,7 @@ REPORT_ROUTES = {
     "/reports/signal": lambda: handle_reports("signal", is_latest=False),
     "/reports/trace": lambda: handle_reports("trace", is_latest=False),
     "/logs": lambda: handle_logs(),
+    "/paper/account": lambda: handle_paper_account(),
 }
 
 

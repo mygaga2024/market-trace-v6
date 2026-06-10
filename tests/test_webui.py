@@ -222,6 +222,10 @@ def test_dev_server_mocks_all_endpoints():
             stripped.add("/backtest/strategies/")
         elif base.startswith("/watchlist/"):
             stripped.add("/watchlist/")
+        elif base.startswith("/paper/"):
+            stripped.add("/paper/")
+        elif base.startswith("/backtest/rolling/"):
+            stripped.add("/backtest/rolling/")
         else:
             stripped.add(base)
 
