@@ -460,7 +460,8 @@ function renderBacktest(data) {
   var html = '';
 
   if (strategies && strategies.strategies) {
-    html += _renderStrategyMgmt(strategies.strategies);
+    var stratArr = Object.entries(strategies.strategies).map(function(e) { e[1].name = e[0]; return e[1]; });
+    html += _renderStrategyMgmt(stratArr);
   }
 
   html += '<div style="margin-bottom:8px;font-size:13px;color:var(--text-secondary)">\uD83D\uDCCA 股票池 × 7策略回测 — ' + d.count + ' 只股票</div>';
