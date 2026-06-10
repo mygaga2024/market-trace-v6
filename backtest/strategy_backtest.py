@@ -111,14 +111,14 @@ def signal_strength(closes: np.ndarray, highs: np.ndarray, volumes: np.ndarray,
     return "HOLD", 0
 
 
-def signal_risk(highs: np.ndarray, lows: np.ndarray, closes: np.ndarray, volumes: np.ndarray,
+def signal_risk(closes: np.ndarray, highs: np.ndarray, volumes: np.ndarray,
                 rsi_period: int = 14, rsi_threshold: float = 70.0,
                 lookback: int = 20) -> tuple[str, float]:
-    """风险预警: RSI超买 + 低于N日前 + 下跌趋势 + 放量"""
+    """风险预警: RSI超买 + 低于N日前 + 下跌 + 放量"""
     if len(closes) < max(rsi_period + 1, lookback + 1):
         return "HOLD", 0
     rsi = _calc_rsi(closes, rsi_period)
-    below_lookback = closes[-1] < closes[-1 * min(lookback, len(closes))]
+    below_lookback = closes[-1] < closes[-lookback] if len(closes) >= lookback else False
     falling = closes[-1] < closes[-2]
     vol_up = volumes[-1] > np.mean(volumes[-21:-1]) * 1.2 if len(volumes) > 21 else True
     if rsi > rsi_threshold and below_lookback and falling and vol_up:
