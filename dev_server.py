@@ -315,6 +315,21 @@ def handle_watchlist_delete(symbol: str):
     return json_response({"symbol": symbol, "removed": True})
 
 
+def handle_logs():
+    """返回 mock 系统日志"""
+    mock_lines = [
+        "10:00:00 | INFO     | Market Trace V6.0 正在启动...",
+        "10:00:01 | INFO     | Redis 已连接",
+        "10:00:01 | INFO     | 数据库已初始化",
+        "10:00:02 | INFO     | LLM 回退链已就绪: DeepSeek → Gemini → MiniMax → 纯规则",
+        "10:00:03 | INFO     | 5 个 Agent 已启动",
+        "10:00:05 | INFO     | 并发预加载 热门 20 只 (并发度=5)…",
+        "10:00:15 | INFO     | 预加载 000001: 60 条K线",
+        "10:00:30 | INFO     | 热门预加载完成: 18/20 只 (25.0s)",
+    ]
+    return json_response({"file": "market_trace_dev.log", "count": len(mock_lines), "lines": mock_lines})
+
+
 # ── Route table ──
 
 ROUTES = {
@@ -361,6 +376,7 @@ REPORT_ROUTES = {
     "/reports/macro": lambda: handle_reports("macro", is_latest=False),
     "/reports/signal": lambda: handle_reports("signal", is_latest=False),
     "/reports/trace": lambda: handle_reports("trace", is_latest=False),
+    "/logs": lambda: handle_logs(),
 }
 
 

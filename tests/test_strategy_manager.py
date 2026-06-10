@@ -112,7 +112,8 @@ class TestStrategyManager:
             await sm.evaluate_health(bad_results)
 
         all_s = await sm.get_all_strategies()
-        assert all_s["breakout"]["status"] == "disabled"
+        assert all_s["breakout"]["status"] == "active"  # 仅警告，不禁用
+        assert all_s["breakout"]["consecutive_losses"] == 3
 
     @pytest.mark.asyncio
     async def test_healthy_results_dont_disable(self, sm):
@@ -165,7 +166,7 @@ class TestStrategyManager:
         assert all_s["breakout"]["consecutive_losses"] == 0
 
     @pytest.mark.asyncio
-    async def test_already_disabled_skipped(self, sm):
+    async def test_already_warning_persists(self, sm):
         bad_results = {
             "000001": {
                 "breakout": {
@@ -178,10 +179,12 @@ class TestStrategyManager:
         }
         for _ in range(3):
             await sm.evaluate_health(bad_results)
-        assert (await sm.get_all_strategies())["breakout"]["status"] == "disabled"
+        assert (await sm.get_all_strategies())["breakout"]["status"] == "active"
 
+        # 连续失败计数持续增加，但不自动禁用
         await sm.evaluate_health(bad_results)
-        assert (await sm.get_all_strategies())["breakout"]["status"] == "disabled"
+        assert (await sm.get_all_strategies())["breakout"]["status"] == "active"
+        assert (await sm.get_all_strategies())["breakout"]["consecutive_losses"] == 4
 
     @pytest.mark.asyncio
     async def test_no_bus_fallback_to_active(self):
