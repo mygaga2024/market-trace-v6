@@ -291,6 +291,35 @@ async def _fetch_name_via_sina(symbol: str) -> str:
     return ""
 
 
+async def fetch_stock_price_via_sina(symbol: str):
+    """通过新浪行情接口获取单只股票名称+实时价格+涨跌幅，返回 (name, price, change_pct)"""
+    prefix = "sh" if symbol.startswith(("6", "9")) else "sz"
+    url = f"http://hq.sinajs.cn/list={prefix}{symbol}"
+    try:
+        import requests
+        r = await asyncio.to_thread(requests.get, url, headers={"Referer": "https://finance.sina.com.cn"}, timeout=5)
+        r.encoding = "gbk"
+        text = r.text
+        if text and '="' in text:
+            parts = text.split('="')[1].split(",")
+            name = parts[0].strip() if parts[0].strip() != symbol else ""
+            try:
+                price = float(parts[3]) if len(parts) > 3 and parts[3] else None
+            except (ValueError, IndexError):
+                price = None
+            try:
+                prev_close = float(parts[2]) if len(parts) > 2 and parts[2] else None
+            except (ValueError, IndexError):
+                prev_close = None
+            change_pct = None
+            if price and prev_close and prev_close != 0:
+                change_pct = round((price - prev_close) / prev_close * 100, 2)
+            return name, price, change_pct
+    except Exception:
+        pass
+    return "", None, None
+
+
 async def get_stock_name(symbol: str, bus) -> str:
     """获取股票名称（Redis → 进程缓存 → 新浪实时查询）"""
     if symbol in _stock_name_cache:

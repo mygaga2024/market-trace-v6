@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from loguru import logger
 
 from api.deps import verify_token
-from services.prefetch import get_stock_name
+from services.prefetch import get_stock_name, fetch_stock_price_via_sina
 
 router = APIRouter(prefix="/watchlist", tags=["watchlist"], dependencies=[Depends(verify_token)])
 
@@ -43,6 +43,16 @@ async def get_watchlist(request: Request):
                         c = [float(r["close"]) for r in cached]
                         entry["price"] = round(c[-1], 2)
                         entry["change_pct"] = round((c[-1] - c[-2]) / c[-2] * 100, 2)
+                except Exception:
+                    pass
+            if entry["price"] is None:
+                try:
+                    live_name, live_price, live_change = await fetch_stock_price_via_sina(item.symbol)
+                    if live_name:
+                        entry["name"] = live_name
+                    if live_price is not None:
+                        entry["price"] = live_price
+                        entry["change_pct"] = live_change
                 except Exception:
                     pass
             result.append(entry)
