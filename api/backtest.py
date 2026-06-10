@@ -29,7 +29,8 @@ async def backtest_summary(request: Request):
         results = await run_strategy_backtest(bus, config, stock_pool, active_strategies=active)
         if strategy_manager:
             await strategy_manager.evaluate_health(results)
-        return {"count": len(results), "results": results}
+        total = sum(len(v) for v in results.values())
+        return {"count": total, "results": results}
     except Exception as e:
         logger.error("回测汇总失败: {}", e)
         return JSONResponse({"error": "回测执行失败"}, status_code=500)
@@ -64,8 +65,8 @@ async def backtest_strategy_enable(request: Request, name: str):
 
 
 @router.post("/run")
-async def backtest_run(request: Request):
-    """手动触发一次回测并评估策略健康"""
+async def backtest_run(request: Request, optimize: bool = False):
+    """手动触发一次回测，可选参数优化"""
     bus = request.app.state.bus
     config = request.app.state.config
     strategy_manager = request.app.state.strategy_manager
@@ -76,9 +77,9 @@ async def backtest_run(request: Request):
     try:
         from backtest.strategy_backtest import run_strategy_backtest
         active = await strategy_manager.get_active_strategies() if strategy_manager else None
-        results = await run_strategy_backtest(bus, config, stock_pool, active_strategies=active)
+        results = await run_strategy_backtest(bus, config, stock_pool, active_strategies=active, optimize=optimize)
         changes = await strategy_manager.evaluate_health(results) if strategy_manager else {}
-        return {"count": len(results), "results": results, "strategy_changes": changes}
+        return {"count": sum(len(v) for v in results.values()), "results": results, "strategy_changes": changes}
     except Exception as e:
         logger.error("手动回测失败: {}", e)
         return JSONResponse({"error": "回测执行失败"}, status_code=500)

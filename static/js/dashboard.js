@@ -489,37 +489,43 @@ function renderBacktest(data) {
     html += _renderStrategyMgmt(stratArr);
   }
 
-  html += '<div style="margin-bottom:8px;font-size:13px;color:var(--text-secondary)">\uD83D\uDCCA 股票池 × 7策略回测 — ' + d.count + ' 只股票</div>';
+  html += '<div style="margin-bottom:8px;font-size:13px;color:var(--text-secondary)">\uD83D\uDCCA 股票池 × 7策略回测 — ' + d.count + ' 笔结果</div>';
   if (!d.results || !Object.keys(d.results).length) {
     html += '<div class="tab-empty">暂无回测数据（需先刷新缓存生成K线）</div>';
     return html;
   }
   var labels = {breakout: '强势突破', oversold: '超跌反弹', strength: '主力介入', risk: '风险预警', ma_golden_cross: '均线金叉', volume_breakout: '放量突破', rsi_reversal: 'RSI反转'};
-  html += '<table class="tab-table"><tr><th>股票</th><th>最优策略</th><th>夏普</th><th>回撤%</th><th>胜率%</th><th>盈亏比</th><th>评分</th></tr>';
+  html += '<table class="tab-table"><tr><th>股票</th><th>最优策略</th><th>夏普</th><th>索提诺</th><th>回撤%</th><th>胜率%</th><th>盈亏比</th><th>Alpha</th><th>评分</th></tr>';
   Object.keys(d.results).forEach(function(sym) {
     var best = d.results[sym];
     var top = Object.keys(best)[0];
     if (!top) return;
     var r = best[top];
     var rowClass = r.score > 1 ? 'kv-ok' : r.score > 0 ? '' : 'kv-dim';
-    html += '<tr><td><span onclick="document.getElementById(\'stock-input\').value=\'' + escapeHtml(sym) + '\';analyzeStock()" style="cursor:pointer;font-weight:700;color:var(--accent-blue)">' + escapeHtml(sym) + '</span></td>';
-    html += '<td>' + escapeHtml(labels[top] || top) + '</td>';
-    html += '<td class="' + (r.sharpe > 0 ? 'kv-ok' : 'kv-dim') + '">' + r.sharpe.toFixed(2) + '</td>';
+    var shrp = r.sharpe_ratio || r.sharpe || 0;
+    html += '<tr style="cursor:pointer" onclick="showBacktestDetail(\'' + escapeHtml(sym) + '\')" title="点击查看详情">';
+    html += '<td><span style="font-weight:700;color:var(--accent-blue)">' + escapeHtml(sym) + '</span></td>';
+    html += '<td>' + escapeHtml(labels[r.strategy] || labels[top] || top) + '</td>';
+    html += '<td class="' + (shrp > 0 ? 'kv-ok' : 'kv-dim') + '">' + shrp.toFixed(2) + '</td>';
+    html += '<td class="' + ((r.sortino_ratio || 0) > 0 ? 'kv-ok' : 'kv-dim') + '">' + (r.sortino_ratio || 0).toFixed(2) + '</td>';
     html += '<td class="' + (r.max_drawdown_pct < 10 ? 'kv-ok' : 'kv-dim') + '">' + r.max_drawdown_pct + '%</td>';
     html += '<td class="' + (r.win_rate_pct > 50 ? 'kv-ok' : 'kv-dim') + '">' + r.win_rate_pct + '%</td>';
     html += '<td>' + r.profit_factor + '</td>';
+    html += '<td class="' + ((r.alpha || 0) > 0 ? 'kv-ok' : 'kv-dim') + '">' + (r.alpha || 0).toFixed(2) + '%</td>';
     html += '<td class="' + rowClass + '"><strong>' + r.score + '</strong></td>';
     html += '</tr>';
   });
   html += '</table>';
 
+  // 策略综合对比
   var strategyScores = {};
   Object.keys(d.results).forEach(function(sym) {
     var strats = d.results[sym];
     Object.keys(strats).forEach(function(name) {
       var s = strats[name];
+      var shrp = s.sharpe_ratio || s.sharpe || 0;
       if (!strategyScores[name]) strategyScores[name] = { label: labels[name] || name, sharpe: 0, win_rate: 0, count: 0 };
-      strategyScores[name].sharpe += s.sharpe || 0;
+      strategyScores[name].sharpe += shrp;
       strategyScores[name].win_rate += s.win_rate_pct / 100;
       strategyScores[name].count += 1;
     });
@@ -530,6 +536,7 @@ function renderBacktest(data) {
     chartData.push({ label: ss.label, sharpe: ss.count ? ss.sharpe / ss.count : 0, win_rate: ss.count ? ss.win_rate / ss.count : 0 });
   });
 
+  html += '<div style="margin-top:16px"><h3 class="card-title">\uD83D\uDCC8 策略综合对比</h3></div>';
   setTimeout(function() {
     var bc = document.getElementById('backtest-chart');
     if (bc) {
@@ -539,6 +546,56 @@ function renderBacktest(data) {
   }, 100);
 
   return html;
+}
+
+// 股票回测详情（权益曲线）
+var _btDetailSym = null;
+function showBacktestDetail(symbol) {
+  if (_btDetailSym === symbol) {
+    document.getElementById('backtest-detail').style.display = 'none';
+    _btDetailSym = null;
+    return;
+  }
+  _btDetailSym = symbol;
+
+  fetchAuth('/backtest/summary')
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      var results = d.results || {};
+      var strats = results[symbol];
+      if (!strats) return;
+      var top = Object.keys(strats)[0];
+      var r = strats[top];
+      if (!r || !r.equity_curve || !r.equity_curve.length) return;
+
+      var container = document.getElementById('backtest-detail');
+      if (!container) {
+        container = document.createElement('div');
+        container.id = 'backtest-detail';
+        container.style.cssText = 'margin-top:16px;padding:16px;background:var(--bg-card);border:1px solid var(--border-color);border-radius:12px';
+        document.getElementById('tab-panel').appendChild(container);
+      }
+      container.style.display = 'block';
+
+      var lbl = r.strategy_label || r.strategy;
+      var html = '<h3 class="card-title">\uD83D\uDCC8 ' + escapeHtml(symbol) + ' — ' + escapeHtml(lbl) + '</h3>';
+      html += '<div style="display:flex;gap:16px;flex-wrap:wrap;font-size:13px;margin-bottom:10px;color:var(--text-secondary)">';
+      html += '<span>夏普: <strong>' + (r.sharpe_ratio || 0).toFixed(2) + '</strong></span>';
+      html += '<span>索提诺: <strong>' + (r.sortino_ratio || 0).toFixed(2) + '</strong></span>';
+      html += '<span>胜率: <strong>' + r.win_rate_pct + '%</strong></span>';
+      html += '<span>交易: <strong>' + r.total_trades + '</strong>笔</span>';
+      html += '<span>Alpha: <strong>' + (r.alpha || 0).toFixed(2) + '%</strong></span>';
+      html += '<span>Beta: <strong>' + (r.beta || 0).toFixed(2) + '</strong></span>';
+      html += '<span>基准收益: <strong>' + (r.benchmark_return_pct || 0) + '%</strong></span>';
+      html += '</div>';
+      html += '<div id="backtest-equity-chart" class="chart-container" role="img" aria-label="权益曲线" style="height:300px"></div>';
+      html += '<div id="backtest-dd-chart" class="chart-container" role="img" aria-label="回撤曲线" style="height:120px;margin-top:8px"></div>';
+      container.innerHTML = html;
+
+      setTimeout(function() {
+        Charts.renderEquityCurve('backtest-equity-chart', 'backtest-dd-chart', r.equity_curve, r.benchmark_curve, r.drawdown_curve, r.trade_markers);
+      }, 100);
+    });
 }
 
 function renderRiskHistory(d) {

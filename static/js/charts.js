@@ -202,9 +202,101 @@ var Charts = (function() {
     _instances[containerId] = { chart: chart };
   }
 
+  function renderEquityCurve(containerId, drawdownId, equityData, benchmarkData, drawdownData, markers) {
+    if (!_ensureLWC()) return;
+    destroy(containerId);
+    destroy(drawdownId);
+
+    if (!equityData || !equityData.length) return;
+
+    var container = document.getElementById(containerId);
+    if (!container) return;
+    var W = container.clientWidth || 500;
+    var H = 300;
+
+    var chartOpts = _baseOptions(H);
+    chartOpts.width = W;
+    chartOpts.height = H;
+    chartOpts.rightPriceScale = { borderColor: COLORS.grid, scaleMargins: { top: 0.05, bottom: 0.05 } };
+
+    var chart = LightweightCharts.createChart(container, chartOpts);
+
+    // 权益曲线
+    var equitySeries = chart.addAreaSeries({
+      lineColor: COLORS.blue,
+      topColor: 'rgba(88,166,255,0.3)',
+      bottomColor: 'rgba(88,166,255,0.02)',
+      lineWidth: 2,
+      priceScaleId: 'right',
+    });
+    var eqData = equityData.map(function(e) { return { time: e.time ? e.time.split('T')[0] : '', value: e.equity }; }).filter(function(e) { return e.time; });
+    equitySeries.setData(eqData);
+
+    // 基准曲线
+    if (benchmarkData && benchmarkData.length) {
+      var benchSeries = chart.addLineSeries({
+        color: COLORS.text,
+        lineWidth: 1,
+        lineStyle: 2,
+        priceScaleId: 'right',
+      });
+      var bmData = benchmarkData.map(function(e) { return { time: e.time ? e.time.split('T')[0] : '', value: e.value }; }).filter(function(e) { return e.time; });
+      benchSeries.setData(bmData);
+    }
+
+    // 买卖标记
+    if (markers && markers.length) {
+      var markerData = markers.filter(function(m) { return m.time; }).map(function(m) {
+        return {
+          time: m.time.split('T')[0],
+          position: m.type === 'buy' ? 'belowBar' : 'aboveBar',
+          color: m.type === 'buy' ? COLORS.green : COLORS.red,
+          shape: m.type === 'buy' ? 'arrowUp' : 'arrowDown',
+          text: m.type === 'buy' ? 'B' : 'S',
+          size: 2,
+        };
+      });
+      equitySeries.setMarkers(markerData);
+    }
+
+    chart.timeScale().fitContent();
+    _instances[containerId] = { chart: chart };
+
+    // 回撤图
+    if (drawdownData && drawdownData.length) {
+      var ddContainer = document.getElementById(drawdownId);
+      if (!ddContainer) return;
+      var ddW = ddContainer.clientWidth || 500;
+      var ddH = 120;
+
+      var ddOpts = _baseOptions(ddH);
+      ddOpts.width = ddW;
+      ddOpts.height = ddH;
+      ddOpts.rightPriceScale = { borderColor: COLORS.grid, scaleMargins: { top: 0.1, bottom: 0.1 } };
+
+      var ddChart = LightweightCharts.createChart(ddContainer, ddOpts);
+
+      var ddSeries = ddChart.addAreaSeries({
+        lineColor: COLORS.red,
+        topColor: 'rgba(248,81,73,0.3)',
+        bottomColor: 'rgba(248,81,73,0.02)',
+        lineWidth: 1,
+        priceScaleId: 'right',
+        priceFormat: { type: 'percent', precision: 1 },
+      });
+      var ddData = drawdownData.map(function(d) {
+        return { time: d.time ? d.time.split('T')[0] : '', value: d.drawdown };
+      }).filter(function(d) { return d.time; });
+      ddSeries.setData(ddData);
+      ddChart.timeScale().fitContent();
+      _instances[drawdownId] = { chart: ddChart };
+    }
+  }
+
   return {
     renderKline: renderKline,
     renderBacktestBars: renderBacktestBars,
+    renderEquityCurve: renderEquityCurve,
     destroy: destroy,
     destroyAll: destroyAll,
   };
