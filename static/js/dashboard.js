@@ -476,6 +476,7 @@ function loadTab(tab) {
     },
     logs:         function() { return fetchAuth('/logs?lines=100').then(function(r) { return r.json(); }); },
     paper:        function() { return fetchAuth('/paper/account').then(function(r) { return r.json(); }); },
+    help:         function() { return Promise.resolve({}); },
   };
 
   var fn = fetchers[tab];
