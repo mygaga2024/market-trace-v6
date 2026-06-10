@@ -14,16 +14,10 @@ import numpy as np
 from loguru import logger
 
 from backtest.runner import PortfolioRunner, BacktestResult
+from core.strategies import STRATEGIES as STRATEGY_INFO
 
-STRATEGIES = {
-    "breakout": "强势突破",
-    "oversold": "超跌反弹",
-    "strength": "主力介入",
-    "risk": "风险预警",
-    "ma_golden_cross": "均线金叉",
-    "volume_breakout": "放量突破",
-    "rsi_reversal": "RSI反转",
-}
+# 保留 STRATEGIES labels 与 core/strategies.py 同步
+STRATEGIES = {k: v["label"] for k, v in STRATEGY_INFO.items()}
 
 # ── 趋势状态分类 ──
 

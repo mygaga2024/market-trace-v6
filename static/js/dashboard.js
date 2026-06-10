@@ -228,25 +228,57 @@ function analyzeStock() {
         html = '<div class="error-banner" role="alert"><span aria-hidden="true">\u274C</span> ' + escapeHtml(d.error) + '</div>';
       } else {
         var dec = d.decision;
+        var ind = d.indicators;
+        var trend = d.trend || 'sideways';
+        var trendLabel = trend === 'bullish' ? '多头排列' : trend === 'bearish' ? '空头排列' : '震荡';
+
         html = '<div class="result-card">';
         html += '<div style="font-size:18px;font-weight:700;margin-bottom:8px">';
         if (d.name) html += escapeHtml(d.name) + ' ';
         html += '<span style="color:var(--text-secondary);font-size:14px">' + escapeHtml(d.symbol) + '</span>';
+        html += '<span style="font-size:12px;color:var(--text-muted);margin-left:8px">' + escapeHtml(trendLabel) + '</span>';
         html += '</div>';
         html += '<div class="result-stats">';
         html += '<div class="result-stat"><div>价格</div><div>' + d.price.toFixed(2) + '</div></div>';
         html += '<div class="result-stat"><div>涨跌</div><div class="' + (d.change_pct >= 0 ? 'trend-up' : 'trend-down') + '"><span aria-hidden="true">' + (d.change_pct >= 0 ? '\u2191' : '\u2193') + '</span> ' + d.change_pct + '%</div></div>';
-        html += '<div class="result-stat"><div>RSI</div><div>' + (d.indicators.rsi || '\u2014') + '</div></div>';
-        html += '<div class="result-stat"><div>量比</div><div>' + d.indicators.vol_ratio + 'x</div></div>';
+        html += '<div class="result-stat"><div>RSI</div><div>' + (ind.rsi || '\u2014') + '</div></div>';
+        html += '<div class="result-stat"><div>量比</div><div>' + (ind.vol_ratio || 0) + 'x</div></div>';
+        html += '<div class="result-stat"><div>ATR</div><div>' + (ind.atr ? ind.atr.toFixed(2) : '\u2014') + '</div></div>';
         html += '</div>';
 
-        if (d.indicators.macd && d.indicators.macd.dif) {
-          html += '<div style="font-size:13px;color:var(--text-secondary)">MACD: DIF=' + d.indicators.macd.dif + ' DEA=' + d.indicators.macd.dea + ' \u67F1=' + d.indicators.macd.histogram + '</div>';
+        // 均线
+        html += '<div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">';
+        html += 'MA5: <strong>' + (ind.ma5 || '-') + '</strong> | MA20: <strong>' + (ind.ma20 || '-') + '</strong>';
+        if (ind.ma60) html += ' | MA60: <strong>' + ind.ma60 + '</strong>';
+        html += '</div>';
+
+        if (ind.macd && ind.macd.dif) {
+          html += '<div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">MACD: DIF=' + ind.macd.dif + ' DEA=' + ind.macd.dea + ' BAR=' + ind.macd.histogram + '</div>';
         }
+        if (ind.bollinger && ind.bollinger.upper) {
+          html += '<div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">布林: ' + ind.bollinger.upper + ' / ' + ind.bollinger.middle + ' / ' + ind.bollinger.lower + ' (带宽' + ind.bollinger.bandwidth + ')</div>';
+        }
+        if (ind.kdj) {
+          html += '<div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">KDJ: K=' + ind.kdj.k + ' D=' + ind.kdj.d + ' J=' + ind.kdj.j + '</div>';
+        }
+        if (ind.support_resistance) {
+          var sr = ind.support_resistance;
+          html += '<div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">支撑: <strong style="color:var(--color-green)">' + sr.support + '</strong> | 阻力: <strong style="color:var(--color-red)">' + sr.resistance + '</strong> | 枢轴: ' + sr.pivot + '</div>';
+        }
+
+        // 策略命中
+        if (d.strategy_hits && d.strategy_hits.length) {
+          html += '<div style="font-size:12px;margin-top:4px"><span aria-hidden="true">\uD83C\uDFAF</span> 策略命中: ';
+          html += d.strategy_hits.map(function(s) {
+            return '<span class="' + (s.type === 'BUY' ? 'trend-up' : 'trend-down') + '" style="margin-right:6px">' + escapeHtml(s.label) + '</span>';
+          }).join('');
+          html += '</div>';
+        }
+
         if (d.trace_signals.length) {
-          html += '<div style="font-size:12px;margin-top:6px"><span aria-hidden="true">\uD83D\uDCCA</span> ';
+          html += '<div style="font-size:12px;margin-top:4px"><span aria-hidden="true">\uD83D\uDCCA</span> ';
           html += d.trace_signals.map(function(s) {
-            return '<span class="' + (s.direction === 'bullish' ? 'trend-up' : 'trend-down') + '"><span aria-hidden="true">' + (s.direction === 'bullish' ? '\u2191' : '\u2193') + '</span> ' + escapeHtml(s.type) + '</span>';
+            return '<span class="' + (s.direction === 'bullish' ? 'trend-up' : 'trend-down') + '" style="margin-right:6px">' + (s.direction === 'bullish' ? '\u2191' : '\u2193') + ' ' + escapeHtml(s.type) + '</span>';
           }).join(' ');
           html += '</div>';
         }
