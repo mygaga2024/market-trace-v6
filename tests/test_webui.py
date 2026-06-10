@@ -226,6 +226,8 @@ def test_dev_server_mocks_all_endpoints():
             stripped.add("/paper/")
         elif base.startswith("/backtest/rolling/"):
             stripped.add("/backtest/rolling/")
+        elif base.startswith("/scan/"):
+            stripped.add("/scan/")
         else:
             stripped.add(base)
 
