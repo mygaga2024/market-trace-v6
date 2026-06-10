@@ -151,18 +151,16 @@ class TestPortfolioRunner:
         assert len(runner.trades) == 0
 
     def test_finalize_metrics(self, runner):
-        for i, close in enumerate([10.0, 10.5, 11.0, 10.8, 12.0]):
-            bar = _make_bar(close=close, time=f"2026-01-{i+5:02d}")
-            runner.step(bar)
-
+        runner.step(_make_bar(close=10.0, time="2026-01-05"))
         runner.buy(_make_bar(close=10.0, time="2026-01-05"), size_pct=1.0)
+        runner.step(_make_bar(close=12.0, time="2026-01-10"))
         runner.sell(_make_bar(close=12.0, time="2026-01-10"), reason="卖出")
 
         result = runner.finalize(symbol="000001", strategy="test")
 
         assert isinstance(result, BacktestResult)
         assert result.symbol == "000001"
-        assert result.final_equity > 100_000
+        assert result.final_equity > 100000
         assert result.total_trades == 1
         assert result.win_rate == 1.0
 
@@ -188,18 +186,17 @@ class TestPortfolioRunner:
         assert trade.pnl < 0
 
     def test_take_profit_and_trailing_stop(self, runner):
-        bar = _make_bar(close=10.0)
-        runner.step(bar)
-        runner.buy(bar, size_pct=1.0)
+        # 买入价格10, 涨到12后触发止盈监控, 回落触发移动止盈
+        runner.step(_make_bar(close=10.0))
+        runner.buy(_make_bar(close=10.0), size_pct=1.0)
 
-        # 涨到 12 触发止盈监控，再跌到 11.4 触发移动止盈
-        bar2 = _make_bar(close=12.0, high=12.5, time="2026-01-06")
-        runner.step(bar2)
-        runner.check_exits(bar2)
+        # 涨到12 (高于 avg*1.15=11.5)
+        runner.step(_make_bar(close=12.0, high=12.0, time="2026-01-06"))
+        runner.check_exits(_make_bar(close=12.0, high=12.0, time="2026-01-06"))
 
-        bar3 = _make_bar(close=11.3, low=11.3, high=11.5, time="2026-01-07")
-        runner.step(bar3)
-        trade = runner.check_exits(bar3)
+        # 回落到11.3 (低于 highest*0.95 = 11.4)
+        runner.step(_make_bar(close=11.3, low=11.3, time="2026-01-07"))
+        trade = runner.check_exits(_make_bar(close=11.3, low=11.3, time="2026-01-07"))
         assert trade is not None
         assert "移动止盈" in trade.reason
 
