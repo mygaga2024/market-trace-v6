@@ -324,44 +324,64 @@ class AkShareProvider(DataProviderBase):
 
     async def _do_fetch_macro_indices(self) -> Optional[dict[str, Any]]:
         import akshare as ak
+        import requests as _requests
 
         await self._random_delay()
-        logger.debug("AkShare 抓取宏观指标 (实时行情版)")
+        logger.debug("AkShare 抓取宏观指标 (Sina实时行情版)")
 
         results: dict[str, Any] = {
             "timestamp": datetime.now().isoformat(),
-            "source": "akshare:spot",
+            "source": "akshare:sina",
             "degraded": False,
         }
 
-        # ── 指数实时行情 ──
-        index_codes = {"sh000001", "sz399001", "sz399006", "sh000688", "sh000300"}
+        # ── 指数实时行情 (Sina API, NAS Docker 可通过) ──
+        index_map = {
+            "sh000001": "上证指数", "sz399001": "深证成指", "sz399006": "创业板指",
+            "sh000688": "科创50", "sh000300": "沪深300",
+        }
         indices_data: list[dict] = []
 
+        sina_codes = ",".join(f"s_{c}" for c in index_map)
         try:
-            spot_df = await asyncio.to_thread(ak.stock_zh_index_spot_em)
-            if spot_df is not None and not spot_df.empty:
-                for _, row in spot_df.iterrows():
-                    code = str(row.get("代码", ""))
-                    if code not in index_codes:
-                        continue
+            r = await asyncio.to_thread(
+                _requests.get,
+                f"http://hq.sinajs.cn/list={sina_codes}",
+                headers={"Referer": "https://finance.sina.com.cn"},
+                timeout=10,
+            )
+            r.encoding = "gbk"
+            lines = [l for l in r.text.strip().split("\n") if l.strip() and '="' in l]
+
+            for line in lines:
+                code_part = line.split("=")[0].replace("var hq_str_s_", "").strip()
+                data_part = line.split('="')[1].rstrip('";')
+                parts = data_part.split(",")
+                if len(parts) < 4:
+                    continue
+                try:
+                    name = parts[0].strip()
+                    cur = float(parts[1]) if parts[1] else 0.0
+                    chg_pct = float(parts[3]) if len(parts) > 3 and parts[3] else 0.0
+                    vol = float(parts[4]) if len(parts) > 4 and parts[4] else 0.0
+                    amt = float(parts[5]) if len(parts) > 5 and parts[5] else 0.0
                     indices_data.append({
-                        "code": code,
-                        "name": str(row.get("名称", "")),
-                        "close": float(row.get("最新价", 0) or 0),
-                        "涨跌幅": float(row.get("涨跌幅", 0) or 0),
-                        "volume": float(row.get("成交量", 0) or 0),
-                        "amount": float(row.get("成交额", 0) or 0),
-                        "date": str(row.get("日期", "") or datetime.now().strftime("%Y-%m-%d")),
+                        "code": code_part,
+                        "name": name or index_map.get(code_part, code_part),
+                        "close": round(cur, 2),
+                        "涨跌幅": round(chg_pct, 2),
+                        "volume": vol,
+                        "amount": amt,
+                        "date": datetime.now().strftime("%Y-%m-%d"),
                     })
+                except (ValueError, IndexError):
+                    continue
+            logger.info("Sina 实时指数: {}/{} 个", len(indices_data), len(index_map))
         except Exception as e:
-            logger.warning("指数实时行情抓取失败: {}, 尝试降级到日线", e)
-            try:
-                index_map = [
-                    ("sh000001", "上证指数"), ("sz399001", "深证成指"), ("sz399006", "创业板指"),
-                    ("sh000688", "科创50"), ("sh000300", "沪深300"),
-                ]
-                for code, name in index_map:
+            logger.warning("Sina 指数实时行情失败: {}, 降级到 akshare 日线", e)
+            # 降级到日线
+            for code, name in index_map.items():
+                try:
                     df = await asyncio.to_thread(ak.stock_zh_index_daily, symbol=code)
                     if df is not None and not df.empty:
                         latest = df.iloc[-1]
@@ -377,8 +397,8 @@ class AkShareProvider(DataProviderBase):
                             "date": str(latest.get("date", "")),
                         })
                     await asyncio.sleep(0.05)
-            except Exception as e2:
-                logger.warning("指数日线降级也失败: {}", e2)
+                except Exception as e2:
+                    logger.warning("指数 {} 日线降级也失败: {}", code, e2)
 
         results["indices"] = indices_data
 
@@ -401,7 +421,7 @@ class AkShareProvider(DataProviderBase):
                         })
                 logger.info("行业板块实时行情: {} 个板块", len(sectors_data))
         except Exception as e:
-            logger.warning("行业板块抓取失败: {}, 降级为空", e)
+            logger.debug("行业板块抓取失败 (NAS网络限制): {}, 降级为空", e)
 
         results["sectors"] = sectors_data
 
