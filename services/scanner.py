@@ -258,8 +258,8 @@ async def quick_scan(strategy: str, limit: int = 50,
 
 async def smart_scan(bus, config: dict, limit: int = 30) -> dict:
     """
-    智能扫描：对全市场跑所有7个策略，返回综合得分最高的股票。
-    每只股票取其最优策略评分，按分数降序排列。
+    智能扫描：对有缓存K线的股票做7策略深度评分。
+    全市场粗筛 + 缓存股票深度分析。
     """
     stocks = await get_all_stocks(bus)
     if not stocks:
@@ -269,15 +269,17 @@ async def smart_scan(bus, config: dict, limit: int = 30) -> dict:
     sem = asyncio.Semaphore(10)
     scored: list[dict] = []
     skipped = 0
+    checked = 0
 
     async def _score_one(stock: dict) -> None:
-        nonlocal skipped
+        nonlocal skipped, checked
         async with sem:
             try:
                 cached = await bus.cache_get(f"market:raw:{stock['symbol']}") if bus else None
                 if not cached or len(cached) < 30:
                     skipped += 1
                     return
+                checked += 1
 
                 closes = np.array([float(r["close"]) for r in cached])
                 highs = np.array([float(r["high"]) for r in cached])
@@ -290,10 +292,9 @@ async def smart_scan(bus, config: dict, limit: int = 30) -> dict:
                     try:
                         kwargs = info.get("params", {}).copy()
                         if info["check"](closes, highs, volumes, **kwargs):
-                            # 简单评分：量比 + 涨跌幅度
-                            vol_r = float(volumes[-1] / np.mean(volumes[:-1])) if len(volumes) > 1 and np.mean(volumes[:-1]) > 0 else 1.0
                             chg = abs((closes[-1] - closes[-2]) / closes[-2]) if len(closes) > 1 else 0
-                            score = vol_r + chg * 10
+                            vol_r = float(volumes[-1] / np.mean(volumes[:-1])) if len(volumes) > 1 and np.mean(volumes[:-1]) > 0 else 1.0
+                            score = vol_r + chg * 10 + (abs(stock.get("change_pct", 0)) * 0.5)
                             if score > best_score:
                                 best_score = score
                                 best_strategy = name
@@ -306,7 +307,7 @@ async def smart_scan(bus, config: dict, limit: int = 30) -> dict:
                         "symbol": stock["symbol"],
                         "name": stock["name"],
                         "price": round(float(closes[-1]), 2),
-                        "change_pct": round((closes[-1] - closes[-2]) / closes[-2] * 100, 2) if len(closes) > 1 else 0,
+                        "change_pct": round((closes[-1] - closes[-2]) / closes[-2] * 100, 2) if len(closes) > 1 else round(stock.get("change_pct", 0), 2),
                         "strategy": best_strategy,
                         "strategy_label": best_label,
                         "score": round(best_score, 2),
@@ -314,6 +315,7 @@ async def smart_scan(bus, config: dict, limit: int = 30) -> dict:
             except Exception:
                 pass
 
+    # 同时扫描全部（主要命中缓存的stock_pool股票）
     tasks = [asyncio.create_task(_score_one(s)) for s in stocks]
     await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -321,7 +323,7 @@ async def smart_scan(bus, config: dict, limit: int = 30) -> dict:
     elapsed = time.monotonic() - t0
 
     return {
-        "total": len(stocks), "scored": len(scored), "skipped": skipped,
+        "total": len(stocks), "checked": checked, "scored": len(scored), "skipped": skipped,
         "elapsed_seconds": round(elapsed, 1),
         "results": scored[:limit],
     }
