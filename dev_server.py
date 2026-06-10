@@ -348,6 +348,22 @@ def handle_paper_account():
     })
 
 
+def handle_full_scan(strategy: str):
+    """返回 mock 全市场扫描结果"""
+    labels = {"breakout": "强势突破", "oversold": "超跌反弹", "strength": "主力介入",
+              "ma_golden_cross": "均线金叉", "volume_breakout": "放量突破", "rsi_reversal": "RSI反转"}
+    return json_response({
+        "strategy": labels.get(strategy, strategy), "strategy_id": strategy,
+        "total_stocks": 5526, "checked": 5526, "too_few_data": 200, "errors": 5,
+        "matched": 5, "elapsed_seconds": 6.5,
+        "results": [
+            {"symbol": "000001", "name": "平安银行", "price": 12.56, "change_pct": 2.34, "vol_ratio": 2.5},
+            {"symbol": "600519", "name": "贵州茅台", "price": 1780.00, "change_pct": 3.21, "vol_ratio": 1.8},
+            {"symbol": "000858", "name": "五粮液", "price": 156.80, "change_pct": -1.02, "vol_ratio": 3.1},
+        ],
+    })
+
+
 # ── Route table ──
 
 ROUTES = {
@@ -387,6 +403,8 @@ REGEX_ROUTES = [
      lambda _: None),  # handled via body parsing below
     (re.compile(r"^/watchlist/(.+)$"), "DELETE",
      lambda m: handle_watchlist_delete(m.group(1))),
+    (re.compile(r"^/scan/(smart|breakout|oversold|strength|ma_golden_cross|volume_breakout|rsi_reversal)$"), "POST",
+     lambda m: handle_full_scan(m.group(1))),
 ]
 
 # prefix-based static routes for reports with query params
