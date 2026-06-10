@@ -494,6 +494,7 @@ function loadTab(tab) {
       case 'backtest':     html = renderBacktest(data); break;
       case 'logs':         html = renderLogs(data); break;
       case 'paper':        html = renderPaper(data); break;
+      case 'help':         html = renderHelp(); break;
       default: html = '<pre>' + escapeHtml(JSON.stringify(data, null, 2)) + '</pre>';
     }
     _tabCache[tab] = html;
@@ -882,6 +883,81 @@ function renderPaper(d) {
     html += '<div class="tab-empty">暂无交易 — 执行AI诊股后将自动记录纸上交易</div>';
   }
   return html;
+}
+
+function renderHelp() {
+  return '\
+<div class="help-guide">\
+<h2>&#x2753; Market Trace V6.0 使用指南</h2>\
+\
+<h3>&#x1F3AF; 诊股</h3>\
+<p>在顶部输入框输入股票代码（如 <code>000001</code>），点击<strong>"诊股"</strong>按钮或按回车。</p>\
+<p>系统将拉取K线数据，计算14项技术指标（RSI/MACD/布林带/KDJ/ATR/支撑阻力/均线趋势），检测7策略信号，并通过AI三级回退链（DeepSeek→Gemini→MiniMax→纯规则）输出交易决策。</p>\
+\
+<h3>&#x1F4BC; 持仓列表</h3>\
+<p>添加关注的股票代码，系统自动显示实时价格和涨跌幅。点击股票名称可快速诊股，点击 <strong>&#x00D7;</strong> 可移除。右上角<strong>"刷新列表"</strong>按钮可手动刷新所有持仓价格。</p>\
+\
+<h3>&#x1F4CA; 策略回测</h3>\
+<p>选择"策略回测"Tab，查看股票池×7策略的回测结果。表格展示夏普比率、索提诺比率、最大回撤、胜率、Alpha/Beta等指标。<strong>点击股票行</strong>可查看权益曲线、回撤曲线和买卖标记。</p>\
+<p>点击<strong>"手动回测"</strong>按钮可触发新一轮回测。策略评分不足时会警告但不会自动禁用。</p>\
+\
+<h3>&#x1F50D; 全市场扫描（选股）</h3>\
+<p>页面底部<strong>"全市场扫描"</strong>区域：</p>\
+<ul>\
+<li><strong>绿色按钮</strong> — 对5526只A股做单策略批量筛选。先按实时涨跌幅粗筛，再对有缓存K线的股票做深度策略验证。</li>\
+<li><strong>紫色"智能综合"按钮</strong> — 对全部有缓存K线的股票跑7策略综合评分排行。</li>\
+<li>扫描结果可直接点<strong>"诊股"</strong>按钮跳转详细分析。</li>\
+</ul>\
+<p>上方<strong>"股票池扫描"</strong>仅对配置的stock_pool做策略筛选。</p>\
+\
+<h3>&#x1F4B0; 纸上交易</h3>\
+<p>每次AI诊股后，系统自动在模拟账户中执行一笔纸上交易。查看<strong>"纸上交易"Tab</strong>可追踪模拟账户的权益变化、持仓和交易记录。</p>\
+<p>点击<strong>"按市价估值"</strong>可更新所有纸上持仓的当前市值。</p>\
+\
+<h3>&#x1F6E1; 风控闭环</h3>\
+<p>Risk Agent 实时监控宏观RAI和资金流向。当RAI极端值(>0.75或<0.25)与资金方向矛盾时，自动降权AI决策置信度。风控历史Tab记录所有否决事件。</p>\
+\
+<h3>&#x1F4DC; 系统日志</h3>\
+<p>查看最近100行系统日志，用于排查异常或了解系统运行状态。</p>\
+\
+<h3>&#x26A1; 快捷操作</h3>\
+<ul>\
+<li>持仓列表中<strong>点击股票名称</strong> → 快速诊股</li>\
+<li>回测表格中<strong>点击股票行</strong> → 查看权益曲线</li>\
+<li>扫描结果中<strong>点击"诊股"</strong> → 跳转分析</li>\
+<li>风控卡片<strong>点击</strong> → 跳转风控历史</li>\
+<li>决策历史中<strong>点击行</strong> → 查看完整决策详情</li>\
+</ul>\
+\
+<h3>&#x1F4E1; AI决策链</h3>\
+<p>系统使用三级LLM回退链确保决策不中断：<strong>DeepSeek → Gemini → MiniMax → 纯规则加权</strong>。任一环节熔断或超时自动降级到下一级。</p>\
+\
+<h3>&#x1F4CA; 技术指标说明</h3>\
+<table class="tab-table">\
+<tr><th>指标</th><th>说明</th></tr>\
+<tr><td>RSI</td><td>相对强弱指数，>70超买(看空)，<30超卖(看多)</td></tr>\
+<tr><td>MACD</td><td>异同移动均线，金叉看多，死叉看空</td></tr>\
+<tr><td>布林带</td><td>价格在上下轨间波动，带宽收窄预示变盘</td></tr>\
+<tr><td>KDJ</td><td>随机指标，J>100超买，J<0超卖</td></tr>\
+<tr><td>ATR</td><td>平均真实波幅，衡量波动率</td></tr>\
+<tr><td>RAI</td><td>风险偏好指数，0-1，>0.55乐观，<0.45悲观</td></tr>\
+<tr><td>Alpha</td><td>策略超额收益(相对基准)</td></tr>\
+<tr><td>Beta</td><td>系统性风险暴露(相对基准)</td></tr>\
+<tr><td>Sharpe</td><td>风险调整后收益，>1良好</td></tr>\
+<tr><td>Sortino</td><td>下行风险调整收益，>2优秀</td></tr>\
+</table>\
+</div>\
+<style>\
+.help-guide { max-width:800px; line-height:1.8; }\
+.help-guide h2 { font-size:20px; margin-bottom:16px; color:var(--accent-blue); }\
+.help-guide h3 { font-size:15px; margin-top:20px; margin-bottom:8px; color:var(--text-primary); border-bottom:1px solid var(--bg-tag); padding-bottom:4px; }\
+.help-guide p { font-size:14px; color:var(--text-secondary); margin-bottom:8px; }\
+.help-guide ul { color:var(--text-secondary); font-size:14px; padding-left:20px; margin-bottom:8px; }\
+.help-guide li { margin-bottom:4px; }\
+.help-guide code { background:var(--bg-tag); padding:2px 6px; border-radius:4px; font-size:13px; }\
+.help-guide strong { color:var(--text-primary); }\
+</style>\
+';
 }
 
 /* ── Watchlist ── */
