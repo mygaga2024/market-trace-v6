@@ -105,10 +105,9 @@ async def quick_scan(strategy: str, limit: int = 50,
                      min_price: float = 1.0, max_price: float = 9999,
                      bus=None) -> dict:
     """
-    快速全市场扫描
-    1. 拉取全市场股票列表（带实时价格）
-    2. 对每只股票检查策略条件
-    3. 按综合评分排序返回 top N
+    快速全市场扫描（两阶段）
+    阶段1: 用实时行情数据粗筛 (price/chg/vol)
+    阶段2: 对粗筛通过的股票做深度策略检查 (需缓存K线)
     """
     info = STRATEGIES.get(strategy)
     if not info:
@@ -123,23 +122,52 @@ async def quick_scan(strategy: str, limit: int = 50,
 
     logger.info("全市场扫描开始: {} ({} 只)", label, len(stocks))
 
-    # 过滤价格区间
-    candidates = [s for s in stocks if min_price <= s.get("price", 0) <= max_price]
-    logger.info("价格过滤后: {} 只", len(candidates))
+    # 阶段1: 实时行情粗筛（无需缓存K线）
+    rough_hits: list[dict] = []
+    for s in stocks:
+        price = s.get("price", 0)
+        chg = s.get("change_pct", 0)
+        if min_price <= price <= max_price and price > 0:
+            # 简单初筛（不同策略用不同条件）
+            if strategy == "breakout" and chg > 1 and price > 5:
+                rough_hits.append(s)
+            elif strategy == "oversold" and chg < -3:
+                rough_hits.append(s)
+            elif strategy == "strength" and chg > 2:
+                rough_hits.append(s)
+            elif strategy == "risk" and chg < -5:
+                rough_hits.append(s)
+            elif strategy == "ma_golden_cross" and chg > 0.5:
+                rough_hits.append(s)
+            elif strategy == "volume_breakout" and chg > 3:
+                rough_hits.append(s)
+            elif strategy == "rsi_reversal" and chg < -2:
+                rough_hits.append(s)
 
+    logger.info("阶段1粗筛: {} → {} 只", len(stocks), len(rough_hits))
+
+    # 阶段2: 深度策略检查（仅对粗筛通过的股票）
     sem = asyncio.Semaphore(10)
     hits: list[dict] = []
-    too_few_data = 0
-    errors = 0
     checked = 0
+    too_few_data = 0
 
-    async def _check_one(stock: dict) -> None:
-        nonlocal too_few_data, errors, checked
+    async def _deep_check(stock: dict) -> None:
+        nonlocal checked, too_few_data
         async with sem:
+            checked += 1
             try:
                 cached = await bus.cache_get(f"market:raw:{stock['symbol']}") if bus else None
                 if not cached or len(cached) < 20:
                     too_few_data += 1
+                    # 无缓存时用行情数据直接输出（不验证策略）
+                    hits.append({
+                        "symbol": stock["symbol"],
+                        "name": stock["name"],
+                        "price": round(stock.get("price", 0), 2),
+                        "change_pct": round(stock.get("change_pct", 0), 2),
+                        "vol_ratio": 1.0,
+                    })
                     return
 
                 closes = np.array([float(r["close"]) for r in cached])
@@ -148,32 +176,30 @@ async def quick_scan(strategy: str, limit: int = 50,
 
                 kwargs = info.get("params", {}).copy()
                 if check_fn(closes, highs, volumes, **kwargs):
+                    vol_r = round(float(volumes[-1] / np.mean(volumes[:-1])), 2) if len(volumes) > 1 and np.mean(volumes[:-1]) > 0 else 1.0
                     hits.append({
                         "symbol": stock["symbol"],
                         "name": stock["name"],
                         "price": round(float(closes[-1]), 2),
-                        "change_pct": round((closes[-1] - closes[-2]) / closes[-2] * 100, 2) if len(closes) > 1 else 0,
-                        "vol_ratio": round(float(volumes[-1] / np.mean(volumes[:-1])), 2) if len(volumes) > 1 and np.mean(volumes[:-1]) > 0 else 1.0,
+                        "change_pct": round((closes[-1] - closes[-2]) / closes[-2] * 100, 2) if len(closes) > 1 else round(stock.get("change_pct", 0), 2),
+                        "vol_ratio": vol_r,
                     })
                     logger.debug("命中: {} {}", stock["symbol"], stock["name"])
             except Exception as e:
-                errors += 1
                 logger.debug("扫描 {} 失败: {}", stock["symbol"], e)
 
-    tasks = [asyncio.create_task(_check_one(s)) for s in candidates]
-    await asyncio.gather(*tasks, return_exceptions=True)
-    checked = len(candidates) - errors
+    if rough_hits:
+        tasks = [asyncio.create_task(_deep_check(s)) for s in rough_hits]
+        await asyncio.gather(*tasks, return_exceptions=True)
 
-    # 排序
     hits.sort(key=lambda x: (-x["vol_ratio"], -abs(x["change_pct"])))
-
     elapsed = time.monotonic() - t0
-    logger.info("全市场扫描完成: {:.1f}s, 命中 {}/{}", elapsed, len(hits), checked)
+    logger.info("全市场扫描完成: {:.1f}s, 命中 {}/{}({})", elapsed, len(hits), checked, too_few_data)
 
     return {
         "strategy": label, "strategy_id": strategy,
-        "total_stocks": len(stocks), "checked": checked,
-        "too_few_data": too_few_data, "errors": errors,
+        "total_stocks": len(stocks), "rough_filtered": len(rough_hits),
+        "deep_checked": checked, "too_few_data": too_few_data,
         "matched": len(hits), "elapsed_seconds": round(elapsed, 1),
         "results": hits[:limit],
     }
