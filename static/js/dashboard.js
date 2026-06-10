@@ -357,17 +357,85 @@ async function screenStocks(strategy) {
     var r = await fetchAuth('/screen/' + strategy, { method: 'POST', signal: _screenAbort.signal });
     var d = await r.json();
     if (d.error) { container.innerHTML = '<div class="error-banner" role="alert">' + escapeHtml(d.error) + '</div>'; return; }
-
-    var html = '<div style="font-size:13px;color:var(--text-secondary);margin-bottom:10px"><span aria-hidden="true">\uD83D\uDCCB</span> ' + escapeHtml(d.strategy) + ' — 匹配 ' + d.matched + ' 只</div>';
-    d.results.forEach(function(s) {
-      var nameDisplay = s.name ? escapeHtml(s.name) + ' ' : '';
-      html += '<div class="strat-result" tabindex="0" role="button" aria-label="分析 ' + escapeHtml(s.symbol) + '" onclick="document.getElementById(\'stock-input\').value=\'' + escapeHtml(s.symbol) + '\';analyzeStock()" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){document.getElementById(\'stock-input\').value=\'' + escapeHtml(s.symbol) + '\';analyzeStock()}"><span class="price">' + nameDisplay + escapeHtml(s.symbol) + '</span> ' + s.price.toFixed(2) + ' <span class="' + (s.change_pct >= 0 ? 'trend-up' : 'trend-down') + '"><span aria-hidden="true">' + (s.change_pct >= 0 ? '\u2191' : '\u2193') + '</span> ' + s.change_pct + '%</span> <span style="color:var(--text-secondary)">量比 ' + s.vol_ratio + 'x</span></div>';
-    });
-    container.innerHTML = html;
+    renderScreenResults(container, d);
   } catch (e) {
     if (e.name === 'AbortError') return;
     container.innerHTML = '<div class="error-banner" role="alert">' + escapeHtml(e.message) + '</div>';
   }
+}
+
+function renderScreenResults(container, d) {
+  var html = '<div style="font-size:13px;color:var(--text-secondary);margin-bottom:10px"><span aria-hidden="true">\uD83D\uDCCB</span> ' + escapeHtml(d.strategy) + ' — 匹配 ' + d.matched + ' 只</div>';
+  d.results.forEach(function(s) {
+    var nameDisplay = s.name ? escapeHtml(s.name) + ' ' : '';
+    html += '<div class="strat-result" tabindex="0" onclick="document.getElementById(\'stock-input\').value=\'' + escapeHtml(s.symbol) + '\';analyzeStock()"><span class="price">' + nameDisplay + escapeHtml(s.symbol) + '</span> ' + s.price.toFixed(2) + ' <span class="' + (s.change_pct >= 0 ? 'trend-up' : 'trend-down') + '"><span aria-hidden="true">' + (s.change_pct >= 0 ? '\u2191' : '\u2193') + '</span> ' + s.change_pct + '%</span> <span style="color:var(--text-secondary)">量比 ' + s.vol_ratio + 'x</span></div>';
+  });
+  container.innerHTML = html;
+}
+
+/* ── 全市场扫描 ── */
+function fullScan(strategy) {
+  var container = $id('fullscan-results');
+  container.style.display = 'block';
+  container.innerHTML = '<div class="spinner" role="status">\u23F3 全市场扫描中... 正在扫描5000+只A股，预计30-60秒</div>';
+
+  fetchAuth('/scan/' + strategy, { method: 'POST' })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.error) { container.innerHTML = '<div class="error-banner" role="alert">' + escapeHtml(d.error) + '</div>'; return; }
+      var html = '<div style="font-size:13px;color:var(--text-secondary);margin-bottom:10px">';
+      html += '\uD83D\uDD0D ' + escapeHtml(d.strategy) + ' — 全市场扫描';
+      html += ' | 总计' + d.total_stocks + '只 | 检查' + d.checked + '只 | 命中<strong>' + d.matched + '</strong>只';
+      html += ' | 耗时' + d.elapsed_seconds + 's';
+      html += '</div>';
+      if (d.results && d.results.length) {
+        html += '<table class="tab-table"><tr><th>代码</th><th>名称</th><th>价格</th><th>涨跌</th><th>量比</th><th>操作</th></tr>';
+        d.results.forEach(function(s) {
+          var cls = s.change_pct >= 0 ? 'trend-up' : 'trend-down';
+          html += '<tr><td>' + escapeHtml(s.symbol) + '</td><td>' + escapeHtml(s.name || '') + '</td><td>' + s.price.toFixed(2) + '</td><td class="' + cls + '">' + (s.change_pct > 0 ? '+' : '') + s.change_pct.toFixed(2) + '%</td><td>' + s.vol_ratio.toFixed(1) + 'x</td>';
+          html += '<td><button onclick="document.getElementById(\'stock-input\').value=\'' + escapeHtml(s.symbol) + '\';analyzeStock()" style="padding:2px 8px;background:var(--btn-primary-bg);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px">诊股</button></td></tr>';
+        });
+        html += '</table>';
+      } else {
+        html += '<div class="tab-empty">未命中任何股票</div>';
+      }
+      container.innerHTML = html;
+    })
+    .catch(function(e) {
+      container.innerHTML = '<div class="error-banner" role="alert">\u26A0\uFE0F ' + escapeHtml(e.message) + '</div>';
+    });
+}
+
+function smartScan() {
+  var container = $id('fullscan-results');
+  container.style.display = 'block';
+  container.innerHTML = '<div class="spinner" role="status">\u23F3 智能扫描中... 7策略×5000+只A股，预计60-90秒</div>';
+
+  fetchAuth('/scan/smart', { method: 'POST' })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.error) { container.innerHTML = '<div class="error-banner" role="alert">' + escapeHtml(d.error) + '</div>'; return; }
+      var html = '<div style="font-size:13px;color:var(--text-secondary);margin-bottom:10px">';
+      html += '\uD83E\uDDE0 智能综合扫描 — 全市场7策略评分';
+      html += ' | 总计' + d.total + '只 | 命中' + d.scored + '只 | 耗时' + d.elapsed_seconds + 's';
+      html += '</div>';
+      if (d.results && d.results.length) {
+        html += '<table class="tab-table"><tr><th>代码</th><th>名称</th><th>价格</th><th>涨跌</th><th>最优策略</th><th>评分</th><th>操作</th></tr>';
+        d.results.forEach(function(s) {
+          var cls = s.change_pct >= 0 ? 'trend-up' : 'trend-down';
+          html += '<tr><td>' + escapeHtml(s.symbol) + '</td><td>' + escapeHtml(s.name || '') + '</td><td>' + s.price.toFixed(2) + '</td><td class="' + cls + '">' + (s.change_pct > 0 ? '+' : '') + s.change_pct.toFixed(2) + '%</td>';
+          html += '<td>' + escapeHtml(s.strategy_label || s.strategy) + '</td><td><strong>' + s.score.toFixed(1) + '</strong></td>';
+          html += '<td><button onclick="document.getElementById(\'stock-input\').value=\'' + escapeHtml(s.symbol) + '\';analyzeStock()" style="padding:2px 8px;background:var(--btn-primary-bg);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px">诊股</button></td></tr>';
+        });
+        html += '</table>';
+      } else {
+        html += '<div class="tab-empty">未命中任何股票</div>';
+      }
+      container.innerHTML = html;
+    })
+    .catch(function(e) {
+      container.innerHTML = '<div class="error-banner" role="alert">\u26A0\uFE0F ' + escapeHtml(e.message) + '</div>';
+    });
 }
 
 /* ── Tab Switching ── */

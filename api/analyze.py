@@ -135,3 +135,35 @@ async def paper_mark_to_market(request: Request):
     except Exception as e:
         logger.error("市价估值失败: {}", e)
         return JSONResponse({"error": "市价估值失败"}, status_code=500)
+
+
+@router.post("/scan/{strategy}")
+async def scan_market(request: Request, strategy: str = "breakout", limit: int = 50):
+    """全市场快速扫描: 按策略筛选全部A股"""
+    bus = request.app.state.bus
+    config = request.app.state.config
+    if not bus:
+        return JSONResponse({"error": "消息总线未就绪"}, status_code=503)
+    try:
+        from services.scanner import quick_scan
+        result = await quick_scan(strategy, limit=limit, bus=bus)
+        return result
+    except Exception as e:
+        logger.error("全市场扫描失败: {}", e)
+        return JSONResponse({"error": "扫描执行失败"}, status_code=500)
+
+
+@router.post("/scan/smart")
+async def smart_scan_market(request: Request, limit: int = 30):
+    """智能扫描: 全市场×7策略综合评分"""
+    bus = request.app.state.bus
+    config = request.app.state.config
+    if not bus:
+        return JSONResponse({"error": "消息总线未就绪"}, status_code=503)
+    try:
+        from services.scanner import smart_scan
+        result = await smart_scan(bus, config, limit=limit)
+        return result
+    except Exception as e:
+        logger.error("智能扫描失败: {}", e)
+        return JSONResponse({"error": "智能扫描执行失败"}, status_code=500)

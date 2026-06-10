@@ -113,7 +113,9 @@
   <div id="backtest-chart" class="chart-container chart-container--compact" style="display:none" role="img" aria-label="策略对比图"></div>
 
   <section style="margin-top:20px" aria-label="选股策略">
-    <h2 class="card-title" style="margin-bottom:10px">&#x1F3AF; 选股策略</h2>
+    <h2 class="card-title" style="margin-bottom:10px">&#x1F3AF; 选股策略
+      <span style="font-size:12px;color:var(--text-muted);margin-left:8px">股票池扫描</span>
+    </h2>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
       <button onclick="screenStocks('breakout')" class="strat-btn">&#x1F525; 强势突破</button>
       <button onclick="screenStocks('oversold')" class="strat-btn">&#x1F48E; 超跌反弹</button>
@@ -121,6 +123,20 @@
       <button onclick="screenStocks('risk')" class="strat-btn">&#x1F4C9; 风险预警</button>
     </div>
     <div id="screen-results" style="display:none" aria-live="polite" aria-label="选股结果"></div>
+
+    <h2 class="card-title" style="margin:16px 0 10px">&#x1F50D; 全市场扫描
+      <span style="font-size:12px;color:var(--text-muted);margin-left:8px">5000+ A股</span>
+    </h2>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      <button onclick="fullScan('breakout')" class="strat-btn" style="background:var(--btn-primary-bg);color:#fff;border:none">&#x1F525; 突破</button>
+      <button onclick="fullScan('oversold')" class="strat-btn" style="background:var(--btn-primary-bg);color:#fff;border:none">&#x1F48E; 超跌</button>
+      <button onclick="fullScan('strength')" class="strat-btn" style="background:var(--btn-primary-bg);color:#fff;border:none">&#x1F4B0; 主力</button>
+      <button onclick="fullScan('ma_golden_cross')" class="strat-btn" style="background:var(--btn-primary-bg);color:#fff;border:none">&#x1F4C8; 金叉</button>
+      <button onclick="fullScan('volume_breakout')" class="strat-btn" style="background:var(--btn-primary-bg);color:#fff;border:none">&#x1F4CA; 放量</button>
+      <button onclick="fullScan('rsi_reversal')" class="strat-btn" style="background:var(--btn-primary-bg);color:#fff;border:none">&#x1F504; RSI反转</button>
+      <button onclick="smartScan()" class="strat-btn" style="background:var(--accent-purple);color:#fff;border:none">&#x1F9E0; 智能综合</button>
+    </div>
+    <div id="fullscan-results" style="display:none" aria-live="polite" aria-label="全市场扫描结果"></div>
   </section>
 </main>
 
