@@ -326,53 +326,84 @@ class AkShareProvider(DataProviderBase):
         import akshare as ak
 
         await self._random_delay()
-        logger.debug("AkShare 抓取宏观指标 (适配版)")
+        logger.debug("AkShare 抓取宏观指标 (实时行情版)")
 
         results: dict[str, Any] = {
             "timestamp": datetime.now().isoformat(),
-            "source": "akshare",
+            "source": "akshare:spot",
             "degraded": False,
         }
 
-        index_codes = [
-            ("sh000001", "上证指数"),
-            ("sz399001", "深证成指"),
-            ("sz399006", "创业板指"),
-            ("sh000688", "科创50"),
-            ("sh000300", "沪深300"),
-        ]
+        # ── 指数实时行情 ──
+        index_codes = {"sh000001", "sz399001", "sz399006", "sh000688", "sh000300"}
         indices_data: list[dict] = []
 
-        for code, name in index_codes:
-            try:
-                df = await asyncio.to_thread(ak.stock_zh_index_daily, symbol=code)
-                if df is not None and not df.empty:
-                    latest = df.iloc[-1]
-                    prev = df.iloc[-2] if len(df) > 1 else latest
-                    prev_close = float(prev.get("close", 0))
-                    cur_close = float(latest.get("close", 0))
-                    change_pct = ((cur_close - prev_close) / prev_close * 100) if prev_close > 0 else 0.0
+        try:
+            spot_df = await asyncio.to_thread(ak.stock_zh_index_spot_em)
+            if spot_df is not None and not spot_df.empty:
+                for _, row in spot_df.iterrows():
+                    code = str(row.get("代码", ""))
+                    if code not in index_codes:
+                        continue
                     indices_data.append({
                         "code": code,
-                        "name": str(latest.get("name", name)),
-                        "close": cur_close,
-                        "涨跌幅": round(change_pct, 2),
-                        "volume": float(latest.get("volume", 0)),
-                        "amount": float(latest.get("amount", 0)),
-                        "date": str(latest.get("date", "")),
+                        "name": str(row.get("名称", "")),
+                        "close": float(row.get("最新价", 0) or 0),
+                        "涨跌幅": float(row.get("涨跌幅", 0) or 0),
+                        "volume": float(row.get("成交量", 0) or 0),
+                        "amount": float(row.get("成交额", 0) or 0),
+                        "date": str(row.get("日期", "") or datetime.now().strftime("%Y-%m-%d")),
                     })
-            except Exception as e:
-                logger.warning("指数 {} ({}) 抓取失败: {}", code, name, e)
+        except Exception as e:
+            logger.warning("指数实时行情抓取失败: {}, 尝试降级到日线", e)
+            try:
+                index_map = [
+                    ("sh000001", "上证指数"), ("sz399001", "深证成指"), ("sz399006", "创业板指"),
+                    ("sh000688", "科创50"), ("sh000300", "沪深300"),
+                ]
+                for code, name in index_map:
+                    df = await asyncio.to_thread(ak.stock_zh_index_daily, symbol=code)
+                    if df is not None and not df.empty:
+                        latest = df.iloc[-1]
+                        prev = df.iloc[-2] if len(df) > 1 else latest
+                        prev_close = float(prev.get("close", 0))
+                        cur_close = float(latest.get("close", 0))
+                        change_pct = ((cur_close - prev_close) / prev_close * 100) if prev_close > 0 else 0.0
+                        indices_data.append({
+                            "code": code, "name": str(latest.get("name", name)),
+                            "close": cur_close, "涨跌幅": round(change_pct, 2),
+                            "volume": float(latest.get("volume", 0)),
+                            "amount": float(latest.get("amount", 0)),
+                            "date": str(latest.get("date", "")),
+                        })
+                    await asyncio.sleep(0.05)
+            except Exception as e2:
+                logger.warning("指数日线降级也失败: {}", e2)
 
         results["indices"] = indices_data
 
+        # ── 行业板块实时行情 ──
+        sectors_data: list[dict] = []
         try:
-            spot_df = await asyncio.to_thread(ak.stock_zh_a_spot_em)
-            if spot_df is not None and not spot_df.empty:
-                results["sectors"] = spot_df.head(30).to_dict(orient="records")
-        except Exception:
-            results["sectors"] = []
-            results["sectors_degraded"] = True
+            board_df = await asyncio.to_thread(ak.stock_board_industry_name_em)
+            if board_df is not None and not board_df.empty:
+                sector_column = next(
+                    (c for c in ["涨跌幅", "涨幅", "板块涨跌幅"] if c in board_df.columns), None
+                )
+                name_column = next(
+                    (c for c in ["板块名称", "行业名称", "名称"] if c in board_df.columns), None
+                )
+                if sector_column and name_column:
+                    for _, row in board_df.iterrows():
+                        sectors_data.append({
+                            "name": str(row.get(name_column, "")),
+                            "涨跌幅": float(row.get(sector_column, 0) or 0),
+                        })
+                logger.info("行业板块实时行情: {} 个板块", len(sectors_data))
+        except Exception as e:
+            logger.warning("行业板块抓取失败: {}, 降级为空", e)
+
+        results["sectors"] = sectors_data
 
         if not indices_data:
             results["degraded"] = True
