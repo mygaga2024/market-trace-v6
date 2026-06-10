@@ -128,3 +128,28 @@ async def status(request: Request):
             response["case_stats"] = {"error": "获取案例统计失败"}
 
     return response
+
+
+@router.get("/logs", dependencies=[Depends(verify_token)])
+async def system_logs(request: Request, lines: int = 100):
+    """获取最近系统日志（需认证）"""
+    import asyncio as _asyncio
+    from datetime import date as _date
+    from pathlib import Path as _Path
+
+    log_path = _Path("logs") / f"market_trace_{_date.today().strftime('%Y-%m-%d')}.log"
+
+    if not log_path.exists():
+        log_files = sorted(_Path("logs").glob("market_trace_*.log"), reverse=True)
+        if log_files:
+            log_path = log_files[0]
+        else:
+            return {"error": "日志文件不存在", "lines": []}
+
+    try:
+        result = await _asyncio.to_thread(
+            lambda: log_path.read_text(encoding="utf-8").strip().split("\n")[-lines:]
+        )
+        return {"file": log_path.name, "count": len(result), "lines": result}
+    except Exception as e:
+        return {"error": str(e), "lines": []}

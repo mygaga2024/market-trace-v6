@@ -77,7 +77,7 @@ class StrategyManager:
         logger.info("策略 [{}] 已重新启用", name)
 
     async def evaluate_health(self, results: dict[str, dict[str, Any]]) -> dict[str, str]:
-        """回测完成后评估每个策略的健康状况，自动禁用不合格策略"""
+        """回测完成后评估每个策略的健康状况，仅记录警告不自动禁用"""
         from backtest.strategy_backtest import STRATEGIES
 
         changes: dict[str, str] = {}
@@ -87,8 +87,6 @@ class StrategyManager:
                 continue
 
             state = await self._get_state(name)
-            if state.get("status") == "disabled":
-                continue
 
             agg = self._aggregate(results, name)
 
@@ -111,13 +109,11 @@ class StrategyManager:
                 await self._set_state(name, "last_score", round(agg["avg_score"], 2))
 
                 if consecutive >= self.consecutive_loss_threshold:
-                    reason = (
-                        f"连续 {consecutive} 次不合格 "
-                        f"(胜率 {agg['avg_win_rate']:.0%}, 评分 {agg['avg_score']:.2f}, "
-                        f"交易 {agg['total_trades']} 笔)"
+                    logger.warning(
+                        "策略 [{}] 连续 {} 次不合格 (胜率 {:.0%}, 评分 {:.2f}, 交易 {} 笔) — 未自动禁用",
+                        name, consecutive, agg["avg_win_rate"], agg["avg_score"], agg["total_trades"]
                     )
-                    await self.disable_strategy(name, reason)
-                    changes[name] = "disabled"
+                    changes[name] = "warning"
                 else:
                     changes[name] = f"consecutive_loss_{consecutive}"
 

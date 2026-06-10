@@ -2,6 +2,28 @@
    Market Trace V6.0 — Dashboard Logic
    ────────────────────────────────────── */
 
+// 全局异常捕获
+window.addEventListener('error', function(e) {
+  var msg = '[JS Error] ' + (e.message || '未知错误') + ' @ ' + (e.filename || '').split('/').pop() + ':' + (e.lineno || '?');
+  console.error(msg, e.error);
+  var el = document.createElement('div');
+  el.className = 'toast toast-error';
+  el.setAttribute('role', 'alert');
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(function() { el.remove(); }, 8000);
+});
+window.addEventListener('unhandledrejection', function(e) {
+  var msg = '[Promise Error] ' + (e.reason && e.reason.message || '未知错误');
+  console.error(msg, e.reason);
+  var el = document.createElement('div');
+  el.className = 'toast toast-error';
+  el.setAttribute('role', 'alert');
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(function() { el.remove(); }, 8000);
+});
+
 // 认证通过 httpOnly cookie 自动发送，无需在 JS 中读取 token
 function fetchAuth(url, options) {
   options = options || {};
@@ -113,8 +135,8 @@ async function load() {
       var levelLabels = { normal: '正常', elevated: '关注', critical: '危险' };
       var levelCls = 'risk-' + riskLevel;
       $id('risk-level-display').innerHTML = '<span class="risk-indicator ' + levelCls + '">' + (levelLabels[riskLevel] || riskLevel) + '</span>';
-      $id('risk-override-count').textContent = rk.override_count || 0;
-      $id('risk-event-count').textContent = rk.event_count || 0;
+      $id('risk-override-count').textContent = rk.daily_overrides || 0;
+      $id('risk-event-count').textContent = rk.total_overrides || 0;
     } else {
       $id('risk-level-display').innerHTML = '<span class="risk-indicator risk-loading">无数据</span>';
       $id('risk-override-count').textContent = '\u2014';
@@ -352,6 +374,7 @@ function loadTab(tab) {
         fetchAuth('/backtest/strategies').then(function(r) { return r.json(); }).catch(function() { return null; })
       ]).then(function(results) { return { summary: results[0], strategies: results[1] }; });
     },
+    logs:         function() { return fetchAuth('/logs?lines=100').then(function(r) { return r.json(); }); },
   };
 
   var fn = fetchers[tab];
@@ -368,6 +391,7 @@ function loadTab(tab) {
       case 'decisions':    html = renderDecisions(data); break;
       case 'risk-history': html = renderRiskHistory(data); break;
       case 'backtest':     html = renderBacktest(data); break;
+      case 'logs':         html = renderLogs(data); break;
       default: html = '<pre>' + escapeHtml(JSON.stringify(data, null, 2)) + '</pre>';
     }
     _tabCache[tab] = html;
@@ -394,10 +418,11 @@ function renderStatus(d) {
   html += '<tr><th>运行时间</th><td>' + escapeHtml(fmtTime(d.uptime_seconds)) + '</td></tr>';
   if (d.decision_stats) {
     var s = d.decision_stats;
+    var ad = s.action_distribution || {};
     html += '<tr><th>决策统计</th><td>共 ' + (s.total || 0) + ' 条';
-    if (s.buy) html += ', BUY: ' + s.buy;
-    if (s.sell) html += ', SELL: ' + s.sell;
-    if (s.hold) html += ', HOLD: ' + s.hold;
+    if (ad.BUY) html += ', BUY: ' + ad.BUY;
+    if (ad.SELL) html += ', SELL: ' + ad.SELL;
+    if (ad.HOLD) html += ', HOLD: ' + ad.HOLD;
     html += '</td></tr>';
   }
   if (d.case_stats && !d.case_stats.error) {
@@ -432,7 +457,7 @@ function renderReportList(d, name) {
 
 function renderDecisions(d) {
   var html = '<div style="margin-bottom:8px;font-size:13px;color:var(--text-secondary)">\uD83E\uDDE0 决策历史 — 共 ' + d.count + ' 条';
-  if (d.stats) html += ' (BUY: ' + (d.stats.buy || 0) + ', SELL: ' + (d.stats.sell || 0) + ', HOLD: ' + (d.stats.hold || 0) + ')';
+  if (d.stats) { var ad = d.stats.action_distribution || {}; html += ' (BUY: ' + (ad.BUY || 0) + ', SELL: ' + (ad.SELL || 0) + ', HOLD: ' + (ad.HOLD || 0) + ')'; }
   html += '</div>';
   if (!d.items || !d.items.length) {
     html += '<div class="tab-empty">暂无决策记录</div>';
@@ -529,13 +554,13 @@ function renderRiskHistory(d) {
   html += '<table class="tab-table"><tr><th>时间</th><th>级别</th><th>规则</th><th>股票</th><th>详情</th></tr>';
   items.forEach(function(ev) {
     var ts = ev.timestamp ? new Date(ev.timestamp).toLocaleString('zh') : '\u2014';
-    var levelCls = ev.level === 'critical' ? 'kv-err' : ev.level === 'elevated' ? 'kv-warn' : '';
+    var levelCls = ev.severity === 'critical' ? 'kv-err' : ev.severity === 'elevated' ? 'kv-warn' : '';
     html += '<tr>';
     html += '<td class="kv-dim">' + escapeHtml(ts) + '</td>';
-    html += '<td class="' + levelCls + '"><strong>' + escapeHtml(ev.level || '\u2014') + '</strong></td>';
-    html += '<td>' + escapeHtml(ev.rule || '\u2014') + '</td>';
+    html += '<td class="' + levelCls + '"><strong>' + escapeHtml(ev.severity || '\u2014') + '</strong></td>';
+    html += '<td>' + escapeHtml(ev.reason || '\u2014') + '</td>';
     html += '<td>' + escapeHtml(ev.symbol || '\u2014') + '</td>';
-    html += '<td class="kv-dim">' + escapeHtml((ev.detail || '').substring(0, 80)) + '</td>';
+    html += '<td class="kv-dim">' + escapeHtml((ev.action || '').substring(0, 80)) + '</td>';
     html += '</tr>';
   });
   html += '</table>';
@@ -644,6 +669,23 @@ function closeDecisionModal() {
 $id('decision-modal').addEventListener('click', function(e) {
   if (e.target === this) closeDecisionModal();
 });
+
+function renderLogs(d) {
+  if (!d || d.error) {
+    return '<div class="tab-empty">\u26A0\uFE0F ' + escapeHtml(d && d.error || '加载失败') + '</div>';
+  }
+  var html = '<div style="margin-bottom:8px;font-size:13px;color:var(--text-secondary)">\uD83D\uDCDC ' + escapeHtml(d.file || '') + ' — 最近 ' + d.count + ' 行</div>';
+  html += '<div style="background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px;padding:12px;max-height:500px;overflow-y:auto;font-family:monospace;font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-all">';
+  if (d.lines && d.lines.length) {
+    d.lines.forEach(function(line) {
+      html += '<div style="border-bottom:1px solid var(--bg-tag);padding:2px 0">' + escapeHtml(line) + '</div>';
+    });
+  } else {
+    html += '<span style="color:var(--text-muted)">暂无日志</span>';
+  }
+  html += '</div>';
+  return html;
+}
 
 /* ── Watchlist ── */
 function refreshWatchlist() {
