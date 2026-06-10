@@ -41,13 +41,15 @@ async def get_all_stocks(bus) -> list[dict]:
         except Exception:
             pass
 
-    # 从 akshare 拉取
+    # 从 akshare 拉取（优先用带价格的 spot，失败则用简版）
+    stocks: list[dict] = []
+    has_prices = False
+
     try:
         import akshare as ak
-        logger.info("拉取全市场股票列表...")
+        logger.info("拉取全市场股票列表(带实时价格)...")
         df = await asyncio.to_thread(ak.stock_zh_a_spot_em)
         if df is not None and not df.empty:
-            stocks = []
             for _, row in df.iterrows():
                 code = str(row.get("代码", "")).strip()
                 name = str(row.get("名称", "")).strip()
@@ -65,40 +67,89 @@ async def get_all_stocks(bus) -> list[dict]:
                     vol = float(row.get("成交量", 0) or 0)
                 except (ValueError, TypeError):
                     vol = 0.0
-                stocks.append({
-                    "symbol": code, "name": name, "price": price,
-                    "change_pct": change_pct, "volume": vol,
-                })
-            if stocks:
-                _stock_list_cache = stocks
-                _stock_list_ts = now
-                if bus:
-                    await bus.cache_set("market:stock_list", stocks, ttl=7200)
-                logger.info("股票列表已缓存: {} 只", len(stocks))
-                return stocks
+                stocks.append({"symbol": code, "name": name, "price": price, "change_pct": change_pct, "volume": vol})
+            has_prices = any(s["price"] > 0 for s in stocks[:100])
+            logger.info("股票列表: {} 只 (有价格={})", len(stocks), has_prices)
     except Exception as e:
-        logger.warning("akshare 全市场拉取失败: {}，尝试简版", e)
+        logger.warning("akshare spot 失败: {}", e)
 
-    # 降级：只拉代码名称
-    try:
-        import akshare as ak
-        df = await asyncio.to_thread(ak.stock_info_a_code_name)
-        if df is not None and not df.empty:
-            stocks = []
-            for _, row in df.iterrows():
-                code = str(row.get("code", row.get("A股代码", ""))).strip()
-                name = str(row.get("name", row.get("A股简称", ""))).strip()
-                if code and name:
-                    stocks.append({"symbol": code, "name": name, "price": 0, "change_pct": 0, "volume": 0})
-            if stocks:
-                _stock_list_cache = stocks
-                _stock_list_ts = now
+    # 降级：仅代码名称（无价格）
+    if not stocks:
+        try:
+            import akshare as ak
+            df = await asyncio.to_thread(ak.stock_info_a_code_name)
+            if df is not None and not df.empty:
+                for _, row in df.iterrows():
+                    code = str(row.get("code", row.get("A股代码", ""))).strip()
+                    name = str(row.get("name", row.get("A股简称", ""))).strip()
+                    if code and name:
+                        stocks.append({"symbol": code, "name": name, "price": 0, "change_pct": 0, "volume": 0})
                 logger.info("简版股票列表: {} 只(无实时价格)", len(stocks))
-                return stocks
-    except Exception as e:
-        logger.error("简版股票列表也失败: {}", e)
+        except Exception as e:
+            logger.error("简版也失败: {}", e)
 
-    return []
+    # 如果无价格数据，用 Sina 批量补全
+    if stocks and not has_prices:
+        await _enrich_prices_via_sina(stocks)
+        has_prices = True
+
+    if stocks and has_prices:
+        _stock_list_cache = stocks
+        _stock_list_ts = now
+        if bus:
+            await bus.cache_set("market:stock_list", stocks, ttl=7200)
+        logger.info("股票列表已缓存: {} 只", len(stocks))
+
+    return stocks
+
+
+async def _enrich_prices_via_sina(stocks: list[dict]) -> None:
+    """用 Sina 批量接口补全实时价格（每批50只）"""
+    import requests as _requests
+    batch_size = 50
+    sem = asyncio.Semaphore(5)
+
+    async def _fetch_batch(batch: list[dict]) -> None:
+        async with sem:
+            codes = []
+            for s in batch:
+                prefix = "sh" if s["symbol"].startswith(("6", "9")) else "sz"
+                codes.append(f"{prefix}{s['symbol']}")
+            url = f"http://hq.sinajs.cn/list={','.join(codes)}"
+            try:
+                r = await asyncio.to_thread(
+                    _requests.get, url,
+                    headers={"Referer": "https://finance.sina.com.cn"},
+                    timeout=10,
+                )
+                r.encoding = "gbk"
+                lines = [l for l in r.text.strip().split("\n") if '="' in l]
+                for line in lines:
+                    try:
+                        code_part = line.split("=")[0].replace("var hq_str_", "").strip()
+                        data = line.split('="')[1].rstrip('";')
+                        parts = data.split(",")
+                        if len(parts) < 4:
+                            continue
+                        symbol = code_part[2:]  # remove sh/sz prefix
+                        price = float(parts[3]) if parts[3] else 0.0
+                        prev_close = float(parts[2]) if parts[2] else 0.0
+                        chg = round((price - prev_close) / prev_close * 100, 2) if prev_close > 0 else 0.0
+                        for s in batch:
+                            if s["symbol"] == symbol:
+                                s["price"] = price
+                                s["change_pct"] = chg
+                                break
+                    except Exception:
+                        pass
+            except Exception as e:
+                logger.debug("Sina批量价格失败: {}", e)
+
+    batches = [stocks[i:i + batch_size] for i in range(0, len(stocks), batch_size)]
+    tasks = [asyncio.create_task(_fetch_batch(b)) for b in batches]
+    await asyncio.gather(*tasks, return_exceptions=True)
+    priced = sum(1 for s in stocks if s["price"] > 0)
+    logger.info("Sina补全价格: {}/{} 只", priced, len(stocks))
 
 
 async def quick_scan(strategy: str, limit: int = 50,
