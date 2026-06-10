@@ -1,7 +1,7 @@
 # Market Trace V6.0 — 开发进度
 
-> 最后更新：2026-06-09
-> 当前版本：v1.1.6 — 股票名称显示修复
+> 最后更新：2026-06-10
+> 当前版本：v1.1.7 — 持仓列表价格刷新按钮
 
 ---
 
@@ -29,6 +29,24 @@ ssh nas "docker exec mt6-app python -m pytest tests/ -q"
 curl http://10.10.10.130:19377/health
 curl http://10.10.10.130:19377/health/detail
 ```
+
+---
+
+## v1.1.7 持仓列表价格刷新按钮 (2026-06-10)
+
+### 问题诊断
+- Web 页面打开时持仓列表自动加载，但价格/涨跌幅依赖 Redis 缓存 `market:raw:{symbol}`
+- 若缓存未就绪或股票不在 `stock_pool` 中，价格显示为 `—`
+- 缺少手动触发价格刷新的入口
+
+### 修复内容
+- **`templates/dashboard.html`** — 持仓列表"添加"按钮旁新增 `↻` 刷新按钮
+- **`static/js/dashboard.js`** — 新增 `refreshWatchlist()` 函数，独立请求 `/watchlist` 并重绘持仓列表，含加载态和错误兜底
+
+### 测试验证
+- NAS 测试: 184 passed, 2 skipped
+- API 验证: `/health` ok, `/health/detail` ok (Redis/DB/5 Agent 全部连接)
+- 页面验证: 刷新按钮 `↻` 已在 NAS 部署的页面中正常显示
 
 ---
 
