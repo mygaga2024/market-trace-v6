@@ -683,7 +683,7 @@ function refreshWatchlist() {
     })
     .finally(function() {
       btn.disabled = false;
-      btn.textContent = '\u21BB';
+      btn.textContent = '刷新列表';
     });
 }
 
