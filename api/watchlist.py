@@ -4,6 +4,8 @@ Market Trace V6.0 — 持仓列表路由
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from loguru import logger
@@ -12,6 +14,8 @@ from api.deps import verify_token
 from services.prefetch import get_stock_name, fetch_stock_price_via_sina
 
 router = APIRouter(prefix="/watchlist", tags=["watchlist"], dependencies=[Depends(verify_token)])
+
+_SINA_SEM = asyncio.Semaphore(3)
 
 
 @router.get("")
@@ -23,40 +27,50 @@ async def get_watchlist(request: Request):
         return JSONResponse({"error": "数据库未就绪"}, status_code=503)
     try:
         items = await db.get_watchlist()
-        result: list[dict] = []
+        entries: list[dict] = []
         for item in items:
             name = item.name or ""
             if not name and bus:
                 name = await get_stock_name(item.symbol, bus)
-            entry = {
+            entries.append({
                 "symbol": item.symbol,
                 "name": name,
                 "notes": item.notes or "",
                 "added_at": item.added_at.isoformat() if item.added_at else None,
                 "price": None,
                 "change_pct": None,
-            }
-            if bus:
-                try:
-                    cached = await bus.cache_get(f"market:raw:{item.symbol}")
-                    if cached and len(cached) >= 2:
-                        c = [float(r["close"]) for r in cached]
-                        entry["price"] = round(c[-1], 2)
-                        entry["change_pct"] = round((c[-1] - c[-2]) / c[-2] * 100, 2)
-                except Exception:
-                    pass
-            if entry["price"] is None:
-                try:
-                    live_name, live_price, live_change = await fetch_stock_price_via_sina(item.symbol)
-                    if live_name:
-                        entry["name"] = live_name
-                    if live_price is not None:
-                        entry["price"] = live_price
-                        entry["change_pct"] = live_change
-                except Exception:
-                    pass
-            result.append(entry)
-        return {"count": len(result), "items": result}
+            })
+
+        if entries:
+            async def _fetch_live(entry: dict):
+                async with _SINA_SEM:
+                    try:
+                        live_name, live_price, live_change = await fetch_stock_price_via_sina(entry["symbol"])
+                        if live_name:
+                            entry["name"] = live_name
+                        if live_price is not None:
+                            entry["price"] = live_price
+                            entry["change_pct"] = live_change
+                    except Exception:
+                        pass
+
+            await asyncio.gather(*[_fetch_live(e) for e in entries], return_exceptions=True)
+
+        for entry in entries:
+            if entry["price"] is not None:
+                continue
+            if not bus:
+                continue
+            try:
+                cached = await bus.cache_get(f"market:raw:{entry['symbol']}")
+                if cached and len(cached) >= 2:
+                    c = [float(r["close"]) for r in cached]
+                    entry["price"] = round(c[-1], 2)
+                    entry["change_pct"] = round((c[-1] - c[-2]) / c[-2] * 100, 2)
+            except Exception:
+                pass
+
+        return {"count": len(entries), "items": entries}
     except Exception as e:
         logger.error("获取持仓列表失败: {}", e)
         return JSONResponse({"error": "获取持仓列表失败"}, status_code=500)
