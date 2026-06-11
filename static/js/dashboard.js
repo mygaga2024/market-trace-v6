@@ -300,6 +300,8 @@ function analyzeStock() {
       $id('analyze-result').innerHTML = html;
       $id('analyze-result').style.display = 'block';
 
+      $id('kline-chart').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
       if (!d.error) {
         $id('kline-chart').classList.remove('chart-container--hidden');
         fetchAuth('/api/kline/' + sym)
