@@ -452,6 +452,7 @@ function switchTab(tab) {
   var bc = $id('backtest-chart');
   if (bc) bc.style.display = (tab === 'backtest') ? 'block' : 'none';
   loadTab(tab);
+  $id('tab-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function loadTab(tab) {
@@ -788,9 +789,21 @@ function enableStrategy(name) {
     });
 }
 
-/* ── Risk history click on card ── */
+/* ── Card → Tab 跳转 ── */
 $id('risk-level-display').parentElement.addEventListener('click', function() {
   switchTab('risk-history');
+});
+document.querySelector('.card[aria-label="AI 决策链"]').addEventListener('click', function() {
+  switchTab('decisions');
+});
+$id('decision-area').addEventListener('click', function() {
+  switchTab('decisions');
+});
+document.querySelector('.card[aria-label="运行中的 Agent"]').addEventListener('click', function() {
+  switchTab('health');
+});
+document.querySelector('.card[aria-label="风险偏好指数"]').addEventListener('click', function() {
+  switchTab('reports');
 });
 function showDecisionModal(decisionId) {
   var modal = $id('decision-modal');
