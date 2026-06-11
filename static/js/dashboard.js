@@ -300,10 +300,9 @@ function analyzeStock() {
       $id('analyze-result').innerHTML = html;
       $id('analyze-result').style.display = 'block';
 
-      $id('kline-chart').scrollIntoView({ behavior: 'smooth', block: 'start' });
-
       if (!d.error) {
         $id('kline-chart').classList.remove('chart-container--hidden');
+        $id('kline-chart').scrollIntoView({ behavior: 'smooth', block: 'start' });
         fetchAuth('/api/kline/' + sym)
           .then(function(r) { return r.json(); })
           .then(function(kd) { Charts.renderKline('kline-chart', kd); })
@@ -332,11 +331,13 @@ function analyzeStock() {
       } else {
         $id('kline-chart').classList.add('chart-container--hidden');
         Charts.destroy('kline-chart');
+        $id('analyze-result').scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
     })
     .catch(function(e) {
       $id('analyze-result').innerHTML = '<div class="error-banner" role="alert">请求失败: ' + escapeHtml(e.message) + '</div>';
       $id('analyze-result').style.display = 'block';
+      $id('analyze-result').scrollIntoView({ behavior: 'smooth', block: 'start' });
     })
     .finally(function() {
       $id('analyze-spinner').style.display = 'none';
