@@ -219,6 +219,7 @@ function analyzeStock() {
 
   $id('analyze-spinner').style.display = 'block';
   $id('analyze-result').style.display = 'none';
+  $id('analyze-spinner').scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   fetchAuth('/analyze/' + sym, { method: 'POST' })
     .then(function(r) { return r.json(); })
@@ -302,9 +303,6 @@ function analyzeStock() {
 
       if (!d.error) {
         $id('kline-chart').classList.remove('chart-container--hidden');
-        requestAnimationFrame(function() {
-          $id('kline-chart').scrollIntoView({ behavior: 'smooth', block: 'start' });
-        });
         fetchAuth('/api/kline/' + sym)
           .then(function(r) { return r.json(); })
           .then(function(kd) { Charts.renderKline('kline-chart', kd); })
