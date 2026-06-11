@@ -302,7 +302,9 @@ function analyzeStock() {
 
       if (!d.error) {
         $id('kline-chart').classList.remove('chart-container--hidden');
-        $id('kline-chart').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        requestAnimationFrame(function() {
+          $id('kline-chart').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
         fetchAuth('/api/kline/' + sym)
           .then(function(r) { return r.json(); })
           .then(function(kd) { Charts.renderKline('kline-chart', kd); })
