@@ -174,6 +174,16 @@ class BacktestResult:
 
 # ── 回测引擎 ──
 
+def _parse_bar_time(t: str) -> datetime:
+    try:
+        dt = datetime.fromisoformat(t.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return datetime.now(timezone.utc)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
 class PortfolioRunner:
     """多仓位组合回测引擎"""
 
@@ -316,7 +326,7 @@ class PortfolioRunner:
         self._bars_held = 0
 
         trade = Trade(
-            timestamp=datetime.now(timezone.utc), action="BUY",
+            timestamp=_parse_bar_time(t), action="BUY",
             price=exec_price, quantity=quantity, commission=commission,
             slippage_cost=cost - quantity * close, reason=reason,
         )
@@ -362,7 +372,7 @@ class PortfolioRunner:
             self._max_consecutive_losses = max(self._max_consecutive_losses, self._consecutive_losses)
 
         trade = Trade(
-            timestamp=datetime.now(timezone.utc), action="SELL",
+            timestamp=_parse_bar_time(t), action="SELL",
             price=exec_price, quantity=quantity, commission=commission,
             slippage_cost=quantity * close - revenue,
             reason=reason, pnl=round(pnl, 2), pnl_pct=round(pnl_pct, 4),

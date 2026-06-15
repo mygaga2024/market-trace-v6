@@ -1,7 +1,7 @@
 # Market Trace V6.0 — 开发进度
 
-> 最后更新：2026-06-10
-> 当前版本：v1.1.7 — 持仓列表价格刷新按钮
+> 最后更新：2026-06-11
+> 当前版本：v1.1.8 — 持仓列表实时价格 + 诊股跳转 + Tab自动聚焦
 
 ---
 
@@ -28,6 +28,47 @@ ssh nas "docker exec mt6-app python -m pytest tests/ -q"
 # 4. 验证 API
 curl http://10.10.10.130:19377/health
 curl http://10.10.10.130:19377/health/detail
+```
+
+---
+
+## v1.1.8 持仓列表实时价格 + 诊股跳转 + Tab聚焦 (2026-06-11)
+
+### 修复内容
+
+#### 持仓列表实时价格
+- **`api/watchlist.py`** — 重构价格获取逻辑：**新浪实时优先 → K线缓存兜底**。原逻辑先读 `market:raw:` K线缓存，缓存命中后实时接口被跳过，导致显示日K收盘价而非实时价。改为并发调新浪 `hq.sinajs.cn`（Semaphore(3) 限流），失败时回退 K线缓存。
+- **实测**：`600036` 修复前显示 `38.90`（K线缓存），修复后 `38.76`（新浪实时）。
+
+#### 诊股跳转聚焦
+- **`static/js/dashboard.js`** — `analyzeStock()` 点击瞬间 `scrollIntoView` 到 spinner 区域，不等 API 返回即跳转
+- 修复过程中发现 `chart-container--hidden` 类包含 `display: none`，`scrollIntoView` 在元素隐藏时无效，已修正调用顺序
+
+#### Tab切换自动滚动 + 卡片跳转
+- **`static/js/dashboard.js`** — `switchTab()` 末尾统一加 `scrollIntoView('#tab-panel')`，覆盖所有 tab 切换入口
+- 新增 4 个卡片→Tab 点击跳转：AI决策链→决策历史、最新决策→决策历史、运行Agent→健康检查、RAI→宏观报告（风控闭环→风控历史已有）
+
+### 待办记录
+- **`docs/TODOLIST.md`** — 新增 Web UI 优化 5 项：`load()` 解耦、持仓刷新反馈、渲染去重、Tab 缓存过期、静态文件版本号
+
+### 测试验证
+- NAS API 验证：`/watchlist` 8只持仓实时价正常、`/analyze/000001` 正常、`/health` ok
+- 静态文件：`dashboard.js` 200，scrollIntoView + 卡片跳转代码已部署
+
+### 改动文件清单
+| 类型 | 文件 |
+|------|------|
+| 修改 | `api/watchlist.py`, `static/js/dashboard.js` |
+| 记录 | `docs/TODOLIST.md` |
+
+### 提交记录
+```
+7e06786 fix: tab切换后自动滚动+卡片点击跳转到对应tab
+4f38d81 fix: 诊股点击瞬间立即跳转-不等接口返回
+6ba421f fix: scrollIntoView用requestAnimationFrame确保DOM布局完成后滚动
+3b5b78f fix: 诊股跳转-修复scrollIntoView在元素隐藏前调用导致无效
+b2f537e feat: 诊股后自动滚动到K线图区域
+7dec35e fix: 持仓列表改为新浪实时价格优先，K线缓存降级兜底
 ```
 
 ---

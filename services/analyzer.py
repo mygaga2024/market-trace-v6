@@ -37,15 +37,13 @@ def _calc_bollinger(closes: np.ndarray, period: int = 20, nbdev: float = 2.0) ->
 def _calc_atr(highs: np.ndarray, lows: np.ndarray, closes: np.ndarray, period: int = 14) -> float:
     if len(closes) < period + 1:
         return float(np.mean(highs - lows))
-    tr_list = []
-    for i in range(-period, 0):
-        tr = max(
-            highs[i] - lows[i],
-            abs(highs[i] - closes[i - 1]),
-            abs(lows[i] - closes[i - 1]),
-        )
-        tr_list.append(tr)
-    return float(np.mean(tr_list))
+    prev_close = closes[:-1]
+    tr = np.maximum.reduce([
+        highs[1:] - lows[1:],
+        np.abs(highs[1:] - prev_close),
+        np.abs(lows[1:] - prev_close),
+    ])
+    return float(np.mean(tr[-period:]))
 
 
 def _calc_kdj(highs: np.ndarray, lows: np.ndarray, closes: np.ndarray,
@@ -162,7 +160,7 @@ async def analyze_single(
         raise HTTPException(400, f"股票 {symbol} 数据不足，至少需要5条K线")
 
     # 4) 腾讯实时价修正
-    _apply_tencent_quote(symbol, cached)
+    await _apply_tencent_quote(symbol, cached)
 
     closes = np.array([float(r["close"]) for r in cached])
     highs = np.array([float(r["high"]) for r in cached])

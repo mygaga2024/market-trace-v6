@@ -42,6 +42,7 @@ class ChiefAnalyst(BaseAgent):
         bus: MessageBus,
         config: dict[str, Any],
         llm_chain: Optional[LLMFallbackChain] = None,
+        notifier: Optional[Any] = None,
     ):
         super().__init__(
             AgentName.CHIEF.value,
@@ -51,6 +52,7 @@ class ChiefAnalyst(BaseAgent):
         )
 
         self._llm_chain = llm_chain
+        self._notifier = notifier
         self._reports: dict[str, AgentReport] = {}
         self._risk_state: str = "safe"
         self._risk_override: Optional[RiskOverride] = None
@@ -201,10 +203,9 @@ class ChiefAnalyst(BaseAgent):
             self._decision_count, decision.action.value, decision.confidence, decision.provider_label,
         )
 
-        if decision.action.value in ("BUY", "SELL"):
+        if decision.action.value in ("BUY", "SELL") and self._notifier:
             try:
-                from core.notifier import get_notifier
-                n = get_notifier()
+                n = self._notifier
                 if n.enabled:
                     await n.alert_decision(
                         symbol=payload.get("symbol", ""),

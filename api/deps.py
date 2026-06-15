@@ -5,7 +5,6 @@ Market Trace V6.0 — API 依赖注入
 
 from __future__ import annotations
 
-import hashlib
 import os
 import secrets
 from typing import Any, Optional
@@ -21,8 +20,29 @@ from loguru import logger
 _API_TOKEN = os.environ.get("API_TOKEN", "")
 SESSION_COOKIE_NAME = "mt6_session"
 
-# 生成独立的 session token（不从 API_TOKEN 派生，用 secrets 安全生成）
-SESSION_TOKEN = secrets.token_hex(32) if _API_TOKEN else ""
+_SESSION_TOKEN_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", ".session_token")
+
+
+def _load_session_token() -> str:
+    if not _API_TOKEN:
+        return ""
+    try:
+        if os.path.exists(_SESSION_TOKEN_FILE):
+            with open(_SESSION_TOKEN_FILE, "r") as f:
+                return f.read().strip()
+    except Exception:
+        pass
+    token = secrets.token_hex(32)
+    try:
+        os.makedirs(os.path.dirname(_SESSION_TOKEN_FILE), exist_ok=True)
+        with open(_SESSION_TOKEN_FILE, "w") as f:
+            f.write(token)
+    except Exception:
+        pass
+    return token
+
+
+SESSION_TOKEN = _load_session_token()
 
 
 async def verify_token(request: Request, authorization: str = Header(None)) -> None:

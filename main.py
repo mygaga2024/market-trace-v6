@@ -13,6 +13,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from contextlib import asynccontextmanager
+from zoneinfo import ZoneInfo
 
 import yaml
 import uvicorn
@@ -139,7 +140,7 @@ async def _backtest_scheduler(_bus, config: dict, _sm, schedule_cfg: dict):
         hour, minute = 18, 0
 
     while True:
-        now = datetime.now().astimezone()  # 本地时区 aware datetime
+        now = datetime.now(ZoneInfo("Asia/Shanghai"))
         next_run = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
         if next_run <= now:
             next_run += timedelta(days=1)
@@ -299,6 +300,8 @@ from api.backtest import router as backtest_router
 from api.risk import router as risk_router
 from api.kline import router as kline_router
 from api.watchlist import router as watchlist_router
+from api.paper import router as paper_router
+from api.replay import router as replay_router
 
 app.include_router(health_router)
 app.include_router(reports_router)
@@ -307,6 +310,8 @@ app.include_router(backtest_router)
 app.include_router(risk_router)
 app.include_router(kline_router)
 app.include_router(watchlist_router)
+app.include_router(paper_router)
+app.include_router(replay_router)
 
 
 def main():

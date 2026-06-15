@@ -5,7 +5,6 @@ Market Trace V6.0 — 相似历史案例库
 
 from __future__ import annotations
 
-import copy
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -44,7 +43,7 @@ class CaseMemory:
         case = SimilarCase(
             case_id=f"case_{self._case_counter}_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}",
             similarity_score=1.0,
-            decision=None,
+            decision=decision,
             outcome=outcome,
             market_context=market_context or {},
         )

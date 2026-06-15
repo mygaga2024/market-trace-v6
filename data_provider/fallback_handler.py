@@ -137,5 +137,4 @@ class FallbackHandler:
         if isinstance(data, list):
             return [{**item, **tag} for item in data]
         elif isinstance(data, dict):
-            data.update(tag)
-        return data
+            return {**data, **tag}

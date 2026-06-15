@@ -105,7 +105,7 @@ async def get_all_stocks(bus) -> list[dict]:
 
 async def _enrich_prices_via_sina(stocks: list[dict]) -> None:
     """用 Sina 批量接口补全实时价格（每批50只）"""
-    import requests as _requests
+    import httpx
     batch_size = 50
     sem = asyncio.Semaphore(5)
 
@@ -117,11 +117,11 @@ async def _enrich_prices_via_sina(stocks: list[dict]) -> None:
                 codes.append(f"{prefix}{s['symbol']}")
             url = f"http://hq.sinajs.cn/list={','.join(codes)}"
             try:
-                r = await asyncio.to_thread(
-                    _requests.get, url,
-                    headers={"Referer": "https://finance.sina.com.cn"},
-                    timeout=10,
-                )
+                async with httpx.AsyncClient(timeout=10) as client:
+                    r = await client.get(
+                        url,
+                        headers={"Referer": "https://finance.sina.com.cn"},
+                    )
                 r.encoding = "gbk"
                 lines = [l for l in r.text.strip().split("\n") if '="' in l]
                 for line in lines:
@@ -211,14 +211,6 @@ async def quick_scan(strategy: str, limit: int = 50,
                 cached = await bus.cache_get(f"market:raw:{stock['symbol']}") if bus else None
                 if not cached or len(cached) < 20:
                     too_few_data += 1
-                    # 无缓存时用行情数据直接输出（不验证策略）
-                    hits.append({
-                        "symbol": stock["symbol"],
-                        "name": stock["name"],
-                        "price": round(stock.get("price", 0), 2),
-                        "change_pct": round(stock.get("change_pct", 0), 2),
-                        "vol_ratio": 1.0,
-                    })
                     return
 
                 closes = np.array([float(r["close"]) for r in cached])

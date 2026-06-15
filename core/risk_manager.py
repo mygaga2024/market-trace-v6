@@ -141,7 +141,7 @@ class RiskManager:
         events.append(event)
         if len(events) > self._max_override_history:
             events = events[-self._max_override_history:]
-        await self.bus.cache_set(RISK_OVERRIDES_KEY, events, ttl=86400 * 7)
+        await self.bus.cache_set(RISK_OVERRIDES_KEY, events, ttl=86400 * 30)
 
     async def _update_risk_state(self, event: dict) -> None:
         if not self.bus:
