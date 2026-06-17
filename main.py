@@ -286,7 +286,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Market Trace V6.0",
     description="A/B 股量化分析系统 — 多 Agent 协作 + AI 决策",
-    version="1.0.0",
+    version="1.1.8",
     lifespan=lifespan,
 )
 

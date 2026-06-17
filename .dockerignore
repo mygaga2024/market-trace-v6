@@ -1,0 +1,47 @@
+# Git
+.git/
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.pytest_cache/
+
+# Tests
+tests/
+
+# Docs
+docs/
+
+# Environment
+env
+.env
+
+# Data & Logs
+data/
+logs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker compose
+docker-compose.yaml
+
+# Virtual env
+venv/
+.venv/
+
+# Dev tools
+dev_server.py
+
+# Version control records (local only)
+PROGRESS.md

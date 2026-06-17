@@ -107,7 +107,7 @@ def check_risk(closes: np.ndarray, highs: np.ndarray, volumes: np.ndarray,
     return bool(rsi > rsi_threshold
                 and closes[-1] < closes[-lookback]
                 and closes[-1] < closes[-2]
-                and volumes[-1] > np.mean(volumes[-20:-1]) * 1.2)
+                and volumes[-1] > np.mean(volumes[-lookback:-1]) * 1.2)
 
 
 def check_ma_golden_cross(closes: np.ndarray, highs: np.ndarray, volumes: np.ndarray,

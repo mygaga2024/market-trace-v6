@@ -109,45 +109,45 @@ async def _enrich_prices_via_sina(stocks: list[dict]) -> None:
     batch_size = 50
     sem = asyncio.Semaphore(5)
 
-    async def _fetch_batch(batch: list[dict]) -> None:
-        async with sem:
-            codes = []
-            for s in batch:
-                prefix = "sh" if s["symbol"].startswith(("6", "9")) else "sz"
-                codes.append(f"{prefix}{s['symbol']}")
-            url = f"http://hq.sinajs.cn/list={','.join(codes)}"
-            try:
-                async with httpx.AsyncClient(timeout=10) as client:
+    async with httpx.AsyncClient(timeout=10) as client:
+        async def _fetch_batch(batch: list[dict]) -> None:
+            async with sem:
+                codes = []
+                for s in batch:
+                    prefix = "sh" if s["symbol"].startswith(("6", "9")) else "sz"
+                    codes.append(f"{prefix}{s['symbol']}")
+                url = f"http://hq.sinajs.cn/list={','.join(codes)}"
+                try:
                     r = await client.get(
                         url,
                         headers={"Referer": "https://finance.sina.com.cn"},
                     )
-                r.encoding = "gbk"
-                lines = [l for l in r.text.strip().split("\n") if '="' in l]
-                for line in lines:
-                    try:
-                        code_part = line.split("=")[0].replace("var hq_str_", "").strip()
-                        data = line.split('="')[1].rstrip('";')
-                        parts = data.split(",")
-                        if len(parts) < 4:
-                            continue
-                        symbol = code_part[2:]  # remove sh/sz prefix
-                        price = float(parts[3]) if parts[3] else 0.0
-                        prev_close = float(parts[2]) if parts[2] else 0.0
-                        chg = round((price - prev_close) / prev_close * 100, 2) if prev_close > 0 else 0.0
-                        for s in batch:
-                            if s["symbol"] == symbol:
-                                s["price"] = price
-                                s["change_pct"] = chg
-                                break
-                    except Exception:
-                        pass
-            except Exception as e:
-                logger.debug("Sina批量价格失败: {}", e)
+                    r.encoding = "gbk"
+                    lines = [l for l in r.text.strip().split("\n") if '="' in l]
+                    for line in lines:
+                        try:
+                            code_part = line.split("=")[0].replace("var hq_str_", "").strip()
+                            data = line.split('="')[1].rstrip('";')
+                            parts = data.split(",")
+                            if len(parts) < 4:
+                                continue
+                            symbol = code_part[2:]  # remove sh/sz prefix
+                            price = float(parts[3]) if parts[3] else 0.0
+                            prev_close = float(parts[2]) if parts[2] else 0.0
+                            chg = round((price - prev_close) / prev_close * 100, 2) if prev_close > 0 else 0.0
+                            for s in batch:
+                                if s["symbol"] == symbol:
+                                    s["price"] = price
+                                    s["change_pct"] = chg
+                                    break
+                        except Exception:
+                            pass
+                except Exception as e:
+                    logger.debug("Sina批量价格失败: {}", e)
 
-    batches = [stocks[i:i + batch_size] for i in range(0, len(stocks), batch_size)]
-    tasks = [asyncio.create_task(_fetch_batch(b)) for b in batches]
-    await asyncio.gather(*tasks, return_exceptions=True)
+        batches = [stocks[i:i + batch_size] for i in range(0, len(stocks), batch_size)]
+        tasks = [asyncio.create_task(_fetch_batch(b)) for b in batches]
+        await asyncio.gather(*tasks, return_exceptions=True)
     priced = sum(1 for s in stocks if s["price"] > 0)
     logger.info("Sina补全价格: {}/{} 只", priced, len(stocks))
 

@@ -35,7 +35,8 @@ def _load_session_token() -> str:
     token = secrets.token_hex(32)
     try:
         os.makedirs(os.path.dirname(_SESSION_TOKEN_FILE), exist_ok=True)
-        with open(_SESSION_TOKEN_FILE, "w") as f:
+        fd = os.open(_SESSION_TOKEN_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
             f.write(token)
     except Exception:
         pass

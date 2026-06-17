@@ -202,4 +202,4 @@ class RiskManager:
     async def _save_state(self, state: dict) -> None:
         if not self.bus:
             return
-        await self.bus.cache_set(RISK_STATE_KEY, state, ttl=86400 * 7)
+        await self.bus.cache_set(RISK_STATE_KEY, state, ttl=86400 * 60)

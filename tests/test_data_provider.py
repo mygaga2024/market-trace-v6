@@ -4,7 +4,6 @@ Market Trace V6.0 — 数据访问层单元测试
 
 from __future__ import annotations
 
-import json
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 

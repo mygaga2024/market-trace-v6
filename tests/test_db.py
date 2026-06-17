@@ -166,7 +166,6 @@ async def test_get_case_statistics(db):
 
 def test_cleanup():
     import os
-    import shutil
     db_dir = "data"
     test_file = os.path.join(db_dir, "test_market_trace.db")
     if os.path.exists(test_file):

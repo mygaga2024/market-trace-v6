@@ -6,7 +6,7 @@ Market Trace V6.0 — 核心诊股服务
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 import httpx
@@ -47,15 +47,16 @@ def _calc_atr(highs: np.ndarray, lows: np.ndarray, closes: np.ndarray, period: i
 
 
 def _calc_kdj(highs: np.ndarray, lows: np.ndarray, closes: np.ndarray,
-              period: int = 9) -> dict:
+              period: int = 9, smooth: int = 3) -> dict:
     if len(closes) < period:
         return {"k": 50, "d": 50, "j": 50}
-    low_n = float(np.min(lows[-period:]))
-    high_n = float(np.max(highs[-period:]))
-    rsv = (closes[-1] - low_n) / (high_n - low_n) * 100 if high_n > low_n else 50
-    # 简化：直接用 RSV 近似 K/D/J
-    k = rsv * 1 / 3 + 50 * 2 / 3
-    d = k * 1 / 3 + 50 * 2 / 3
+    k, d = 50.0, 50.0
+    for i in range(period - 1, len(closes)):
+        high_n = float(np.max(highs[i - period + 1:i + 1]))
+        low_n = float(np.min(lows[i - period + 1:i + 1]))
+        rsv = (closes[i] - low_n) / (high_n - low_n) * 100 if high_n > low_n else 50
+        k = (k * (smooth - 1) + rsv) / smooth
+        d = (d * (smooth - 1) + k) / smooth
     j = 3 * k - 2 * d
     return {"k": round(k, 2), "d": round(d, 2), "j": round(j, 2)}
 
@@ -95,11 +96,11 @@ def _calc_macd(closes: np.ndarray, fast: int = 12, slow: int = 26, signal: int =
 
 def _calc_ema(data: np.ndarray, period: int) -> np.ndarray:
     result = np.full(len(data), np.nan)
-    if len(data) < 2:
+    if len(data) < period:
         return result
-    result[0] = data[0]
+    result[period - 1] = np.mean(data[:period])
     alpha = 2 / (period + 1)
-    for i in range(1, len(data)):
+    for i in range(period, len(data)):
         result[i] = alpha * data[i] + (1 - alpha) * result[i - 1]
     return result
 
@@ -159,7 +160,8 @@ async def analyze_single(
     if not cached or len(cached) < 5:
         raise HTTPException(400, f"股票 {symbol} 数据不足，至少需要5条K线")
 
-    # 4) 腾讯实时价修正
+    # 4) 腾讯实时价修正（浅拷贝避免污染缓存）
+    cached = list(cached)
     await _apply_tencent_quote(symbol, cached)
 
     closes = np.array([float(r["close"]) for r in cached])
@@ -369,7 +371,7 @@ async def _apply_tencent_quote(symbol: str, cached: list[dict]) -> None:
                     "close": live_price,
                     "high": max(float(cached[-1]["high"]), live_price),
                     "low": min(float(cached[-1]["low"]), live_price),
-                    "timestamp": datetime.now().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                 }
     except Exception as e:
         logger.debug("腾讯实时价获取失败 ({}): {}", symbol, e)

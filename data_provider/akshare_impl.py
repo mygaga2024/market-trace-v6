@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import random
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 import httpx
@@ -269,7 +269,7 @@ class AkShareProvider(DataProviderBase):
             "pre_close": float(r.get("昨收", 0)),
             "turnover_rate": float(r.get("换手率", 0)),
             "source": "akshare",
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
         await self.cache_and_publish_dict(data, f"market:realtime:{symbol}")
@@ -310,7 +310,7 @@ class AkShareProvider(DataProviderBase):
             "small_net": _safe_float(latest, "小单净流入-净额"),
             "small_pct": _safe_float(latest, "小单净流入-净占比"),
             "source": "akshare",
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
         await self.cache_and_publish_dict(data, f"market:fundflow:{symbol}")
@@ -330,7 +330,7 @@ class AkShareProvider(DataProviderBase):
         logger.debug("AkShare 抓取宏观指标 (Sina实时行情版)")
 
         results: dict[str, Any] = {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "source": "akshare:sina",
             "degraded": False,
         }
@@ -372,7 +372,7 @@ class AkShareProvider(DataProviderBase):
                         "涨跌幅": round(chg_pct, 2),
                         "volume": vol,
                         "amount": amt,
-                        "date": datetime.now().strftime("%Y-%m-%d"),
+                        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
                     })
                 except (ValueError, IndexError):
                     continue
@@ -459,7 +459,7 @@ class AkShareProvider(DataProviderBase):
         results: dict[str, Any] = {
             "symbol": symbol,
             "source": "akshare:approximate",
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "note": "近似 Level-2，非真实逐笔委托",
         }
 
@@ -509,4 +509,4 @@ def pd_timestamp(val) -> datetime:
         return datetime.combine(val, datetime.min.time())
     if isinstance(val, str):
         return datetime.strptime(val, "%Y-%m-%d")
-    return datetime.fromtimestamp(float(str(val)))
+    return datetime.fromtimestamp(float(str(val)), tz=timezone.utc)

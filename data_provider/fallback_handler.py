@@ -138,3 +138,4 @@ class FallbackHandler:
             return [{**item, **tag} for item in data]
         elif isinstance(data, dict):
             return {**data, **tag}
+        return data

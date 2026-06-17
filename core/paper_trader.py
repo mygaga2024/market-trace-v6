@@ -53,6 +53,26 @@ class PaperPosition:
             return 0.0
         return (self.market_value(current_price) - self.cost_basis) / self.cost_basis
 
+    def add(self, quantity: int, price: float, timestamp: datetime, commission: float = 0.0) -> None:
+        """买入增仓"""
+        cost = quantity * price
+        if self.quantity == 0:
+            self.avg_cost = price
+            self.quantity = quantity
+            self.entry_time = timestamp
+        else:
+            total_cost = self.cost_basis + cost
+            self.quantity += quantity
+            self.avg_cost = total_cost / self.quantity
+        self.total_commission += commission
+
+    def reduce(self, quantity: int) -> None:
+        """卖出减仓"""
+        self.quantity = max(0, self.quantity - quantity)
+        if self.quantity == 0:
+            self.avg_cost = 0.0
+            self.entry_time = None
+
 
 @dataclass
 class PaperAccount:
@@ -65,6 +85,7 @@ class PaperAccount:
 
     @property
     def total_equity(self) -> float:
+        """成本法估值（不含未实现盈亏），市价估值请用 mark_to_market()"""
         return self.capital + sum(p.cost_basis for p in self.positions.values())
 
     @property
