@@ -13,6 +13,8 @@
 
 | 日期 | Commit | 修复内容 |
 |------|--------|---------|
+| 2026-06-18 | `7fdf883` | 修复 `_clean_json_content` 数组截断 bug（3处修复） |
+| 2026-06-18 | `4221065` | 补充 `_clean_json_content` 专项测试（8个场景） |
 | 2026-06-18 | — | 精简 LLM 回退链：5+1（移除 MiniMax/glm-4-plus 收费模型） |
 | 2025-06-18 | `c5731da` | 添加 AGENTS.md，规范 AI 会话启动/结束流程 |
 | 2025-06-18 | `fbce5cd` | 移除 minimax 收费大模型 senary，保留小模型 quinary |
