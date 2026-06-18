@@ -321,12 +321,13 @@ class TestChiefAnalyst:
         return ChiefAnalyst(mock_bus, CONFIG)
 
     @pytest.mark.asyncio
-    async def test_stores_reports_triggers_decision(self, chief):
-        chief._build_ai_decision = AsyncMock(return_value=Decision(
+    async def test_stores_reports_triggers_decision(self, chief, mocker):
+        mock_decision = Decision(
             action=DecisionAction.BUY, confidence=0.7,
             reasoning="测试决策", evidence_sources=["macro", "signal", "trace"],
             provider_label="test:model", provider_status=ProviderStatus.HEALTHY,
-        ))
+        )
+        mocker.patch("core.chief_decision.build_chief_decision", AsyncMock(return_value=mock_decision))
         chief._publish_decision = AsyncMock()
 
         await chief.process_message({"event": "MACRO_REPORT", "agent": "macro",
@@ -368,16 +369,19 @@ class TestChiefAnalyst:
         assert chief._risk_override is None
 
     @pytest.mark.asyncio
-    async def test_dummy_decision_when_no_llm(self, chief):
-        decision = chief._dummy_decision("无 LLM")
+    async def test_dummy_decision_when_no_llm(self):
+        from core.chief_decision import _dummy_decision
+        decision = _dummy_decision("无 LLM")
         assert decision.action == DecisionAction.HOLD
         assert decision.provider_label == "chief:dummy"
         assert decision.provider_status == ProviderStatus.FALLBACK
 
     @pytest.mark.asyncio
-    async def test_build_ai_decision_no_chain(self, chief):
-        decision = await chief._build_ai_decision()
+    async def test_build_ai_decision_no_chain(self):
+        from core.chief_decision import build_chief_decision, _dummy_decision
+        decision = await build_chief_decision({}, None)
         assert decision.provider_label == "chief:dummy"
+        assert decision.action == DecisionAction.HOLD
 
     @pytest.mark.asyncio
     async def test_status_no_llm(self, chief):

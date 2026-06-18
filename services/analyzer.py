@@ -268,6 +268,7 @@ async def analyze_single(
     if llm_chain:
         try:
             from core.schema import AgentReport, AgentName
+            from core.chief_decision import build_chief_decision, evaluate_risk_sync
 
             # Macro报告: 携带完整RAI数据
             interp = macro_data.get("interpretation", {})
@@ -319,7 +320,13 @@ async def analyze_single(
                 ),
             }
 
-            dec = await llm_chain.analyze(reports)
+            risk_severity, risk_reason = evaluate_risk_sync(reports, daily_change_pct=change_pct)
+            dec = await build_chief_decision(
+                reports=reports,
+                llm_chain=llm_chain,
+                risk_severity=risk_severity,
+                risk_reason=risk_reason,
+            )
             decision = {
                 "action": dec.action.value, "confidence": dec.confidence,
                 "reasoning": dec.reasoning, "provider": dec.provider_label,

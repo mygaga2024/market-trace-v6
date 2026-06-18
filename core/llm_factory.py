@@ -179,6 +179,7 @@ class OpenAICompatibleLLM(LLMInterface):
         """构建决策分析提示词"""
         parts = [f"当前时间: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}\n"]
         parts.append("请根据以下多维度分析报告，输出一个JSON格式的交易决策。\n")
+        parts.append("注意：各Agent已给出确定性计算结论，请以其为主要依据，你的任务是综合分析、发现矛盾并最终决策。\n")
 
         macro = reports.get("macro")
         if macro and macro.data:
@@ -191,6 +192,7 @@ class OpenAICompatibleLLM(LLMInterface):
             parts.append(f"- 偏向: {interp.get('bias', 'neutral')}")
             parts.append(f"- 涨跌比: {components.get('index_breadth', 'N/A')}")
             parts.append(f"- 板块动量: {components.get('sector_momentum', 'N/A')}")
+            parts.append(f"> Agent结论: 宏观环境为{interp.get('bias', '中性')}，RAI={rai:.2f}")
             parts.append("")
 
         signal = reports.get("signal")
@@ -208,6 +210,10 @@ class OpenAICompatibleLLM(LLMInterface):
                 for s in signals:
                     parts.append(f"  * {s['type']} ({s['direction']}, 强度={s.get('strength', 'N/A')})")
             parts.append(f"- 可靠性评分: {signal.data.get('reliability', 0.5):.2f}")
+            all_sigs = signals + signal.data.get("agent_signals", [])
+            bull_sigs = [s for s in all_sigs if s.get('direction') in ('bullish', 'buy')]
+            bear_sigs = [s for s in all_sigs if s.get('direction') in ('bearish', 'sell')]
+            parts.append(f"> Agent结论: 多头信号{len(bull_sigs)}个, 空头信号{len(bear_sigs)}个, 综合偏{'多' if len(bull_sigs) > len(bear_sigs) else '空' if len(bear_sigs) > len(bull_sigs) else '中性'}")
             parts.append("")
 
         trace = reports.get("trace")
@@ -223,6 +229,7 @@ class OpenAICompatibleLLM(LLMInterface):
                 for s in t_signals:
                     parts.append(f"  * {s['type']} ({s['direction']}, 强度={s.get('strength', 'N/A')})")
             parts.append(f"- 资金方向: {trace.data.get('direction', 'neutral')}")
+            parts.append(f"> Agent结论: 资金流向为{trace.data.get('direction', 'unknown')}，异动信号{len(t_signals)}个")
             parts.append("")
 
         parts.append("""
@@ -243,10 +250,12 @@ class OpenAICompatibleLLM(LLMInterface):
 - 资金方向 bullish → +3；bearish → -3
 - 大单异动信号 ≥ 2个 → +2
 
-### 4. 综合决策
-- 加权总分 > 6.5 → BUY；4.0-6.5 → HOLD；< 4.0 → SELL
-- RAI < 0.25 或 > 0.75 时 → 最高只允许 HOLD，不允许 BUY
-- 两个以上指标矛盾时 → 置信度降低 0.2
+            ### 4. 综合决策
+            - 加权总分 > 6.5 → BUY；4.0-6.5 → HOLD；< 4.0 → SELL
+            - RAI < 0.25 或 > 0.75 时 → 最高只允许 HOLD，不允许 BUY
+            - 两个以上指标矛盾时 → 置信度降低 0.2
+            - 多空信号矛盾时（既有bullish又有bearish）→ 降置信度0.2，优先WAIT
+            - Agent结论矛盾时（如宏观偏空但技术偏多）→ 优先信任技术面信号
 
 输出JSON格式：
 - action: "BUY" | "SELL" | "HOLD" | "WAIT"
@@ -418,20 +427,40 @@ class LLMFallbackChain:
         return self._active_provider or "none"
 
     async def analyze(self, reports: dict[str, AgentReport]) -> Decision:
+        decisions: list[Decision] = []
         for i, provider in enumerate(self.providers):
             tier = ["主力(DS Chat)", "主力备选(DS Reasoner)", "备用K1(Gemini)", "备用K2(Gemini备胎)", "GLM免费", "硅基流动免费", "千帆免费"][i]
             try:
                 logger.info("尝试 LLM [{}] ({}): {}", provider.provider_name, tier, provider.model)
                 decision = await provider.analyze(reports)
+                decisions.append(decision)
                 self._active_provider = provider.provider_name
-                logger.info("LLM 决策成功: provider={}", self._active_provider)
-                return decision
+                logger.info("LLM 决策成功: provider={} action={}", provider.provider_name, decision.action.value)
+
+                if len(decisions) >= 2:
+                    if decisions[0].action == decision.action:
+                        logger.info("双LLM共识达成: action={}", decision.action.value)
+                        return decisions[0]
+                    if len(decisions) >= 3:
+                        logger.warning("三LLM仍无共识, 采纳首个: action={}", decisions[0].action.value)
+                        decisions[0].confidence *= 0.7
+                        decisions[0].reasoning += " | 多LLM未达成共识(置信度×0.7)"
+                        return decisions[0]
+                    logger.info("双LLM分歧({} vs {}), 继续检测...", decisions[0].action.value, decision.action.value)
+                    continue
+
+                if decision.confidence >= 0.7:
+                    logger.info("单LLM高置信度({:.2f}), 直接采纳", decision.confidence)
+                    return decision
             except CircuitBreakerOpenError as e:
                 logger.warning("LLM [{}] 熔断: {}", provider.provider_name, e)
                 continue
             except Exception as e:
                 logger.error("LLM [{}] 调用失败: {}", provider.provider_name, e)
                 continue
+
+        if decisions:
+            return decisions[0]
 
         logger.critical("所有 LLM 不可用，执行纯规则降级")
         decision = await self.rule_based.analyze(reports)
