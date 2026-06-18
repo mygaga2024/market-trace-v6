@@ -48,14 +48,28 @@ curl -s localhost:19377/health            # API 健康检查
 pytest tests/ -v
 ```
 
-### 2. Docker 部署验证（如有 Docker）
+### 2. Docker 部署验证（NAS 绿联 Docker）
+项目部署在绿联 NAS（`ssh nas`）的 Docker 上，每次改动后需实际部署验证：
+
 ```
-docker-compose up -d --build mt6-app    # 重新构建并启动
+# 上传代码到 NAS（rsync 不可用，用 tar+ssh 管道）
+tar czf - --exclude='.git' --exclude='__pycache__' --exclude='.pytest_cache' \
+  --exclude='logs' --exclude='data' --exclude='venv' --exclude='.venv' \
+  --exclude='.env' --exclude='.DS_Store' . \
+  | ssh nas "cd /volume1/docker/market-trace-v6 && tar xzf -"
+
+# 修复文件权限（macOS tar 可能留下 600 权限）
+ssh nas "chmod -R a+r /volume1/docker/market-trace-v6/"
+
+# 重新构建并启动
+ssh nas "cd /volume1/docker/market-trace-v6 && docker compose up -d --build app"
+
+# 等待启动 + 验证
 sleep 5
-curl -s localhost:19377/health | python3 -m json.tool  # 验证 API 存活
+ssh nas "curl -s localhost:19377/health | python3 -m json.tool"
 ```
 
-### 3. 无 Docker 时的降级验证
+### 3. 本地开发时降级验证（无 NAS 访问时）
 ```
 python3 -c "from core.llm_factory import LLMFallbackChain; print('导入成功')"
 ```
