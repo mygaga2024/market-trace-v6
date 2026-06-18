@@ -36,6 +36,8 @@ curl -s localhost:19377/health            # API 健康检查
 3. 同步更新 `LLM Fallback Chain` 实体（如有改动）
 4. 执行 `git commit` 提交所有更改
 5. 更新 `PROJECT_STATUS.md` 的修复记录表
+6. 清理临时文件：`__pycache__`、`.pytest_cache`、`*.pyc`、`logs/`、`.DS_Store` 等
+7. 三地同步：`git push origin main`（敏感文件已在 .gitignore 排除）
 
 ## 提交前检查
 
