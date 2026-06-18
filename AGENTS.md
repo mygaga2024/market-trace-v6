@@ -29,11 +29,13 @@ curl -s localhost:19377/health            # API 健康检查
 
 ## 会话结束
 
-每次会话结束时**务必**将所做改动记录到 Memory 知识图谱：
+每次会话结束时**务必**自动执行收尾工作，无需用户催促：
 
 1. 创建 `Session` 类型实体，命名格式 `session-YYYY-MM-DD-简要描述`
 2. 记录内容：改了什么、为什么改、涉及哪些文件、commit hash、测试结果
 3. 同步更新 `LLM Fallback Chain` 实体（如有改动）
+4. 执行 `git commit` 提交所有更改
+5. 更新 `PROJECT_STATUS.md` 的修复记录表
 
 ## 提交前检查
 
