@@ -140,6 +140,20 @@ class TestOpenAICompatibleLLM:
         cb = CircuitBreaker(name="test-llm", failure_threshold=2, recovery_timeout=5)
         return OpenAICompatibleLLM("test", llm_config, cb)
 
+    @pytest.mark.parametrize("raw,expected", [
+        ('{"action":"BUY"}', '{"action":"BUY"}'),
+        ('[{"action":"BUY"}]', '{"action":"BUY"}'),
+        ('[{"a":1},{"b":2}]', '[{"a":1},{"b":2}]'),
+        ('```json\n{"action":"BUY"}\n```', '{"action":"BUY"}'),
+        ('```json\n[{"action":"BUY"}]\n```', '{"action":"BUY"}'),
+        ('reasoning text\n{"action":"BUY"}', '{"action":"BUY"}'),
+        ('["not", "a", "dict"]', '["not", "a", "dict"]'),
+        ('  {"action":"BUY"}  ', '{"action":"BUY"}'),
+    ])
+    def test_clean_json_content(self, llm, raw, expected):
+        result = llm._clean_json_content(raw)
+        assert json.loads(result) == json.loads(expected)
+
     def test_build_prompt_contains_all_reports(self, llm):
         reports = {
             "macro": make_macro_report(rai=0.55),
