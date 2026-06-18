@@ -14,7 +14,7 @@ redis:
   retry_interval: 5
   health_check_interval: 30
 
-# --- AI 多级回退链 (DS Chat → DS Reasoner → Gemini K1 → Gemini K2 → MiniMax-S → GLM Flash → GLM Plus → 纯规则) ---
+# --- AI 多级回退链 (DS Chat → DS Reasoner → Gemini K1 → Gemini K2 → GLM Flash → 硅基流动 → 百度千帆 → 纯规则) ---
 llm:
   primary:
     provider: deepseek
@@ -57,16 +57,6 @@ llm:
     max_tokens: 2048
 
   quinary:
-    provider: minimax
-    model: abab6.5s-chat
-    api_key: ${MINIMAX_API_KEY}
-    base_url: https://api.minimax.chat/v1
-    timeout: 45
-    max_retries: 2
-    temperature: 0.3
-    max_tokens: 2048
-
-  septenary:
     provider: zhipu
     model: glm-4-flash
     api_key: ${ZHIPU_API_KEY}
@@ -76,14 +66,25 @@ llm:
     temperature: 0.3
     max_tokens: 2048
 
-  octonary:
-    provider: zhipu
-    model: glm-4-plus
-    api_key: ${ZHIPU_API_KEY}
-    base_url: https://open.bigmodel.cn/api/paas/v4
-    timeout: 60
+  senary:
+    provider: siliconflow
+    model: THUDM/GLM-Z1-9B-0414
+    api_key: ${SILICONFLOW_API_KEY}
+    base_url: https://api.siliconflow.cn/v1
+    timeout: 120
     max_retries: 2
     temperature: 0.3
+    max_tokens: 2048
+    json_format: false
+
+  septenary:
+    provider: qianfan
+    model: ernie-speed-pro-128k
+    api_key: ${QIANFAN_API_KEY}
+    base_url: https://qianfan.baidubce.com/v2
+    timeout: 45
+    max_retries: 2
+    temperature: 0.01
     max_tokens: 2048
 
   fallback:

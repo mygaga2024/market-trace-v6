@@ -92,20 +92,20 @@ def _build_llm_chain(cfg: dict):
         CircuitBreaker(name="llm:gemini-k2", **cb_kwargs),
     )
     quinary = OpenAICompatibleLLM(
-        "minimax-s", llm_cfg.get("quinary", {}),
-        CircuitBreaker(name="llm:minimax-s", **cb_kwargs),
-    )
-    septenary = OpenAICompatibleLLM(
-        "zhipu-flash", llm_cfg.get("septenary", {}),
+        "zhipu-flash", llm_cfg.get("quinary", {}),
         CircuitBreaker(name="llm:zhipu-flash", **cb_kwargs),
     )
-    octonary = OpenAICompatibleLLM(
-        "zhipu-plus", llm_cfg.get("octonary", {}),
-        CircuitBreaker(name="llm:zhipu-plus", **cb_kwargs),
+    senary = OpenAICompatibleLLM(
+        "siliconflow", llm_cfg.get("senary", {}),
+        CircuitBreaker(name="llm:siliconflow", **cb_kwargs),
+    )
+    septenary = OpenAICompatibleLLM(
+        "qianfan", llm_cfg.get("septenary", {}),
+        CircuitBreaker(name="llm:qianfan", **cb_kwargs),
     )
     rule_based = RuleBasedAnalyzer(llm_cfg.get("fallback", {}))
 
-    return LLMFallbackChain(primary, secondary, tertiary, quaternary, quinary, septenary, octonary, rule_based)
+    return LLMFallbackChain(primary, secondary, tertiary, quaternary, quinary, senary, septenary, rule_based)
 
 
 def _start_agents(bus, config: dict, llm_chain, risk_manager=None) -> list[asyncio.Task]:
@@ -335,7 +335,7 @@ def main():
 
     # M1: 必需环境变量启动校验
     llm_cfg = CONFIG.get("llm", {})
-    for tier, key in [("主力(DS Chat)", "primary"), ("主力备选(DS Reasoner)", "secondary"), ("备用K1(Gemini)", "tertiary"), ("备用K2(Gemini备胎)", "quaternary"), ("三级兜底(MM-S)", "quinary"), ("三级备选(MM)", "senary"), ("四级(GLM免费)", "septenary"), ("五级(GLM收费)", "octonary")]:
+    for tier, key in [("主力(DS Chat)", "primary"), ("主力备选(DS Reasoner)", "secondary"), ("备用K1(Gemini)", "tertiary"), ("备用K2(Gemini备胎)", "quaternary"), ("GLM免费", "quinary"), ("硅基流动免费", "senary"), ("千帆免费", "septenary")]:
         api_key = llm_cfg.get(key, {}).get("api_key", "")
         if not api_key or "your-" in api_key:
             logger.warning("⚠️ {} LLM ({}) API Key 未配置，该级别将无法使用", tier, key)

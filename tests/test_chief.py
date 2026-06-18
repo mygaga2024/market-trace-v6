@@ -243,19 +243,19 @@ class TestLLMFallbackChain:
         quaternary.analyze = AsyncMock(side_effect=Exception("gemini-k2 failed"))
 
         quinary = MagicMock(spec=OpenAICompatibleLLM)
-        quinary.provider_name = "minimax-s"
-        quinary.model = "abab6.5s-chat"
-        quinary.analyze = AsyncMock(side_effect=Exception("minimax-s failed"))
+        quinary.provider_name = "zhipu-flash"
+        quinary.model = "glm-4-flash"
+        quinary.analyze = AsyncMock(side_effect=Exception("zhipu-flash failed"))
+
+        senary = MagicMock(spec=OpenAICompatibleLLM)
+        senary.provider_name = "siliconflow"
+        senary.model = "THUDM/GLM-Z1-9B-0414"
+        senary.analyze = AsyncMock(side_effect=Exception("siliconflow failed"))
 
         septenary = MagicMock(spec=OpenAICompatibleLLM)
-        septenary.provider_name = "zhipu-flash"
-        septenary.model = "glm-4-flash"
-        septenary.analyze = AsyncMock(side_effect=Exception("zhipu-flash failed"))
-
-        octonary = MagicMock(spec=OpenAICompatibleLLM)
-        octonary.provider_name = "zhipu-plus"
-        octonary.model = "glm-4-plus"
-        octonary.analyze = AsyncMock(side_effect=Exception("zhipu-plus failed"))
+        septenary.provider_name = "qianfan"
+        septenary.model = "ernie-speed-pro-128k"
+        septenary.analyze = AsyncMock(side_effect=Exception("qianfan failed"))
 
         rule_based = MagicMock(spec=RuleBasedAnalyzer)
         rule_based.provider_name = "rule_based"
@@ -265,7 +265,7 @@ class TestLLMFallbackChain:
             provider_label="rule_based:fallback", provider_status=ProviderStatus.FALLBACK,
         ))
 
-        return LLMFallbackChain(primary, secondary, tertiary, quaternary, quinary, septenary, octonary, rule_based)
+        return LLMFallbackChain(primary, secondary, tertiary, quaternary, quinary, senary, septenary, rule_based)
 
     @pytest.mark.asyncio
     async def test_falls_back_to_secondary(self, chain):

@@ -1,11 +1,12 @@
 """
 Market Trace V6.0 — LLM 接口工厂与多级回退链
-OpenAI 兼容接口 + 链式回退路由 (DeepSeek → Gemini → MiniMax → GLM Flash → GLM Plus → 纯规则)
+OpenAI 兼容接口 + 链式回退路由 (DeepSeek → Gemini → GLM Flash → 纯规则)
 """
 
 from __future__ import annotations
 
 import json
+import re
 from abc import ABC, abstractmethod
 from dataclasses import asdict
 from datetime import datetime, timezone
@@ -55,6 +56,7 @@ class OpenAICompatibleLLM(LLMInterface):
         super().__init__(provider_name, config)
         self.api_key: str = config.get("api_key", "")
         self.base_url: str = config.get("base_url", "").rstrip("/")
+        self.json_format: bool = config.get("json_format", True)
         self._cb = circuit_breaker or CircuitBreaker(name=f"llm:{provider_name}")
         self._client: Optional[httpx.AsyncClient] = None
 
@@ -85,6 +87,41 @@ class OpenAICompatibleLLM(LLMInterface):
             logger.error("LLM [{}] 分析失败: {}", self.provider_name, e)
             raise
 
+    def _clean_json_content(self, content: str) -> str:
+        content = content.strip()
+        content = re.sub(r'```(?:json)?\s*', '', content)
+        content = content.replace('```', '')
+        content = content.strip()
+        if content.startswith("[") and content.endswith("]"):
+            try:
+                arr = json.loads(content)
+                if len(arr) == 1 and isinstance(arr[0], dict):
+                    return json.dumps(arr[0], ensure_ascii=False)
+                return content
+            except (json.JSONDecodeError, TypeError):
+                pass
+        first_brace = content.find("{")
+        if first_brace == -1:
+            return content
+        second_brace = content.find("{", first_brace + 1)
+        if second_brace != -1 and second_brace - first_brace < 10:
+            start = second_brace
+        else:
+            start = first_brace
+        depth = 0
+        end = -1
+        for i in range(start, len(content)):
+            if content[i] == "{":
+                depth += 1
+            elif content[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    end = i
+                    break
+        if end != -1:
+            content = content[start:end + 1]
+        return content
+
     async def _chat_completion(self, system_prompt: str) -> dict[str, Any]:
         """调用 OpenAI 兼容的 /v1/chat/completions"""
         client = await self._get_client()
@@ -103,8 +140,9 @@ class OpenAICompatibleLLM(LLMInterface):
             ],
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
-            "response_format": {"type": "json_object"},
         }
+        if self.json_format:
+            payload["response_format"] = {"type": "json_object"}
 
         for attempt in range(self.max_retries + 1):
             try:
@@ -112,6 +150,7 @@ class OpenAICompatibleLLM(LLMInterface):
                 response.raise_for_status()
                 data = response.json()
                 content = data["choices"][0]["message"]["content"]
+                content = self._clean_json_content(content)
                 result = json.loads(content)
                 logger.info("LLM [{}] 调用成功 ({} tokens)", self.provider_name, data.get("usage", {}).get("total_tokens", "?"))
                 return result
@@ -353,9 +392,9 @@ class LLMFallbackChain:
     2. primary 熔断/失败 → secondary (DeepSeek Reasoner) → 成功则返回
     3. secondary 熔断/失败 → tertiary (Gemini Key1) → 成功则返回
     4. tertiary 熔断/失败 → quaternary (Gemini Key2 备胎) → 成功则返回
-    5. quaternary 熔断/失败 → quinary (MiniMax-S) → 成功则返回
-    6. quinary 熔断/失败 → septenary (GLM-4-Flash 免费) → 成功则返回
-    7. septenary 熔断/失败 → octonary (GLM-4-Plus 收费) → 成功则返回
+    5. quaternary 熔断/失败 → quinary (GLM-4-Flash 免费) → 成功则返回
+    6. quinary 熔断/失败 → senary (GLM-Z1-9B-0414 硅基流动免费) → 成功则返回
+    7. senary 熔断/失败 → septenary (ERNIE-Speed-8K 百度千帆免费) → 成功则返回
     8. 全部不可用 → RuleBasedAnalyzer 纯规则降级
     """
 
@@ -366,11 +405,11 @@ class LLMFallbackChain:
         tertiary: OpenAICompatibleLLM,
         quaternary: OpenAICompatibleLLM,
         quinary: OpenAICompatibleLLM,
+        senary: OpenAICompatibleLLM,
         septenary: OpenAICompatibleLLM,
-        octonary: OpenAICompatibleLLM,
         rule_based: RuleBasedAnalyzer,
     ):
-        self.providers = [primary, secondary, tertiary, quaternary, quinary, septenary, octonary]
+        self.providers = [primary, secondary, tertiary, quaternary, quinary, senary, septenary]
         self.rule_based = rule_based
         self._active_provider: Optional[str] = None
 
@@ -380,7 +419,7 @@ class LLMFallbackChain:
 
     async def analyze(self, reports: dict[str, AgentReport]) -> Decision:
         for i, provider in enumerate(self.providers):
-            tier = ["主力(DS Chat)", "主力备选(DS Reasoner)", "备用K1(Gemini)", "备用K2(Gemini备胎)", "三级兜底(MM-S)", "四级兜底(GLM免费)", "五级兜底(GLM收费)"][i]
+            tier = ["主力(DS Chat)", "主力备选(DS Reasoner)", "备用K1(Gemini)", "备用K2(Gemini备胎)", "GLM免费", "硅基流动免费", "千帆免费"][i]
             try:
                 logger.info("尝试 LLM [{}] ({}): {}", provider.provider_name, tier, provider.model)
                 decision = await provider.analyze(reports)

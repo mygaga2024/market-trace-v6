@@ -13,6 +13,7 @@
 
 | 日期 | Commit | 修复内容 |
 |------|--------|---------|
+| 2026-06-18 | — | 精简 LLM 回退链：5+1（移除 MiniMax/glm-4-plus 收费模型） |
 | 2025-06-18 | `c5731da` | 添加 AGENTS.md，规范 AI 会话启动/结束流程 |
 | 2025-06-18 | `fbce5cd` | 移除 minimax 收费大模型 senary，保留小模型 quinary |
 | 2025-06-17 | `724d8f8` | Claude Opus 审查收尾：TTL延长/KDJ递推平滑/测试清理/dockerignore |
@@ -27,15 +28,17 @@
 ## LLM Fallback Chain
 
 ```
-primary    → deepseek-chat
-secondary  → deepseek-reasoner
-tertiary   → gemini-2.5-pro
-quaternary → gemini-2.5-pro (备胎)
-quinary    → abab6.5s-chat (免费)
-septenary  → glm-4-flash (免费)
-octonary   → glm-4-plus
-fallback   → 纯规则
+primary    → deepseek-chat        (DeepSeek)
+secondary  → deepseek-reasoner    (DeepSeek 推理)
+tertiary   → gemini-2.5-pro       (Gemini Key1)
+quaternary → gemini-2.5-pro       (Gemini Key2 备胎)
+quinary    → glm-4-flash          (智谱免费)
+senary     → THUDM/GLM-Z1-9B-0414  (硅基流动免费)
+septenary  → ernie-speed-pro-128k    (百度千帆免费)
+fallback   → RuleBasedAnalyzer    (纯规则)
 ```
+
+已移除：abab6.5s-chat（MiniMax 无免费模型）、glm-4-plus（智谱收费）
 
 ## 部署
 
