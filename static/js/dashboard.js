@@ -909,7 +909,7 @@ function renderHelp() {
 \
 <h3>&#x1F3AF; 诊股</h3>\
 <p>在顶部输入框输入股票代码（如 <code>000001</code>），点击<strong>"诊股"</strong>按钮或按回车。</p>\
-<p>系统将拉取K线数据，计算14项技术指标（RSI/MACD/布林带/KDJ/ATR/支撑阻力/均线趋势），检测7策略信号，并通过AI三级回退链（DeepSeek→Gemini→MiniMax→纯规则）输出交易决策。</p>\
+<p>系统将拉取K线数据，计算14项技术指标（RSI/MACD/布林带/KDJ/ATR/支撑阻力/均线趋势），检测7策略信号，并通过AI七级回退链（DeepSeek → Gemini → GLM → 硅基流动 → 千帆 → 纯规则）输出交易决策。</p>\
 \
 <h3>&#x1F4BC; 持仓列表</h3>\
 <p>添加关注的股票代码，系统自动显示实时价格和涨跌幅。点击股票名称可快速诊股，点击 <strong>&#x00D7;</strong> 可移除。右上角<strong>"刷新列表"</strong>按钮可手动刷新所有持仓价格。</p>\
@@ -947,7 +947,7 @@ function renderHelp() {
 </ul>\
 \
 <h3>&#x1F4E1; AI决策链</h3>\
-<p>系统使用三级LLM回退链确保决策不中断：<strong>DeepSeek → Gemini → MiniMax → 纯规则加权</strong>。任一环节熔断或超时自动降级到下一级。</p>\
+<p>系统使用七级LLM回退链确保决策不中断：<strong>DeepSeek → Gemini ×2 → GLM免费 → 硅基流动免费 → 千帆免费 → 纯规则加权</strong>。任一环节熔断或超时自动降级到下一级。</p>\
 \
 <h3>&#x1F4CA; 技术指标说明</h3>\
 <table class="tab-table">\
