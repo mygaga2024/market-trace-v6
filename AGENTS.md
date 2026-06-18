@@ -39,7 +39,29 @@ curl -s localhost:19377/health            # API 健康检查
 6. 清理临时文件：`__pycache__`、`.pytest_cache`、`*.pyc`、`logs/`、`.DS_Store` 等
 7. 三地同步：`git push origin main`（敏感文件已在 .gitignore 排除）
 
+## 任务交付前
+
+每次代码修改完成后、收尾工作前，**务必**执行部署验证：
+
+### 1. 单元测试
+```
+pytest tests/ -v
+```
+
+### 2. Docker 部署验证（如有 Docker）
+```
+docker-compose up -d --build mt6-app    # 重新构建并启动
+sleep 5
+curl -s localhost:19377/health | python3 -m json.tool  # 验证 API 存活
+```
+
+### 3. 无 Docker 时的降级验证
+```
+python3 -c "from core.llm_factory import LLMFallbackChain; print('导入成功')"
+```
+
 ## 提交前检查
 
 - 运行相关测试确认通过
+- 部署验证通过
 - 不提交未完成的代码
