@@ -76,7 +76,7 @@ async def health_detail(request: Request):
 
     llm_status = {}
     llm_cfg = config.get("llm", {})
-    for tier, key in [("primary", "primary"), ("secondary", "secondary"), ("tertiary", "tertiary")]:
+    for tier, key in [("primary", "primary"), ("secondary", "secondary"), ("tertiary", "tertiary"), ("quaternary", "quaternary"), ("quinary", "quinary"), ("senary", "senary"), ("septenary", "septenary"), ("octonary", "octonary")]:
         provider = llm_cfg.get(key, {})
         llm_status[key] = {
             "api_key_configured": bool(provider.get("api_key") and "your-" not in str(provider.get("api_key", ""))),

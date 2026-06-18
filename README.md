@@ -88,7 +88,5 @@ NAS 宿主机
 
 | 变量 | 说明 |
 |------|------|
-| `PRIMARY_AI_API_KEY` | 主力 AI 模型 Key |
-| `SECONDARY_AI_API_KEY` | 备用 AI 模型 Key |
-| `TERTIARY_AI_API_KEY` | 三级备选 AI 模型 Key |
+| `*_API_KEY` | 多级回退链 AI 模型 Key (详见 env.example) |
 | `TUSHARE_TOKEN` | (可选) 备用数据源 Token |

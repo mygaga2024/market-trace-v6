@@ -120,7 +120,7 @@ async function load() {
 
     var llmHtml = '';
     if (h.llm_chain) {
-      ['primary', 'secondary', 'tertiary'].forEach(function(t) {
+      ['primary', 'secondary', 'tertiary', 'quaternary', 'quinary', 'senary', 'septenary', 'octonary'].forEach(function(t) {
         var p = h.llm_chain[t];
         if (!p) return;
         var icon = p.api_key_configured ? '\u2713' : '\u2717';

@@ -66,8 +66,12 @@ def handle_health_detail():
         "agents": {"macro": True, "signal": True, "trace": True, "risk": True, "chief": True},
         "llm_chain": {
             "primary": {"api_key_configured": True, "provider": "deepseek", "model": "deepseek-chat"},
-            "secondary": {"api_key_configured": True, "provider": "gemini", "model": "gemini-pro"},
-            "tertiary": {"api_key_configured": False, "provider": "minimax", "model": ""},
+            "secondary": {"api_key_configured": True, "provider": "deepseek", "model": "deepseek-reasoner"},
+            "tertiary": {"api_key_configured": True, "provider": "gemini", "model": "gemini-2.5-pro"},
+            "quaternary": {"api_key_configured": True, "provider": "gemini", "model": "gemini-2.5-pro"},
+            "quinary": {"api_key_configured": False, "provider": "minimax", "model": "abab6.5s-chat"},
+            "septenary": {"api_key_configured": True, "provider": "zhipu", "model": "glm-4-flash"},
+            "octonary": {"api_key_configured": True, "provider": "zhipu", "model": "glm-4-plus"},
         },
         "agents_running": 5,
     })
@@ -321,7 +325,7 @@ def handle_logs():
         "10:00:00 | INFO     | Market Trace V6.0 正在启动...",
         "10:00:01 | INFO     | Redis 已连接",
         "10:00:01 | INFO     | 数据库已初始化",
-        "10:00:02 | INFO     | LLM 回退链已就绪: DeepSeek → Gemini → MiniMax → 纯规则",
+        "10:00:02 | INFO     | LLM 回退链已就绪: DS Chat → DS Reasoner → Gemini K1 → Gemini K2 → MM-S → MM → GLM Flash → GLM Plus → 纯规则",
         "10:00:03 | INFO     | 5 个 Agent 已启动",
         "10:00:05 | INFO     | 并发预加载 热门 20 只 (并发度=5)…",
         "10:00:15 | INFO     | 预加载 000001: 60 条K线",

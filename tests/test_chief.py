@@ -224,16 +224,39 @@ class TestLLMFallbackChain:
         primary.analyze = AsyncMock(side_effect=CircuitBreakerOpenError("deepseek", 30))
 
         secondary = MagicMock(spec=OpenAICompatibleLLM)
-        secondary.provider_name = "gemini"
-        secondary.model = "gemini-pro"
-        secondary.analyze = AsyncMock(return_value=Decision(
-            action=DecisionAction.BUY, confidence=0.8,
-            reasoning="Gemini 分析", evidence_sources=["macro", "signal"],
-            provider_label="gemini:gemini-pro", provider_status=ProviderStatus.HEALTHY,
-        ))
+        secondary.provider_name = "deepseek-reasoner"
+        secondary.model = "deepseek-reasoner"
+        secondary.analyze = AsyncMock(side_effect=Exception("ds-reasoner failed"))
 
         tertiary = MagicMock(spec=OpenAICompatibleLLM)
-        tertiary.provider_name = "minimax"
+        tertiary.provider_name = "gemini-k1"
+        tertiary.model = "gemini-2.5-pro"
+        tertiary.analyze = AsyncMock(return_value=Decision(
+            action=DecisionAction.BUY, confidence=0.8,
+            reasoning="Gemini 分析", evidence_sources=["macro", "signal"],
+            provider_label="gemini:gemini-2.5-pro", provider_status=ProviderStatus.HEALTHY,
+        ))
+
+        quaternary = MagicMock(spec=OpenAICompatibleLLM)
+        quaternary.provider_name = "gemini-k2"
+        quaternary.model = "gemini-2.5-pro"
+        quaternary.analyze = AsyncMock(side_effect=Exception("gemini-k2 failed"))
+
+        quinary = MagicMock(spec=OpenAICompatibleLLM)
+        quinary.provider_name = "minimax-s"
+        quinary.model = "abab6.5s-chat"
+        quinary.analyze = AsyncMock(side_effect=Exception("minimax-s failed"))
+
+        septenary = MagicMock(spec=OpenAICompatibleLLM)
+        septenary.provider_name = "zhipu-flash"
+        septenary.model = "glm-4-flash"
+        septenary.analyze = AsyncMock(side_effect=Exception("zhipu-flash failed"))
+
+        octonary = MagicMock(spec=OpenAICompatibleLLM)
+        octonary.provider_name = "zhipu-plus"
+        octonary.model = "glm-4-plus"
+        octonary.analyze = AsyncMock(side_effect=Exception("zhipu-plus failed"))
+
         rule_based = MagicMock(spec=RuleBasedAnalyzer)
         rule_based.provider_name = "rule_based"
         rule_based.analyze = AsyncMock(return_value=Decision(
@@ -242,20 +265,24 @@ class TestLLMFallbackChain:
             provider_label="rule_based:fallback", provider_status=ProviderStatus.FALLBACK,
         ))
 
-        return LLMFallbackChain(primary, secondary, tertiary, rule_based)
+        return LLMFallbackChain(primary, secondary, tertiary, quaternary, quinary, septenary, octonary, rule_based)
 
     @pytest.mark.asyncio
     async def test_falls_back_to_secondary(self, chain):
         reports = {"macro": make_macro_report(), "signal": make_signal_report()}
         decision = await chain.analyze(reports)
-        assert chain.active_provider == "gemini"
-        assert decision.provider_label == "gemini:gemini-pro"
+        assert chain.active_provider == "gemini-k1"
+        assert decision.provider_label == "gemini:gemini-2.5-pro"
 
     @pytest.mark.asyncio
     async def test_all_fail_uses_rule_based(self, chain):
         chain.providers[0].analyze = AsyncMock(side_effect=Exception("fail1"))
-        chain.providers[1].analyze = AsyncMock(side_effect=CircuitBreakerOpenError("gemini", 10))
+        chain.providers[1].analyze = AsyncMock(side_effect=CircuitBreakerOpenError("ds-reasoner", 10))
         chain.providers[2].analyze = AsyncMock(side_effect=Exception("fail3"))
+        chain.providers[3].analyze = AsyncMock(side_effect=Exception("fail4"))
+        chain.providers[4].analyze = AsyncMock(side_effect=Exception("fail5"))
+        chain.providers[5].analyze = AsyncMock(side_effect=Exception("fail6"))
+        chain.providers[6].analyze = AsyncMock(side_effect=Exception("fail7"))
 
         reports = {"macro": make_macro_report()}
         decision = await chain.analyze(reports)
@@ -269,7 +296,7 @@ class TestLLMFallbackChain:
         chain.providers[2].health_check = AsyncMock(return_value=True)
         results = await chain.health_check()
         assert results["deepseek"] is True
-        assert results["gemini"] is False
+        assert results["deepseek-reasoner"] is False
 
 
 # ---- ChiefAnalyst Tests ----

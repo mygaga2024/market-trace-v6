@@ -1,6 +1,6 @@
 """
 Market Trace V6.0 — LLM 接口工厂与多级回退链
-OpenAI 兼容接口 + 链式回退路由 (DeepSeek → Gemini → MiniMax → 纯规则)
+OpenAI 兼容接口 + 链式回退路由 (DeepSeek → Gemini → MiniMax → GLM Flash → GLM Plus → 纯规则)
 """
 
 from __future__ import annotations
@@ -349,10 +349,14 @@ class LLMFallbackChain:
     LLM 多级回退链 (Chain of Responsibility)
 
     调用顺序：
-    1. primary (DeepSeek) → 成功则返回
-    2. primary 熔断/失败 → secondary (Gemini) → 成功则返回
-    3. secondary 熔断/失败 → tertiary (MiniMax) → 成功则返回
-    4. 全部不可用 → RuleBasedAnalyzer 纯规则降级
+    1. primary (DeepSeek Chat) → 成功则返回
+    2. primary 熔断/失败 → secondary (DeepSeek Reasoner) → 成功则返回
+    3. secondary 熔断/失败 → tertiary (Gemini Key1) → 成功则返回
+    4. tertiary 熔断/失败 → quaternary (Gemini Key2 备胎) → 成功则返回
+    5. quaternary 熔断/失败 → quinary (MiniMax-S) → 成功则返回
+    6. quinary 熔断/失败 → septenary (GLM-4-Flash 免费) → 成功则返回
+    7. septenary 熔断/失败 → octonary (GLM-4-Plus 收费) → 成功则返回
+    8. 全部不可用 → RuleBasedAnalyzer 纯规则降级
     """
 
     def __init__(
@@ -360,9 +364,13 @@ class LLMFallbackChain:
         primary: OpenAICompatibleLLM,
         secondary: OpenAICompatibleLLM,
         tertiary: OpenAICompatibleLLM,
+        quaternary: OpenAICompatibleLLM,
+        quinary: OpenAICompatibleLLM,
+        septenary: OpenAICompatibleLLM,
+        octonary: OpenAICompatibleLLM,
         rule_based: RuleBasedAnalyzer,
     ):
-        self.providers = [primary, secondary, tertiary]
+        self.providers = [primary, secondary, tertiary, quaternary, quinary, septenary, octonary]
         self.rule_based = rule_based
         self._active_provider: Optional[str] = None
 
@@ -372,7 +380,7 @@ class LLMFallbackChain:
 
     async def analyze(self, reports: dict[str, AgentReport]) -> Decision:
         for i, provider in enumerate(self.providers):
-            tier = ["主力", "备用", "三级兜底"][i]
+            tier = ["主力(DS Chat)", "主力备选(DS Reasoner)", "备用K1(Gemini)", "备用K2(Gemini备胎)", "三级兜底(MM-S)", "四级兜底(GLM免费)", "五级兜底(GLM收费)"][i]
             try:
                 logger.info("尝试 LLM [{}] ({}): {}", provider.provider_name, tier, provider.model)
                 decision = await provider.analyze(reports)

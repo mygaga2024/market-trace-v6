@@ -80,16 +80,32 @@ def _build_llm_chain(cfg: dict):
         CircuitBreaker(name="llm:deepseek", **cb_kwargs),
     )
     secondary = OpenAICompatibleLLM(
-        "gemini", llm_cfg.get("secondary", {}),
-        CircuitBreaker(name="llm:gemini", **cb_kwargs),
+        "deepseek-reasoner", llm_cfg.get("secondary", {}),
+        CircuitBreaker(name="llm:deepseek-reasoner", **cb_kwargs),
     )
     tertiary = OpenAICompatibleLLM(
-        "minimax", llm_cfg.get("tertiary", {}),
-        CircuitBreaker(name="llm:minimax", **cb_kwargs),
+        "gemini", llm_cfg.get("tertiary", {}),
+        CircuitBreaker(name="llm:gemini", **cb_kwargs),
+    )
+    quaternary = OpenAICompatibleLLM(
+        "gemini-k2", llm_cfg.get("quaternary", {}),
+        CircuitBreaker(name="llm:gemini-k2", **cb_kwargs),
+    )
+    quinary = OpenAICompatibleLLM(
+        "minimax-s", llm_cfg.get("quinary", {}),
+        CircuitBreaker(name="llm:minimax-s", **cb_kwargs),
+    )
+    septenary = OpenAICompatibleLLM(
+        "zhipu-flash", llm_cfg.get("septenary", {}),
+        CircuitBreaker(name="llm:zhipu-flash", **cb_kwargs),
+    )
+    octonary = OpenAICompatibleLLM(
+        "zhipu-plus", llm_cfg.get("octonary", {}),
+        CircuitBreaker(name="llm:zhipu-plus", **cb_kwargs),
     )
     rule_based = RuleBasedAnalyzer(llm_cfg.get("fallback", {}))
 
-    return LLMFallbackChain(primary, secondary, tertiary, rule_based)
+    return LLMFallbackChain(primary, secondary, tertiary, quaternary, quinary, septenary, octonary, rule_based)
 
 
 def _start_agents(bus, config: dict, llm_chain, risk_manager=None) -> list[asyncio.Task]:
@@ -205,7 +221,7 @@ async def lifespan(app: FastAPI):
     # LLM
     llm_chain = _build_llm_chain(CONFIG)
     app.state.llm_chain = llm_chain
-    logger.info("LLM 回退链已就绪: DeepSeek → Gemini → MiniMax → 纯规则")
+    logger.info("LLM 回退链已就绪: DS Chat → DS Reasoner → Gemini K1 → Gemini K2 → MM-S → MM → GLM Flash → GLM Plus → 纯规则")
 
     # Notifier
     notifier = get_notifier()
@@ -319,7 +335,7 @@ def main():
 
     # M1: 必需环境变量启动校验
     llm_cfg = CONFIG.get("llm", {})
-    for tier, key in [("主力", "primary"), ("备用", "secondary"), ("三级", "tertiary")]:
+    for tier, key in [("主力(DS Chat)", "primary"), ("主力备选(DS Reasoner)", "secondary"), ("备用K1(Gemini)", "tertiary"), ("备用K2(Gemini备胎)", "quaternary"), ("三级兜底(MM-S)", "quinary"), ("三级备选(MM)", "senary"), ("四级(GLM免费)", "septenary"), ("五级(GLM收费)", "octonary")]:
         api_key = llm_cfg.get(key, {}).get("api_key", "")
         if not api_key or "your-" in api_key:
             logger.warning("⚠️ {} LLM ({}) API Key 未配置，该级别将无法使用", tier, key)

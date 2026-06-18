@@ -14,7 +14,7 @@ redis:
   retry_interval: 5
   health_check_interval: 30
 
-# --- AI 多级回退链 (DeepSeek → Gemini → MiniMax → 纯规则) ---
+# --- AI 多级回退链 (DS Chat → DS Reasoner → Gemini K1 → Gemini K2 → MiniMax-S → GLM Flash → GLM Plus → 纯规则) ---
 llm:
   primary:
     provider: deepseek
@@ -27,6 +27,16 @@ llm:
     max_tokens: 2048
 
   secondary:
+    provider: deepseek
+    model: deepseek-reasoner
+    api_key: ${DEEPSEEK_API_KEY}
+    base_url: https://api.deepseek.com/v1
+    timeout: 120
+    max_retries: 2
+    temperature: 0.3
+    max_tokens: 2048
+
+  tertiary:
     provider: gemini
     model: gemini-2.5-pro
     api_key: ${GEMINI_API_KEY}
@@ -36,12 +46,42 @@ llm:
     temperature: 0.3
     max_tokens: 2048
 
-  tertiary:
+  quaternary:
+    provider: gemini
+    model: gemini-2.5-pro
+    api_key: ${GEMINI_API_KEY_2}
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai
+    timeout: 45
+    max_retries: 2
+    temperature: 0.3
+    max_tokens: 2048
+
+  quinary:
     provider: minimax
     model: abab6.5s-chat
     api_key: ${MINIMAX_API_KEY}
     base_url: https://api.minimax.chat/v1
     timeout: 45
+    max_retries: 2
+    temperature: 0.3
+    max_tokens: 2048
+
+  septenary:
+    provider: zhipu
+    model: glm-4-flash
+    api_key: ${ZHIPU_API_KEY}
+    base_url: https://open.bigmodel.cn/api/paas/v4
+    timeout: 45
+    max_retries: 2
+    temperature: 0.3
+    max_tokens: 2048
+
+  octonary:
+    provider: zhipu
+    model: glm-4-plus
+    api_key: ${ZHIPU_API_KEY}
+    base_url: https://open.bigmodel.cn/api/paas/v4
+    timeout: 60
     max_retries: 2
     temperature: 0.3
     max_tokens: 2048
