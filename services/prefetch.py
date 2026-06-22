@@ -320,6 +320,39 @@ async def fetch_stock_price_via_sina(symbol: str):
     return "", None, None
 
 
+async def fetch_stock_price_tencent(symbol: str):
+    """通过腾讯行情接口获取单只股票名称+实时价格+涨跌幅，返回 (name, price, change_pct)
+    与 services/analyzer.py 的 _apply_tencent_quote 使用同一数据源"""
+    prefix = "sh" if symbol.startswith(("6", "9")) else "sz"
+    url = f"http://qt.gtimg.cn/q={prefix}{symbol}"
+    try:
+        import requests
+        r = await asyncio.to_thread(requests.get, url, timeout=5)
+        r.encoding = "gbk"
+        text = r.text
+        if "~" not in text:
+            return "", None, None
+        fields = text.split("~")
+        if len(fields) < 5:
+            return "", None, None
+        name = fields[1].strip() if len(fields) > 1 else ""
+        try:
+            price = float(fields[3]) if fields[3] else None
+        except (ValueError, IndexError):
+            price = None
+        try:
+            prev_close = float(fields[4]) if fields[4] else None
+        except (ValueError, IndexError):
+            prev_close = None
+        change_pct = None
+        if price and prev_close and prev_close != 0:
+            change_pct = round((price - prev_close) / prev_close * 100, 2)
+        return name, price, change_pct
+    except Exception:
+        pass
+    return "", None, None
+
+
 async def get_stock_name(symbol: str, bus) -> str:
     """获取股票名称（Redis → 进程缓存 → 新浪实时查询）"""
     if symbol in _stock_name_cache:

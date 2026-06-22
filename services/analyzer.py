@@ -162,7 +162,7 @@ async def analyze_single(
 
     # 4) 腾讯实时价修正（浅拷贝避免污染缓存）
     cached = list(cached)
-    await _apply_tencent_quote(symbol, cached)
+    prev_close = await _apply_tencent_quote(symbol, cached)
 
     closes = np.array([float(r["close"]) for r in cached])
     highs = np.array([float(r["high"]) for r in cached])
@@ -171,8 +171,12 @@ async def analyze_single(
 
     # ── 技术指标 ──
     price = float(closes[-1])
-    prev = float(closes[-2]) if len(closes) > 1 else price
-    change_pct = round((price - prev) / prev * 100, 2) if prev else 0
+    # 优先使用腾讯返回的官方昨收价计算涨跌幅，与持仓列表(Sina)保持一致
+    if prev_close and prev_close > 0:
+        change_pct = round((price - prev_close) / prev_close * 100, 2)
+    else:
+        prev_k = float(closes[-2]) if len(closes) > 1 else price
+        change_pct = round((price - prev_k) / prev_k * 100, 2) if prev_k else 0
 
     ma5 = round(_calc_ma(closes, 5), 2)
     ma10 = round(_calc_ma(closes, 10), 2)
@@ -378,8 +382,9 @@ async def analyze_single(
     }
 
 
-async def _apply_tencent_quote(symbol: str, cached: list[dict]) -> None:
-    """腾讯行情API修正最后一根K线的收盘价"""
+async def _apply_tencent_quote(symbol: str, cached: list[dict]) -> float | None:
+    """腾讯行情API修正最后一根K线的收盘价，返回官方昨收价(用于计算涨跌幅)"""
+    prev_close = None
     try:
         ts_prefix = "sh" if symbol.startswith(("6", "9")) else "sz"
         url = f"http://qt.gtimg.cn/q={ts_prefix}{symbol}"
@@ -387,10 +392,14 @@ async def _apply_tencent_quote(symbol: str, cached: list[dict]) -> None:
             resp = await tc.get(url)
             text = resp.text
             if "~" not in text:
-                return
+                return None
         fields = text.split("~")
-        if len(fields) >= 4:
+        if len(fields) >= 5:
             live_price = float(fields[3])
+            try:
+                prev_close = float(fields[4]) if fields[4] else None
+            except (ValueError, IndexError):
+                pass
             if live_price > 0 and abs(live_price - float(cached[-1]["close"])) > 0.001:
                 cached[-1] = {
                     **cached[-1],
@@ -401,6 +410,7 @@ async def _apply_tencent_quote(symbol: str, cached: list[dict]) -> None:
                 }
     except Exception as e:
         logger.debug("腾讯实时价获取失败 ({}): {}", symbol, e)
+    return prev_close
 
 
 # ── K线渲染 ──

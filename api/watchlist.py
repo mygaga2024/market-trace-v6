@@ -45,7 +45,11 @@ async def get_watchlist(request: Request):
             async def _fetch_live(entry: dict):
                 async with _SINA_SEM:
                     try:
-                        live_name, live_price, live_change = await fetch_stock_price_via_sina(entry["symbol"])
+                        # Use Tencent quote for consistency with diagnosis endpoint
+                        from services.prefetch import fetch_stock_price_tencent
+                        live_name, live_price, live_change = await fetch_stock_price_tencent(entry["symbol"])
+                        if not live_name:
+                            live_name, live_price, live_change = await fetch_stock_price_via_sina(entry["symbol"])
                         if live_name:
                             entry["name"] = live_name
                         if live_price is not None:
