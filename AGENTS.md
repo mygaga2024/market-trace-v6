@@ -8,6 +8,8 @@
 □ 代码改动已做
 □ pytest tests/ -v 全部通过
 □ NAS 部署验证 返回 ok
+□ NAS 后端 API 实测 已执行 (涉及后端时: curl 调用关键端点验证返回值)
+□ 前端 Web 实测 已执行 (涉及前端时: 用 webfetch 抓页面 + curl 调 mock API 验证渲染数据)
 □ git add + git commit + git push 已执行
 □ PROJECT_STATUS.md 已更新
 □ Memory Session 已记录
@@ -15,7 +17,15 @@
 □ git status 显示 clean
 ```
 
-**收尾不是额外步骤，是任务的一部分。代码改完 ≠ 任务完成。以上 8 项全部打勾才算结束。**
+**收尾不是额外步骤，是任务的一部分。代码改完 ≠ 任务完成。以上全部打勾才算结束。**
+
+**双实测原则：本项目为前后端分离架构，Web 改动 = 后端 + 前端 双验证。**
+
+| 改动范围 | 验证方式 |
+|----------|---------|
+| 仅后端 (Python/API/Agent) | NAS 部署后 curl 调端点验证返回值 |
+| 仅前端 (HTML/CSS/JS) | dev_server + curl 调 mock API 验证数据 + webfetch 抓页面验证结构 |
+| 前后端都改 | **两者都做** |
 
 ---
 
