@@ -218,6 +218,8 @@ async def analyze_single(
                     "strategy": name,
                     "label": info["label"],
                     "type": "BUY" if name != "risk" else "SELL",
+                    "direction": "bullish" if name != "risk" else "bearish",
+                    "strength": 0.7,
                 })
         except Exception:
             pass

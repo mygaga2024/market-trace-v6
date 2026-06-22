@@ -208,7 +208,12 @@ class OpenAICompatibleLLM(LLMInterface):
             if signals:
                 parts.append("- 检测信号:")
                 for s in signals:
-                    parts.append(f"  * {s['type']} ({s['direction']}, 强度={s.get('strength', 'N/A')})")
+                    parts.append(f"  * {s.get('type', '?')} ({s.get('direction', 'N/A')}, 强度={s.get('strength', 'N/A')})")
+            agent_sigs_prompt = signal.data.get("agent_signals", [])
+            if agent_sigs_prompt:
+                parts.append("- Agent 信号:")
+                for s in agent_sigs_prompt:
+                    parts.append(f"  * {s.get('type', '?')} ({s.get('direction', 'N/A')}, 强度={s.get('strength', 'N/A')})")
             parts.append(f"- 可靠性评分: {signal.data.get('reliability', 0.5):.2f}")
             all_sigs = signals + signal.data.get("agent_signals", [])
             bull_sigs = [s for s in all_sigs if s.get('direction') in ('bullish', 'buy')]
@@ -340,8 +345,10 @@ class RuleBasedAnalyzer(LLMInterface):
 
         if "signal" in reports and reports["signal"].data:
             signals = reports["signal"].data.get("signals", [])
-            bull = sum(s.get("strength", 0) for s in signals if s["direction"] == "bullish")
-            bear = sum(s.get("strength", 0) for s in signals if s["direction"] == "bearish")
+            agent_sigs = reports["signal"].data.get("agent_signals", [])
+            all_signals = signals + agent_sigs
+            bull = sum(s.get("strength", 0) for s in all_signals if s.get("direction") == "bullish")
+            bear = sum(s.get("strength", 0) for s in all_signals if s.get("direction") == "bearish")
             signal_score = (bull - bear) / max(bull + bear, 1)
             score += signal_score * self.weights.get("signal", 0.25)
             insights.append(f"技术信号: 多{bull:.1f}/空{bear:.1f}")
@@ -463,9 +470,13 @@ class LLMFallbackChain:
             return decisions[0]
 
         logger.critical("所有 LLM 不可用，执行纯规则降级")
-        decision = await self.rule_based.analyze(reports)
-        self._active_provider = "rule_based"
-        return decision
+        try:
+            decision = await self.rule_based.analyze(reports)
+            self._active_provider = "rule_based"
+            return decision
+        except Exception as e:
+            logger.error("RuleBasedAnalyzer 异常: {}", e)
+            return _dummy_decision(f"规则引擎异常: {e}")
 
     async def health_check(self) -> dict[str, bool]:
         results = {}
