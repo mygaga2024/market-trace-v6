@@ -5,8 +5,11 @@ Market Trace V6.0 — 纸上交易模块
 
 from __future__ import annotations
 
+import json
+import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Optional
 
 import numpy as np
@@ -187,10 +190,86 @@ class PaperAccount:
 class PaperTradeManager:
     """纸上交易管理器：多账户、P&L追踪、策略绩效"""
 
+    _PERSIST_PATH = Path("data/paper_accounts.json")
+
     def __init__(self, bus):
         self.bus = bus
         self._accounts: dict[str, PaperAccount] = {}
         self._default_account: Optional[PaperAccount] = None
+        self._load_from_disk()
+
+    def _load_from_disk(self) -> None:
+        try:
+            if self._PERSIST_PATH.exists():
+                data = json.loads(self._PERSIST_PATH.read_text("utf-8"))
+                for acct_id, acct_data in data.get("accounts", {}).items():
+                    acct = PaperAccount(
+                        account_id=acct_id,
+                        initial_capital=acct_data.get("initial_capital", 100_000),
+                        capital=acct_data.get("capital", 100_000),
+                    )
+                    for sym, pos_data in acct_data.get("positions", {}).items():
+                        pos = PaperPosition(
+                            symbol=sym,
+                            quantity=pos_data.get("quantity", 0),
+                            avg_cost=pos_data.get("avg_cost", 0.0),
+                            entry_time=datetime.fromisoformat(pos_data["entry_time"]) if pos_data.get("entry_time") else None,
+                            total_commission=pos_data.get("total_commission", 0.0),
+                        )
+                        acct.positions[sym] = pos
+                    for o_data in acct_data.get("orders", []):
+                        order = PaperOrder(
+                            order_id=o_data["order_id"],
+                            symbol=o_data["symbol"],
+                            action=o_data["action"],
+                            quantity=o_data["quantity"],
+                            price=o_data["price"],
+                            timestamp=datetime.fromisoformat(o_data["timestamp"]),
+                            filled=o_data.get("filled", True),
+                            reason=o_data.get("reason", ""),
+                            commission=o_data.get("commission", 0.0),
+                        )
+                        acct.orders.append(order)
+                    self._accounts[acct_id] = acct
+                    if acct_id == "default":
+                        self._default_account = acct
+                logger.info("纸上账户已从磁盘恢复: {} 个账户", len(self._accounts))
+        except Exception as e:
+            logger.warning("纸上账户磁盘恢复失败: {}", e)
+
+    def _save_to_disk(self) -> None:
+        try:
+            os.makedirs(self._PERSIST_PATH.parent, exist_ok=True)
+            data = {"accounts": {}}
+            for acct_id, acct in self._accounts.items():
+                data["accounts"][acct_id] = {
+                    "initial_capital": acct.initial_capital,
+                    "capital": acct.capital,
+                    "positions": {
+                        sym: {
+                            "symbol": p.symbol, "quantity": p.quantity,
+                            "avg_cost": p.avg_cost,
+                            "entry_time": p.entry_time.isoformat() if p.entry_time else None,
+                            "total_commission": p.total_commission,
+                        }
+                        for sym, p in acct.positions.items()
+                    },
+                    "orders": [
+                        {
+                            "order_id": o.order_id, "symbol": o.symbol,
+                            "action": o.action, "quantity": o.quantity,
+                            "price": o.price, "timestamp": o.timestamp.isoformat(),
+                            "filled": o.filled, "reason": o.reason,
+                            "commission": o.commission,
+                        }
+                        for o in acct.orders[-200:]
+                    ],
+                }
+            tmp_path = self._PERSIST_PATH.with_suffix(".tmp")
+            tmp_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), "utf-8")
+            tmp_path.rename(self._PERSIST_PATH)
+        except Exception as e:
+            logger.warning("纸上账户磁盘保存失败: {}", e)
 
     def get_or_create_account(self, account_id: str = "default",
                                initial_capital: float = 100_000) -> PaperAccount:
@@ -202,6 +281,7 @@ class PaperTradeManager:
             logger.info("纸上账户创建: {} 本金={:.0f}", account_id, initial_capital)
             if account_id == "default":
                 self._default_account = self._accounts[account_id]
+            self._save_to_disk()
         return self._accounts[account_id]
 
     async def execute_signal(self, symbol: str, decision: str, price: float,
@@ -214,14 +294,17 @@ class PaperTradeManager:
             return None
 
         if decision == "BUY":
-            # 仓位 = 置信度 × 20% 资金
             allocation = confidence * 0.20 * account.capital
             quantity = int(allocation / price / 100) * 100
             if quantity > 0:
-                return account.execute_buy(symbol, price, quantity, reason=reason)
+                result = account.execute_buy(symbol, price, quantity, reason=reason)
+                self._save_to_disk()
+                return result
 
         elif decision == "SELL":
-            return account.execute_sell(symbol, price, reason=reason)
+            result = account.execute_sell(symbol, price, reason=reason)
+            self._save_to_disk()
+            return result
 
         return None
 
