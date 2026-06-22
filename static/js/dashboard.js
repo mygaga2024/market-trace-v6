@@ -90,13 +90,17 @@
   function fetchAuth(url, options) {
     options = options || {};
     options.credentials = 'same-origin';
-    options.signal = options.signal || AbortSignal.timeout(15000);
+    var timeoutMs = options.timeout != null ? options.timeout : 15000;
+    delete options.timeout;
+    options.signal = options.signal || AbortSignal.timeout(timeoutMs);
     return fetchWithRetry(url, options);
   }
 
   function fetchWithRetry(url, options, retries, delay) {
     retries = retries != null ? retries : 3;
     delay = delay != null ? delay : 1000;
+    var isPost = options.method === 'POST';
+    if (isPost) retries = 0;  // POST 不重试(有副作用)
     return fetch(url, options).then(function(r) {
       if (!r.ok && retries > 0 && r.status >= 500) {
         return new Promise(function(resolve) {
@@ -298,7 +302,7 @@
     $id('analyze-result').style.display = 'none';
     $id('analyze-spinner').scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-    fetchAuth('/analyze/' + sym, { method: 'POST' })
+    fetchAuth('/analyze/' + sym, { method: 'POST', timeout: 90000 })
       .then(function(r) { return r.json(); })
       .then(function(d) {
         var html;
@@ -471,7 +475,7 @@
     container.style.display = 'block';
     container.innerHTML = '<div class="spinner" role="status">\u23F3 全市场扫描中... 正在扫描5000+只A股，预计30-60秒</div>';
 
-    fetchAuth('/scan/' + strategy, { method: 'POST' })
+    fetchAuth('/scan/' + strategy, { method: 'POST', timeout: 90000 })
       .then(function(r) { return r.json(); })
       .then(function(d) {
         if (d.error) { container.innerHTML = '<div class="error-banner" role="alert">' + escapeHtml(d.error) + '</div>'; return; }
@@ -487,7 +491,7 @@
     container.style.display = 'block';
     container.innerHTML = '<div class="spinner" role="status">\u23F3 智能扫描中... 7策略×5000+只A股，预计60-90秒</div>';
 
-    fetchAuth('/scan/smart', { method: 'POST' })
+    fetchAuth('/scan/smart', { method: 'POST', timeout: 90000 })
       .then(function(r) { return r.json(); })
       .then(function(d) {
         if (d.error) { container.innerHTML = '<div class="error-banner" role="alert">' + escapeHtml(d.error) + '</div>'; return; }
