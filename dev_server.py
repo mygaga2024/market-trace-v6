@@ -188,12 +188,12 @@ def handle_risk_status():
 def handle_risk_overrides():
     return json_response({
         "count": 3, "overrides": [
-            {"level": "normal", "rule": "STOP_LOSS", "symbol": "000001",
-             "detail": "止损线触发，否决卖出决策", "timestamp": datetime.now(timezone.utc).isoformat()},
-            {"level": "elevated", "rule": "MAX_DRAWDOWN", "symbol": "600519",
-             "detail": "回撤超过10%，否决加仓", "timestamp": datetime.now(timezone.utc).isoformat()},
-            {"level": "normal", "rule": "POSITION_LIMIT", "symbol": "000333",
-             "detail": "仓位超限，否决买入", "timestamp": datetime.now(timezone.utc).isoformat()},
+            {"severity": "warning", "reason": "宏观极度悲观 vs 资金大幅流入", "symbol": "000001",
+             "action": "REDUCE_CONFIDENCE", "timestamp": datetime.now(timezone.utc).isoformat()},
+            {"severity": "critical", "reason": "强势顶背离，强制平仓", "symbol": "600519",
+             "action": "FORCE_SELL", "timestamp": datetime.now(timezone.utc).isoformat()},
+            {"severity": "warning", "reason": "宏观过度乐观 vs 资金大幅流出", "symbol": "000333",
+             "action": "REDUCE_CONFIDENCE", "timestamp": datetime.now(timezone.utc).isoformat()},
         ],
     })
 

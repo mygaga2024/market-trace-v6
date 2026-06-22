@@ -107,6 +107,8 @@ body {
 .card:nth-child(1) { animation-delay: 0s; }
 .card:nth-child(2) { animation-delay: .1s; }
 .card:nth-child(3) { animation-delay: .2s; }
+.card:nth-child(4) { animation-delay: .3s; }
+.card:nth-child(5) { animation-delay: .4s; }
 
 /* ── RAI ── */
 .rai-value {
@@ -237,6 +239,22 @@ body {
   background: var(--bg-card-hover);
   transform: scale(1.03);
 }
+.strat-btn-primary {
+  background: var(--btn-primary-bg); color: #fff; border: none;
+}
+.strat-btn-primary:hover { background: var(--btn-primary-hover); }
+.strat-btn-smart {
+  background: var(--accent-purple); color: #fff; border: none;
+}
+.strat-btn-smart:hover { opacity: .85; }
+
+/* ── Tab Refresh Button ── */
+.tab-refresh-btn {
+  margin-left: auto; padding: 8px 12px; background: transparent;
+  color: var(--text-muted); border: none; border-radius: 8px;
+  cursor: pointer; font-size: 13px; transition: color .15s, background .15s;
+}
+.tab-refresh-btn:hover { color: var(--text-primary); background: var(--bg-tag); }
 
 /* ── Result Cards ── */
 .result-card {
@@ -478,6 +496,56 @@ body {
 @media (min-width: 1200px) {
   .grid { grid-template-columns: repeat(4, 1fr); }
 }
+
+/* ── Scrollbar (dark theme) ── */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--bg-primary); }
+::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+scrollbar-width: thin;
+scrollbar-color: var(--border-color) var(--bg-primary);
+
+/* ── Help Guide ── */
+.help-guide { max-width: 800px; line-height: 1.8; }
+.help-guide h2 { font-size: 20px; margin-bottom: 16px; color: var(--accent-blue); }
+.help-guide h3 { font-size: 15px; margin-top: 20px; margin-bottom: 8px; color: var(--text-primary); border-bottom: 1px solid var(--bg-tag); padding-bottom: 4px; }
+.help-guide p { font-size: 14px; color: var(--text-secondary); margin-bottom: 8px; }
+.help-guide ul { color: var(--text-secondary); font-size: 14px; padding-left: 20px; margin-bottom: 8px; }
+.help-guide li { margin-bottom: 4px; }
+.help-guide code { background: var(--bg-tag); padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+.help-guide strong { color: var(--text-primary); }
+
+/* ── Backtest Detail ── */
+.backtest-detail {
+  margin-top: 16px; padding: 16px;
+  background: var(--bg-card); border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+}
+
+/* ── Scroll-to-top ── */
+.scroll-top-btn {
+  position: fixed; bottom: 24px; right: 24px; z-index: 100;
+  width: 40px; height: 40px; border-radius: 50%;
+  background: var(--bg-card); border: 1px solid var(--border-color);
+  color: var(--text-secondary); cursor: pointer; font-size: 18px;
+  display: none; align-items: center; justify-content: center;
+  box-shadow: var(--shadow); transition: background .15s, transform .15s;
+}
+.scroll-top-btn:hover { background: var(--bg-card-hover); transform: translateY(-2px); }
+.scroll-top-btn.visible { display: flex; }
+
+/* ── Skeleton Loading ── */
+.skeleton-card {
+  background: var(--bg-card); border: 1px solid var(--border-color);
+  border-radius: var(--radius); padding: 20px; min-height: 120px;
+}
+.skeleton-line {
+  height: 14px; border-radius: 6px; margin-bottom: 8px;
+  background: linear-gradient(90deg, var(--bg-tag) 25%, var(--bg-card-hover) 50%, var(--bg-tag) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+.skeleton-line:last-child { width: 60%; }
 
 /* ── Print ── */
 @media print {

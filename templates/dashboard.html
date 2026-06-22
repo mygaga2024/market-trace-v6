@@ -22,7 +22,7 @@
 </header>
 
 <noscript>
-  <div class="error-banner" role="alert">&#x26A0;&#xFE0F; 请启用 JavaScript 以使用仪表盘功能</div>
+  <div style="background:var(--bg-red-subtle);border:1px solid var(--color-red);border-radius:8px;padding:12px;margin-bottom:10px;color:var(--color-red);font-size:14px" role="alert">&#x26A0;&#xFE0F; 请启用 JavaScript 以使用仪表盘功能</div>
 </noscript>
 
 <main id="main-content" role="main">
@@ -107,6 +107,7 @@
     <button class="tab-btn" role="tab" aria-selected="false" data-tab="logs" onclick="switchTab('logs')">&#x1F4DC; 系统日志</button>
     <button class="tab-btn" role="tab" aria-selected="false" data-tab="paper" onclick="switchTab('paper')">&#x1F4B0; 纸上交易</button>
     <button class="tab-btn" role="tab" aria-selected="false" data-tab="help" onclick="switchTab('help')">&#x2753; 帮助</button>
+    <button class="tab-refresh-btn" onclick="refreshActiveTab()" title="刷新当前面板" aria-label="刷新当前面板">&#x1F504;</button>
   </nav>
   <section class="tab-panel active" id="tab-panel" role="tabpanel" aria-label="数据面板内容">
     <div class="spinner">&#x23F3; 加载中...</div>
@@ -129,13 +130,13 @@
       <span style="font-size:12px;color:var(--text-muted);margin-left:8px">5000+ A股</span>
     </h2>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-      <button onclick="fullScan('breakout')" class="strat-btn" style="background:var(--btn-primary-bg);color:#fff;border:none">&#x1F525; 突破</button>
-      <button onclick="fullScan('oversold')" class="strat-btn" style="background:var(--btn-primary-bg);color:#fff;border:none">&#x1F48E; 超跌</button>
-      <button onclick="fullScan('strength')" class="strat-btn" style="background:var(--btn-primary-bg);color:#fff;border:none">&#x1F4B0; 主力</button>
-      <button onclick="fullScan('ma_golden_cross')" class="strat-btn" style="background:var(--btn-primary-bg);color:#fff;border:none">&#x1F4C8; 金叉</button>
-      <button onclick="fullScan('volume_breakout')" class="strat-btn" style="background:var(--btn-primary-bg);color:#fff;border:none">&#x1F4CA; 放量</button>
-      <button onclick="fullScan('rsi_reversal')" class="strat-btn" style="background:var(--btn-primary-bg);color:#fff;border:none">&#x1F504; RSI反转</button>
-      <button onclick="smartScan()" class="strat-btn" style="background:var(--accent-purple);color:#fff;border:none">&#x1F9E0; 智能综合</button>
+      <button onclick="fullScan('breakout')" class="strat-btn strat-btn-primary">&#x1F525; 突破</button>
+      <button onclick="fullScan('oversold')" class="strat-btn strat-btn-primary">&#x1F48E; 超跌</button>
+      <button onclick="fullScan('strength')" class="strat-btn strat-btn-primary">&#x1F4B0; 主力</button>
+      <button onclick="fullScan('ma_golden_cross')" class="strat-btn strat-btn-primary">&#x1F4C8; 金叉</button>
+      <button onclick="fullScan('volume_breakout')" class="strat-btn strat-btn-primary">&#x1F4CA; 放量</button>
+      <button onclick="fullScan('rsi_reversal')" class="strat-btn strat-btn-primary">&#x1F504; RSI反转</button>
+      <button onclick="smartScan()" class="strat-btn strat-btn-smart">&#x1F9E0; 智能综合</button>
     </div>
     <div id="fullscan-results" style="display:none" aria-live="polite" aria-label="全市场扫描结果"></div>
   </section>
