@@ -270,7 +270,43 @@
     });
   }
 
-  /* ── Load Dashboard ── */
+  /* ── Analyze Overlay ── */
+  var _aoSteps = [
+    '正在拉取K线数据...',
+    '计算14项技术指标 (RSI/MACD/布林/KDJ/ATR/支撑阻力)...',
+    '检测7策略信号 (突破/超跌/主力/金叉/放量/RSI反转)...',
+    'AI多模型决策中 (DeepSeek → Gemini → GLM → 千帆)...',
+    '生成诊股报告...',
+  ];
+  var _aoTimer = null;
+  var _aoStepIdx = 0;
+
+  function _showAnalyzeOverlay(symbol, stockName) {
+    _aoStepIdx = 0;
+    var overlay = document.createElement('div');
+    overlay.className = 'analyze-overlay';
+    overlay.id = 'analyze-overlay';
+    overlay.setAttribute('role', 'status');
+    overlay.setAttribute('aria-live', 'polite');
+    overlay.innerHTML =
+      '<div class="ao-spinner"></div>' +
+      '<div class="ao-title">' + BTN_DIAGNOSE + ' ' + escapeHtml(symbol) + (stockName ? ' ' + escapeHtml(stockName) : '') + '</div>' +
+      '<div class="ao-step" id="ao-step">' + _aoSteps[0] + '</div>' +
+      '<div class="ao-symbol">预计耗时 15-60 秒，取决于 LLM 响应速度</div>';
+    document.body.appendChild(overlay);
+
+    _aoTimer = setInterval(function() {
+      _aoStepIdx = (_aoStepIdx + 1) % _aoSteps.length;
+      var el = document.getElementById('ao-step');
+      if (el) { el.style.opacity = '0'; setTimeout(function() { el.textContent = _aoSteps[_aoStepIdx]; el.style.opacity = '1'; }, 400); }
+    }, 4000);
+  }
+
+  function _hideAnalyzeOverlay() {
+    if (_aoTimer) { clearInterval(_aoTimer); _aoTimer = null; }
+    var overlay = document.getElementById('analyze-overlay');
+    if (overlay) overlay.remove();
+  }
   function _showSkeletons() {
     var g = document.querySelector('.grid');
     if (!g) return;
@@ -399,9 +435,9 @@
       return;
     }
 
-    $id('analyze-spinner').style.display = 'block';
+    $id('analyze-spinner').style.display = 'none'; // keep old spinner hidden
     $id('analyze-result').style.display = 'none';
-    $id('analyze-spinner').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    _showAnalyzeOverlay(sym, '');
 
     fetchAuth('/analyze/' + sym, { method: 'POST', timeout: 90000 })
       .then(function(r) { return r.json(); })
@@ -529,7 +565,7 @@
         $id('analyze-result').scrollIntoView({ behavior: 'smooth', block: 'start' });
       })
       .finally(function() {
-        $id('analyze-spinner').style.display = 'none';
+        _hideAnalyzeOverlay();
         _analyzeLoading = false;
         btn.disabled = false;
         btn.textContent = BTN_DIAGNOSE;
