@@ -31,8 +31,9 @@ class SignalAgent(BaseAgent):
         bus: MessageBus,
         config: dict[str, Any],
         memory: Optional[CaseMemory] = None,
+        db=None,
     ):
-        super().__init__(AgentName.SIGNAL.value, bus, ["events:data"], config)
+        super().__init__(AgentName.SIGNAL.value, bus, ["events:data"], config, db=db)
 
         sig_cfg = config.get("agents", {}).get("signal", {})
         self._ma_periods: list[int] = sig_cfg.get("ma_periods", [5, 10, 20, 60])
@@ -132,6 +133,16 @@ class SignalAgent(BaseAgent):
         }, ttl=3600)
 
         logger.info("Signal Agent {} 报告: {} 信号, 强度={:.2f}", symbol, signal_count, signal_strength)
+
+        if self.db:
+            try:
+                await self.db.save_report(
+                    report_id=report.report_id, agent=report.agent.value,
+                    symbol=symbol, summary=report.summary, data=report.data,
+                    confidence=report.confidence, status=report.status.value,
+                )
+            except Exception as e:
+                logger.warning("Signal Agent 报告保存DB失败: {}", e)
 
     async def run(self) -> None:
         while self._running:

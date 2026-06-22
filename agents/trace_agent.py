@@ -27,8 +27,8 @@ class TraceAgent(BaseAgent):
     - 量价同步：价涨量增 → 多头确认
     """
 
-    def __init__(self, bus: MessageBus, config: dict[str, Any], data_provider=None):
-        super().__init__(AgentName.TRACE.value, bus, ["events:data"], config)
+    def __init__(self, bus: MessageBus, config: dict[str, Any], data_provider=None, db=None):
+        super().__init__(AgentName.TRACE.value, bus, ["events:data"], config, db=db)
 
         trace_cfg = config.get("agents", {}).get("trace", {})
         self._big_order_threshold: float = trace_cfg.get("big_order_threshold", 1_000_000)
@@ -104,6 +104,16 @@ class TraceAgent(BaseAgent):
         })
 
         logger.info("Trace Agent {} 报告: {} 信号, 方向={}", symbol, signal_count, direction)
+
+        if self.db:
+            try:
+                await self.db.save_report(
+                    report_id=report.report_id, agent=report.agent.value,
+                    symbol=symbol, summary=report.summary, data=report.data,
+                    confidence=report.confidence, status=report.status.value,
+                )
+            except Exception as e:
+                logger.warning("Trace Agent 报告保存DB失败: {}", e)
 
     def _detect_volume_spike(self, volumes: np.ndarray, closes: np.ndarray, signals: list) -> None:
         """成交量突增检测"""

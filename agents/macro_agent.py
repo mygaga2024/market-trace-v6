@@ -30,8 +30,9 @@ class MacroAgent(BaseAgent):
         bus: MessageBus,
         config: dict[str, Any],
         data_provider: Optional[AkShareProvider] = None,
+        db=None,
     ):
-        super().__init__(AgentName.MACRO.value, bus, ["events:data"], config)
+        super().__init__(AgentName.MACRO.value, bus, ["events:data"], config, db=db)
 
         agent_cfg = config.get("agents", {}).get("macro", {})
         self._interval: int = agent_cfg.get("interval", 600)
@@ -100,6 +101,16 @@ class MacroAgent(BaseAgent):
         })
 
         logger.info("Macro Agent 报告已发布: RAI={:.2f} {}", rai, interpretation["regime"])
+
+        if self.db:
+            try:
+                await self.db.save_report(
+                    report_id=report.report_id, agent=report.agent.value,
+                    summary=report.summary, data=report.data,
+                    confidence=report.confidence, status=report.status.value,
+                )
+            except Exception as e:
+                logger.warning("Macro Agent 报告保存DB失败: {}", e)
 
     def _calculate_rai(self, raw: dict[str, Any]) -> dict[str, float]:
         """根据宏观数据计算 RAI 各分项"""

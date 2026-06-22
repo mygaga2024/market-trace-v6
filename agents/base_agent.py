@@ -35,11 +35,13 @@ class BaseAgent(ABC):
         bus: MessageBus,
         subscriptions: list[str],
         config: dict[str, Any],
+        db=None,
     ):
         self.name = name
         self.bus = bus
         self.subscriptions = subscriptions
         self.config = config
+        self.db = db
 
         agent_cfg = config.get("agents", {})
         self._heartbeat_interval: int = agent_cfg.get("heartbeat_interval", 5)

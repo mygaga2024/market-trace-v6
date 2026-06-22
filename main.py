@@ -108,7 +108,7 @@ def _build_llm_chain(cfg: dict):
     return LLMFallbackChain(primary, secondary, tertiary, quaternary, quinary, senary, septenary, rule_based)
 
 
-def _start_agents(bus, config: dict, llm_chain, risk_manager=None) -> list[asyncio.Task]:
+def _start_agents(bus, config: dict, llm_chain, risk_manager=None, db=None) -> list[asyncio.Task]:
     from data_provider.akshare_impl import AkShareProvider
     from data_provider.tushare_impl import TushareProvider
     from core.memory import CaseMemory
@@ -128,20 +128,20 @@ def _start_agents(bus, config: dict, llm_chain, risk_manager=None) -> list[async
         TushareProvider(bus, config, token=tushare_cfg[0]["token"])
         logger.info("Tushare 数据源已启用")
 
-    macro = MacroAgent(bus, config, data_provider=ak_provider)
+    macro = MacroAgent(bus, config, data_provider=ak_provider, db=db)
     tasks.append(asyncio.create_task(macro.start(), name="macro-agent"))
 
     memory = CaseMemory(max_cases=10000)
-    signal = SignalAgent(bus, config, memory=memory)
+    signal = SignalAgent(bus, config, memory=memory, db=db)
     tasks.append(asyncio.create_task(signal.start(), name="signal-agent"))
 
-    trace = TraceAgent(bus, config)
+    trace = TraceAgent(bus, config, db=db)
     tasks.append(asyncio.create_task(trace.start(), name="trace-agent"))
 
     risk = RiskAgent(bus, config, risk_manager=risk_manager)
     tasks.append(asyncio.create_task(risk.start(), name="risk-agent"))
 
-    chief = ChiefAnalyst(bus, config, llm_chain=llm_chain)
+    chief = ChiefAnalyst(bus, config, llm_chain=llm_chain, db=db)
     tasks.append(asyncio.create_task(chief.start(), name="chief-agent"))
 
     return tasks
@@ -238,7 +238,7 @@ async def lifespan(app: FastAPI):
     logger.info("风控闭环管理器已就绪")
 
     # Agents
-    agent_tasks = _start_agents(app.state.bus, CONFIG, llm_chain, risk_manager)
+    agent_tasks = _start_agents(app.state.bus, CONFIG, llm_chain, risk_manager, db=db)
     app.state.agent_tasks = agent_tasks
     logger.info("{} 个 Agent 已启动", len(agent_tasks))
 

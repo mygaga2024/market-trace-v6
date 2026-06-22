@@ -44,12 +44,14 @@ class ChiefAnalyst(BaseAgent):
         config: dict[str, Any],
         llm_chain: Optional[LLMFallbackChain] = None,
         notifier: Optional[Any] = None,
+        db=None,
     ):
         super().__init__(
             AgentName.CHIEF.value,
             bus,
             ["reports:macro", "reports:signal", "reports:trace", "risk:override"],
             config,
+            db=db,
         )
 
         self._llm_chain = llm_chain
@@ -161,6 +163,26 @@ class ChiefAnalyst(BaseAgent):
             "最终决策 #{}: action={}, confidence={:.2f}, provider={}",
             self._decision_count, decision.action.value, decision.confidence, decision.provider_label,
         )
+
+        if self.db:
+            try:
+                await self.db.save_decision(
+                    decision_id=decision.decision_id,
+                    action=decision.action.value,
+                    confidence=decision.confidence,
+                    reasoning=decision.reasoning,
+                    evidence_sources=decision.evidence_sources,
+                    evidence_chain=decision.evidence_chain,
+                    risk_override={
+                        "reason": decision.risk_override.reason,
+                        "action": decision.risk_override.action,
+                        "severity": decision.risk_override.severity,
+                    } if decision.risk_override else None,
+                    provider_label=decision.provider_label,
+                    provider_status=decision.provider_status.value if hasattr(decision.provider_status, 'value') else str(decision.provider_status),
+                )
+            except Exception as e:
+                logger.warning("Chief Analyst 决策保存DB失败: {}", e)
 
         if decision.action.value in ("BUY", "SELL") and self._notifier:
             try:
