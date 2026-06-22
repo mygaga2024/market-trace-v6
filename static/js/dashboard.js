@@ -20,6 +20,11 @@
   var SEVERITY_LABELS = {
     'normal': '正常', 'warning': '警告', 'elevated': '关注', 'critical': '危险',
   };
+  var ACTION_LABELS = {
+    'BUY': '买入', 'SELL': '卖出', 'HOLD': '持仓观望', 'WAIT': '等待',
+  };
+  function fmtAction(a) { return ACTION_LABELS[a] || a; }
+  function fmtRiskLevel(l) { return SEVERITY_LABELS[l] || l; }
   var BTN_DIAGNOSE = '\uD83D\uDD0D 诊股';
   var LLM_TIERS = ['primary', 'secondary', 'tertiary', 'quaternary', 'quinary', 'senary', 'septenary', 'octonary'];
   var TAB_FETCHERS = {
@@ -264,7 +269,7 @@
       if (dec) {
         var area = $id('decision-area');
         area.style.display = 'block';
-        $id('decision-action').innerHTML = '<span class="decision-action action-' + escapeHtml(dec.action) + '">' + escapeHtml(dec.action) + '</span>';
+        $id('decision-action').innerHTML = '<span class="decision-action action-' + escapeHtml(dec.action) + '">' + escapeHtml(fmtAction(dec.action)) + '</span>';
         $id('decision-conf').textContent = (dec.confidence * 100).toFixed(0) + '%';
         $id('decision-reason').textContent = dec.reasoning || '';
         $id('decision-provider').textContent = dec.provider || '\u2014';
@@ -373,7 +378,7 @@
               html += warnIcon + ' <strong>' + escapeHtml(warnText) + '</strong></div>';
             }
             html += '<div style="margin-top:12px;padding:12px;background:var(--bg-primary);border-radius:8px">';
-            html += '<span class="decision-action action-' + escapeHtml(dec.action) + '">' + escapeHtml(dec.action) + '</span>';
+            html += '<span class="decision-action action-' + escapeHtml(dec.action) + '">' + escapeHtml(fmtAction(dec.action)) + '</span>';
             html += ' <span style="font-size:13px">置信度 ' + (dec.confidence * 100).toFixed(0) + '%</span>';
             html += '<div style="margin-top:6px;font-size:13px;color:var(--text-secondary)">' + escapeHtml(dec.reasoning) + '</div>';
             html += '<div style="font-size:11px;color:var(--text-muted);margin-top:4px">AI: ' + escapeHtml(dec.provider) + ' | RAI宏观: ' + d.macro_rai.toFixed(2) + '</div>';
@@ -404,7 +409,7 @@
                 var box = document.createElement('div');
                 box.className = 'position-box';
                 box.innerHTML = '<div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">\uD83D\uDCC8 仓位建议</div>' +
-                  '<span class="pos-level ' + levelCls + '">风控等级: ' + escapeHtml(pos.risk_level || 'normal') + '</span> ' +
+                  '<span class="pos-level ' + levelCls + '">风控等级: ' + escapeHtml(fmtRiskLevel(pos.risk_level || 'normal')) + '</span> ' +
                   '<span style="color:var(--text-muted)">|</span> ' +
                   '建议: <strong>' + (pos.position_shares || 0) + '</strong> 股 (' +
                   '<strong>' + (pos.suggested_amount || 0).toLocaleString() + '</strong> 元)' +
@@ -611,7 +616,7 @@
     if (d.latest_decision) {
       var ld = d.latest_decision;
       html += '<tr><th>最新决策</th><td>';
-      html += '<span class="decision-action action-' + escapeHtml(ld.action) + '">' + escapeHtml(ld.action) + '</span>';
+      html += '<span class="decision-action action-' + escapeHtml(ld.action) + '">' + escapeHtml(fmtAction(ld.action)) + '</span>';
       html += ' 置信度 ' + (ld.confidence * 100).toFixed(0) + '% | ' + escapeHtml(ld.provider);
       html += '<div style="margin-top:6px;font-size:13px;color:var(--text-secondary)">' + escapeHtml(ld.reasoning || '') + '</div>';
       html += '</td></tr>';
@@ -647,7 +652,7 @@
       var did = dec.decision_id ? escapeHtml(dec.decision_id) : '';
       html += '<tr class="decision-row" data-id="' + did + '" onclick="window._DS.showDM(\'' + did + '\')" tabindex="0" role="button" aria-label="查看决策详情" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){window._DS.showDM(\'' + did + '\')}">';
       html += '<td class="kv-dim">' + escapeHtml(_ts(dec.timestamp)) + '</td>';
-      html += '<td><span class="decision-action action-' + escapeHtml(dec.action) + '">' + escapeHtml(dec.action) + '</span></td>';
+      html += '<td><span class="decision-action action-' + escapeHtml(dec.action) + '">' + escapeHtml(fmtAction(dec.action)) + '</span></td>';
       html += '<td>' + ((dec.confidence || 0) * 100).toFixed(0) + '%</td>';
       html += '<td class="kv-dim">' + escapeHtml(dec.provider_label || '\u2014') + '</td>';
       html += '<td class="kv-dim">' + escapeHtml((dec.reasoning || '').substring(0, 80)) + '</td>';
@@ -882,7 +887,7 @@
           return;
         }
         var html = '';
-        html += '<div class="modal-section"><div class="modal-label">决策</div><div class="modal-value"><span class="decision-action action-' + escapeHtml(d.action) + '">' + escapeHtml(d.action) + '</span> 置信度 ' + ((d.confidence || 0) * 100).toFixed(0) + '%</div></div>';
+        html += '<div class="modal-section"><div class="modal-label">决策</div><div class="modal-value"><span class="decision-action action-' + escapeHtml(d.action) + '">' + escapeHtml(fmtAction(d.action)) + '</span> 置信度 ' + ((d.confidence || 0) * 100).toFixed(0) + '%</div></div>';
         html += '<div class="modal-section"><div class="modal-label">AI 模型</div><div class="modal-value">' + escapeHtml(d.provider_label || '\u2014') + ' (' + escapeHtml(d.provider_status || '\u2014') + ')</div></div>';
         html += '<div class="modal-section"><div class="modal-label">时间</div><div class="modal-value">' + escapeHtml(_ts(d.timestamp)) + '</div></div>';
         html += '<div class="modal-section"><div class="modal-label">完整理由</div><div class="modal-value">' + escapeHtml(d.reasoning || '\u2014') + '</div></div>';
@@ -954,7 +959,7 @@
       html += '<table class="tab-table"><thead><tr><th>时间</th><th>代码</th><th>方向</th><th>数量</th><th>价格</th><th>理由</th></tr></thead><tbody>';
       d.recent_orders.slice(-10).reverse().forEach(function(o) {
         var actCls = o.action === 'BUY' ? 'trend-up' : 'trend-down';
-        html += '<tr><td class="kv-dim">' + escapeHtml(_ts(o.timestamp)) + '</td><td>' + escapeHtml(o.symbol) + '</td><td class="' + actCls + '">' + o.action + '</td><td>' + o.quantity + '</td><td>' + o.price + '</td><td class="kv-dim">' + escapeHtml((o.reason || '').substring(0, 40)) + '</td></tr>';
+        html += '<tr><td class="kv-dim">' + escapeHtml(_ts(o.timestamp)) + '</td><td>' + escapeHtml(o.symbol) + '</td><td class="' + actCls + '">' + escapeHtml(fmtAction(o.action)) + '</td><td>' + o.quantity + '</td><td>' + o.price + '</td><td class="kv-dim">' + escapeHtml((o.reason || '').substring(0, 40)) + '</td></tr>';
       });
       html += '</tbody></table>';
     } else {
