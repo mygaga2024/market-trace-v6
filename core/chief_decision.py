@@ -49,9 +49,9 @@ async def build_chief_decision(
 
     if risk_severity:
         decision = await llm_chain.analyze(reports)
-        decision.action = DecisionAction.WAIT
+        # warning级别: 保留LLM决策, 只降置信度+标注风险, 不强制WAIT
         decision.confidence = min(decision.confidence * 0.3, 0.4)
-        decision.reasoning += f" | 风控干预(强制WAIT ×0.3): {risk_reason or 'N/A'}"
+        decision.reasoning += f" | 风控预警(置信度×0.3): {risk_reason or 'N/A'}"
         decision.provider_status = ProviderStatus.DEGRADED
         return decision
 

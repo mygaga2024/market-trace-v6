@@ -1070,8 +1070,9 @@
       html += '<h3 class="card-title" style="margin-top:12px">\uD83D\uDCCB 最近交易</h3>';
       html += '<table class="tab-table"><thead><tr><th>时间</th><th>代码</th><th>方向</th><th>数量</th><th>价格</th><th>理由</th></tr></thead><tbody>';
       d.recent_orders.slice(-10).reverse().forEach(function(o) {
-        var actCls = o.action === 'BUY' ? 'trend-up' : 'trend-down';
-        html += '<tr><td class="kv-dim">' + escapeHtml(_ts(o.timestamp)) + '</td><td>' + escapeHtml(o.symbol) + '</td><td class="' + actCls + '">' + escapeHtml(fmtAction(o.action)) + '</td><td>' + o.quantity + '</td><td>' + o.price + '</td><td class="kv-dim">' + escapeHtml((o.reason || '').substring(0, 40)) + '</td></tr>';
+        var actCls = o.action === 'BUY' ? 'trend-up' : o.action === 'SELL' ? 'trend-down' : 'kv-dim';
+        var qtyStr = o.quantity > 0 ? o.quantity : '<span style="color:var(--text-muted)">' + escapeHtml(fmtAction(o.action)) + '</span>';
+        html += '<tr><td class="kv-dim">' + escapeHtml(_ts(o.timestamp)) + '</td><td>' + escapeHtml(o.symbol) + '</td><td class="' + actCls + '">' + (o.quantity > 0 ? escapeHtml(fmtAction(o.action)) : '📋 ' + escapeHtml(fmtAction(o.action))) + '</td><td>' + qtyStr + '</td><td>' + o.price + '</td><td class="kv-dim">' + escapeHtml((o.reason || '').substring(0, 40)) + '</td></tr>';
       });
       html += '</tbody></table>';
     } else {

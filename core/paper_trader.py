@@ -157,6 +157,7 @@ class PaperAccount:
         return order
 
     def get_summary(self) -> dict:
+        trades = [o for o in self.orders if o.action in ("BUY", "SELL")]
         return {
             "account_id": self.account_id,
             "initial_capital": self.initial_capital,
@@ -175,6 +176,7 @@ class PaperAccount:
                 for p in self.positions.values()
             ],
             "total_orders": len(self.orders),
+            "total_trades": len(trades),
             "recent_orders": [
                 {
                     "order_id": o.order_id, "symbol": o.symbol,
@@ -291,15 +293,30 @@ class PaperTradeManager:
         account = self.get_or_create_account(account_id)
 
         if decision in ("HOLD", "WAIT"):
+            # Record as journal entry (no trade, visible in history)
+            account.orders.append(PaperOrder(
+                order_id=f"paper_{symbol}_{int(datetime.now(timezone.utc).timestamp())}",
+                symbol=symbol, action=decision, quantity=0, price=price,
+                timestamp=datetime.now(timezone.utc), filled=True,
+                reason=f"{'持仓观望' if decision=='HOLD' else '等待'} | {reason}",
+                commission=0.0,
+            ))
+            self._save_to_disk()
             return None
 
         if decision == "BUY":
             allocation = confidence * 0.20 * account.capital
-            quantity = int(allocation / price / 100) * 100
+            # 高价股(单价>capital/100)允许单股买入, 普通股按100股一手
+            if price > account.capital / 100:
+                quantity = max(1, int(allocation / price))
+            else:
+                lot = 100
+                quantity = int(allocation / price / lot) * lot
             if quantity > 0:
                 result = account.execute_buy(symbol, price, quantity, reason=reason)
                 self._save_to_disk()
                 return result
+            logger.info("纸上交易: {} BUY跳过 资金不足 (分配={:.0f} 价格={:.2f})", symbol, allocation, price)
 
         elif decision == "SELL":
             result = account.execute_sell(symbol, price, reason=reason)
