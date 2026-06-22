@@ -190,13 +190,22 @@ async def analyze_single(
     avg_vol_5 = round(float(np.mean(volumes[-5:])), 0) if len(volumes) >= 5 else 0
     avg_vol_20 = round(float(np.mean(volumes[-20:])), 0) if len(volumes) >= 20 else 0
 
-    # 趋势判断
+    # 趋势判断：优先用 ma60，不足时回退到 ma5/ma20
     trend = "sideways"
-    if ma5 and ma20 and ma60:
-        if ma5 > ma20 > ma60:
+    if ma20:
+        if ma60 and ma5 > ma20 > ma60:
             trend = "bullish"
-        elif ma5 < ma20 < ma60:
+        elif ma60 and ma5 < ma20 < ma60:
             trend = "bearish"
+        elif ma5 > ma20:
+            trend = "bullish"
+        elif ma5 < ma20:
+            trend = "bearish"
+        elif ma5 and ma10:
+            if ma5 > ma10:
+                trend = "bullish"
+            elif ma5 < ma10:
+                trend = "bearish"
 
     indicators = {
         "ma5": ma5, "ma10": ma10, "ma20": ma20, "ma60": ma60,
@@ -221,8 +230,12 @@ async def analyze_single(
                     "direction": "bullish" if name != "risk" else "bearish",
                     "strength": 0.7,
                 })
+                logger.info("策略命中: {} {} (RSI={:.1f})", symbol, name, rsi)
         except Exception:
-            pass
+            logger.warning("策略检测异常 strategy={}", name, exc_info=True)
+
+    logger.info("诊股 {}: trend={} RSI={:.1f} 策略命中{}个",
+                symbol, trend, rsi, len(strategy_signals))
 
     # ── Signal Agent 实时信号(从缓存读取) ──
     signal_agent_signals: list[dict] = []
@@ -254,7 +267,10 @@ async def analyze_single(
                                    "note": "价涨量缩，上涨乏力", "strength": 0.5})
         elif pc < -0.03 and vc > 0.5:
             trace_signals.append({"type": "BEARISH_DIVERGENCE_HIGH_VOLUME", "direction": "bearish",
-                                   "note": "价跌量增，恐慌抛售", "strength": 0.6})
+                                    "note": "价跌量增，恐慌抛售", "strength": 0.6})
+
+    logger.info("诊股 {}: 趋势={} RSI={:.1f} 策略={}个 异动={}个 Agent信号={}个",
+                symbol, trend, rsi, len(strategy_signals), len(trace_signals), len(signal_agent_signals))
 
     # ── 宏观RAI ──
     macro_rai = 0.5
