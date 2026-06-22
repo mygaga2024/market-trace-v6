@@ -271,6 +271,7 @@
   }
 
   /* ── Analyze Overlay ── */
+  var _stockNames = {};
   var _aoSteps = [
     '正在拉取K线数据...',
     '计算14项技术指标 (RSI/MACD/布林/KDJ/ATR/支撑阻力)...',
@@ -380,6 +381,9 @@
       }
 
       $id('watchlist-items').innerHTML = wl && wl.items ? _renderWatchlistItems(_applyWlSortOrder(wl.items)) : '<div style="color:var(--text-muted);font-size:13px">加载中...</div>';
+      if (wl && wl.items) {
+        wl.items.forEach(function(it) { if (it.name) _stockNames[it.symbol] = it.name; });
+      }
 
       if (mr && mr.data && mr.data.risk_appetite_index != null) {
         var rai = mr.data.risk_appetite_index;
@@ -437,7 +441,7 @@
 
     $id('analyze-spinner').style.display = 'none'; // keep old spinner hidden
     $id('analyze-result').style.display = 'none';
-    _showAnalyzeOverlay(sym, '');
+    _showAnalyzeOverlay(sym, _stockNames[sym] || '');
 
     fetchAuth('/analyze/' + sym, { method: 'POST', timeout: 90000 })
       .then(function(r) { return r.json(); })
@@ -446,6 +450,7 @@
         if (d.error) {
           html = '<div class="error-banner" role="alert"><span aria-hidden="true">\u274C</span> ' + escapeHtml(d.error) + '</div>';
         } else {
+          if (d.name) _stockNames[sym] = d.name;
           var dec = d.decision;
           var ind = d.indicators;
           var trend = d.trend || 'sideways';
@@ -525,6 +530,7 @@
         }
         $id('analyze-result').innerHTML = html;
         $id('analyze-result').style.display = 'block';
+        $id('analyze-result').scrollIntoView({ behavior: 'smooth', block: 'start' });
 
         if (!d.error) {
           $id('kline-chart').classList.remove('chart-container--hidden');
@@ -1285,6 +1291,9 @@
       .then(function(r) { return r.ok ? r.json() : null; })
       .then(function(wl) {
         $id('watchlist-items').innerHTML = wl && wl.items ? _renderWatchlistItems(_applyWlSortOrder(wl.items)) : '<div style="color:var(--text-muted);font-size:13px">加载失败</div>';
+        if (wl && wl.items) {
+          wl.items.forEach(function(it) { if (it.name) _stockNames[it.symbol] = it.name; });
+        }
       })
       .catch(function() {
         $id('watchlist-items').innerHTML = '<div style="color:var(--text-muted);font-size:13px">加载失败</div>';
