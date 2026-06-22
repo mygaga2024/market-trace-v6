@@ -13,37 +13,37 @@ import numpy as np
 STRATEGIES: dict[str, dict[str, Any]] = {
     "breakout": {
         "label": "强势突破",
-        "params": {"lookback": 20, "vol_mult": 1.5},
+        "params": {"lookback": 20, "vol_mult": 1.1},
         "check": None,  # filled below
     },
     "oversold": {
         "label": "超跌反弹",
-        "params": {"rsi_period": 14, "rsi_threshold": 30.0, "drop_pct": 0.03},
+        "params": {"rsi_period": 14, "rsi_threshold": 30.0, "drop_pct": 0.02},
         "check": None,
     },
     "strength": {
         "label": "主力介入",
-        "params": {"vol_mult": 2.0, "rise_pct": 0.02, "lookback": 20},
+        "params": {"vol_mult": 1.2, "rise_pct": 0.01, "lookback": 20},
         "check": None,
     },
     "risk": {
         "label": "风险预警",
-        "params": {"rsi_period": 14, "rsi_threshold": 70.0, "lookback": 20},
+        "params": {"rsi_period": 14, "rsi_threshold": 60.0, "lookback": 20},
         "check": None,
     },
     "ma_golden_cross": {
         "label": "均线金叉",
-        "params": {"ma_fast": 5, "ma_slow": 20, "vol_mult": 1.2},
+        "params": {"ma_fast": 5, "ma_slow": 20, "vol_mult": 1.0},
         "check": None,
     },
     "volume_breakout": {
         "label": "放量突破",
-        "params": {"vol_mult": 3.0, "rise_pct": 0.05},
+        "params": {"vol_mult": 1.5, "rise_pct": 0.02},
         "check": None,
     },
     "rsi_reversal": {
         "label": "RSI反转",
-        "params": {"rsi_period": 14, "rsi_threshold": 30.0, "delta_min": 3.0},
+        "params": {"rsi_period": 14, "rsi_threshold": 30.0, "delta_min": 1.5},
         "check": None,
     },
 }
@@ -71,7 +71,7 @@ def _calc_ma(closes: np.ndarray, period: int) -> float:
 # ── 策略检测函数（返回 True/False）──
 
 def check_breakout(closes: np.ndarray, highs: np.ndarray, volumes: np.ndarray,
-                   lookback: int = 20, vol_mult: float = 1.5) -> bool:
+                   lookback: int = 20, vol_mult: float = 1.1) -> bool:
     if len(closes) < lookback + 2:
         return False
     return bool(closes[-1] > max(highs[-lookback - 1:-1])
@@ -81,16 +81,16 @@ def check_breakout(closes: np.ndarray, highs: np.ndarray, volumes: np.ndarray,
 
 def check_oversold(closes: np.ndarray, highs: np.ndarray, volumes: np.ndarray,
                    rsi_period: int = 14, rsi_threshold: float = 30.0,
-                   drop_pct: float = 0.03) -> bool:
+                   drop_pct: float = 0.02) -> bool:
     if len(closes) < max(rsi_period + 1, 6):
         return False
     rsi = _calc_rsi(closes, rsi_period)
     drop = (closes[-1] - closes[-5]) / closes[-5] if len(closes) >= 6 else 0
-    return bool(rsi < rsi_threshold and drop < -drop_pct and closes[-1] > closes[-2])
+    return bool(rsi < rsi_threshold and drop < -drop_pct)
 
 
 def check_strength(closes: np.ndarray, highs: np.ndarray, volumes: np.ndarray,
-                   vol_mult: float = 2.0, rise_pct: float = 0.02,
+                   vol_mult: float = 1.2, rise_pct: float = 0.01,
                    lookback: int = 20) -> bool:
     if len(closes) < max(lookback + 1, 6):
         return False
@@ -99,20 +99,19 @@ def check_strength(closes: np.ndarray, highs: np.ndarray, volumes: np.ndarray,
 
 
 def check_risk(closes: np.ndarray, highs: np.ndarray, volumes: np.ndarray,
-               rsi_period: int = 14, rsi_threshold: float = 70.0,
+               rsi_period: int = 14, rsi_threshold: float = 60.0,
                lookback: int = 20) -> bool:
     if len(closes) < max(rsi_period + 1, lookback + 1):
         return False
     rsi = _calc_rsi(closes, rsi_period)
     return bool(rsi > rsi_threshold
-                and closes[-1] < closes[-lookback]
                 and closes[-1] < closes[-2]
-                and volumes[-1] > np.mean(volumes[-lookback:-1]) * 1.2)
+                and volumes[-1] > np.mean(volumes[-lookback:-1]) * 1.1)
 
 
 def check_ma_golden_cross(closes: np.ndarray, highs: np.ndarray, volumes: np.ndarray,
                           ma_fast: int = 5, ma_slow: int = 20,
-                          vol_mult: float = 1.2) -> bool:
+                          vol_mult: float = 1.0) -> bool:
     if len(closes) < ma_slow + 2:
         return False
     fast_now = np.mean(closes[-ma_fast:])
@@ -124,7 +123,7 @@ def check_ma_golden_cross(closes: np.ndarray, highs: np.ndarray, volumes: np.nda
 
 
 def check_volume_breakout(closes: np.ndarray, highs: np.ndarray, volumes: np.ndarray,
-                          vol_mult: float = 3.0, rise_pct: float = 0.05) -> bool:
+                          vol_mult: float = 1.5, rise_pct: float = 0.02) -> bool:
     if len(closes) < 21:
         return False
     return bool(volumes[-1] > np.mean(volumes[-21:-1]) * vol_mult
@@ -133,7 +132,7 @@ def check_volume_breakout(closes: np.ndarray, highs: np.ndarray, volumes: np.nda
 
 def check_rsi_reversal(closes: np.ndarray, highs: np.ndarray, volumes: np.ndarray,
                        rsi_period: int = 14, rsi_threshold: float = 30.0,
-                       delta_min: float = 3.0) -> bool:
+                       delta_min: float = 1.5) -> bool:
     if len(closes) < rsi_period + 2:
         return False
     rsi_now = _calc_rsi(closes, rsi_period)
