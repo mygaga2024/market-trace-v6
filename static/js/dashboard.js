@@ -148,13 +148,14 @@
       return '<div style="color:var(--text-muted);font-size:13px">暂无持仓</div>';
     }
     var html = '';
-    items.forEach(function(item) {
+    items.forEach(function(item, idx) {
       var changeCls = item.change_pct != null ? (item.change_pct >= 0 ? 'trend-up' : 'trend-down') : '';
       var changeStr = item.change_pct != null ? '<span class="' + changeCls + '"><span aria-hidden="true">' + (item.change_pct >= 0 ? '\u2191' : '\u2193') + '</span> ' + item.change_pct.toFixed(2) + '%</span>' : '\u2014';
       var priceStr = item.price != null ? item.price.toFixed(2) : '\u2014';
       var nameStr = item.name || '';
       var displayName = nameStr ? escapeHtml(nameStr) + ' <span style="color:var(--text-secondary);font-size:11px">' + escapeHtml(item.symbol) + '</span>' : escapeHtml(item.symbol);
-      html += '<div class="wl-row" style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--bg-tag);font-size:13px">';
+      html += '<div class="wl-row" draggable="true" data-sym="' + escapeHtml(item.symbol) + '" data-idx="' + idx + '" style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--bg-tag);font-size:13px">';
+      html += '<span style="display:inline-block;width:18px;cursor:grab;color:var(--text-muted);font-size:14px;flex-shrink:0" title="拖拽排序" aria-hidden="true">&#x2630;</span>';
       html += '<span style="cursor:pointer;flex:1" onclick="window._DS.diag(\'' + escapeHtml(item.symbol) + '\')" title="点击诊股">' + displayName + '</span>';
       html += '<span style="margin:0 8px">' + priceStr + '</span>';
       html += '<span style="margin:0 8px;min-width:60px;text-align:right">' + changeStr + '</span>';
@@ -175,6 +176,98 @@
   function _safeCardClick(ariaLabel, tab) {
     var card = document.querySelector('.card[aria-label="' + ariaLabel + '"]');
     if (card) card.addEventListener('click', function() { switchTab(tab); });
+  }
+
+  /* ── Watchlist Drag & Drop Sort ── */
+  var _wlDragSrc = null;
+  var _wlSortOrder = [];
+
+  function _loadWlSortOrder() {
+    try {
+      var raw = localStorage.getItem('mt6_wl_order');
+      _wlSortOrder = raw ? JSON.parse(raw) : [];
+    } catch(e) { _wlSortOrder = []; }
+  }
+
+  function _saveWlSortOrder() {
+    try {
+      localStorage.setItem('mt6_wl_order', JSON.stringify(_wlSortOrder));
+    } catch(e) {}
+  }
+
+  function _applyWlSortOrder(items) {
+    if (!_wlSortOrder.length) return items;
+    var map = {};
+    items.forEach(function(it) { map[it.symbol] = it; });
+    var ordered = [];
+    _wlSortOrder.forEach(function(sym) {
+      if (map[sym]) { ordered.push(map[sym]); delete map[sym]; }
+    });
+    Object.keys(map).forEach(function(sym) { ordered.push(map[sym]); });
+    return ordered;
+  }
+
+  function _updateWlSortOrder(items) {
+    _wlSortOrder = items.map(function(it) { return it.symbol; });
+    _saveWlSortOrder();
+  }
+
+  function _initWlDragDrop() {
+    var container = $id('watchlist-items');
+    if (!container) return;
+
+    container.addEventListener('dragstart', function(e) {
+      var row = e.target.closest('.wl-row');
+      if (!row || !row.draggable) return;
+      _wlDragSrc = row;
+      row.style.opacity = '0.4';
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', row.getAttribute('data-sym'));
+    });
+
+    container.addEventListener('dragend', function(e) {
+      var row = e.target.closest('.wl-row');
+      if (row) row.style.opacity = '1';
+      _wlDragSrc = null;
+    });
+
+    container.addEventListener('dragover', function(e) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      var row = e.target.closest('.wl-row');
+      if (row && row !== _wlDragSrc) {
+        row.style.borderTop = '2px solid var(--accent-blue)';
+      }
+    });
+
+    container.addEventListener('dragleave', function(e) {
+      var row = e.target.closest('.wl-row');
+      if (row) row.style.borderTop = '';
+    });
+
+    container.addEventListener('drop', function(e) {
+      e.preventDefault();
+      var target = e.target.closest('.wl-row');
+      if (!target || target === _wlDragSrc || !_wlDragSrc) return;
+      target.style.borderTop = '';
+
+      var srcSym = _wlDragSrc.getAttribute('data-sym');
+      var tgtSym = target.getAttribute('data-sym');
+
+      var newOrder = [];
+      var rows = container.querySelectorAll('.wl-row');
+      rows.forEach(function(r) { newOrder.push(r.getAttribute('data-sym')); });
+
+      var srcIdx = newOrder.indexOf(srcSym);
+      var tgtIdx = newOrder.indexOf(tgtSym);
+      if (srcIdx >= 0 && tgtIdx >= 0) {
+        newOrder.splice(srcIdx, 1);
+        newOrder.splice(tgtIdx, 0, srcSym);
+        _wlSortOrder = newOrder;
+        _saveWlSortOrder();
+        load(); // re-render with new order
+      }
+    });
   }
 
   /* ── Load Dashboard ── */
@@ -211,6 +304,9 @@
       $id('sys-status').className = 'badge ' + (ok ? 'badge-ok' : 'badge-warn');
       $id('sys-status').innerHTML = '<span aria-hidden="true">' + (ok ? '\u25CF' : '\u25D0') + '</span> ' + (ok ? '正常' : '降级');
       $id('uptime').textContent = fmtTime(h.uptime_seconds);
+      // Dynamic footer version
+      var fv = document.getElementById('footer-version');
+      if (fv && h.version) fv.textContent = h.version;
 
       if (h.agents) {
         var dots = document.querySelectorAll('.agent-dot .dot');
@@ -247,7 +343,7 @@
         $id('risk-event-count').textContent = '\u2014';
       }
 
-      $id('watchlist-items').innerHTML = wl && wl.items ? _renderWatchlistItems(wl.items) : '<div style="color:var(--text-muted);font-size:13px">加载中...</div>';
+      $id('watchlist-items').innerHTML = wl && wl.items ? _renderWatchlistItems(_applyWlSortOrder(wl.items)) : '<div style="color:var(--text-muted);font-size:13px">加载中...</div>';
 
       if (mr && mr.data && mr.data.risk_appetite_index != null) {
         var rai = mr.data.risk_appetite_index;
@@ -464,6 +560,12 @@
 
   function renderScreenResults(container, d) {
     var html = '<div style="font-size:13px;color:var(--text-secondary);margin-bottom:10px"><span aria-hidden="true">\uD83D\uDCCB</span> ' + escapeHtml(d.strategy) + ' — 匹配 ' + d.matched + ' 只</div>';
+    if (d.matched === 0) {
+      html += '<div class="tab-empty">暂无匹配的股票</div>';
+      html += '<div style="margin-top:8px;font-size:12px;color:var(--text-muted);line-height:1.6">策略筛选需缓存的K线数据(&ge;20条)。如果缓存未就绪，将使用实时行情粗筛。可以等待系统预热(约30秒)后重试，或通过<strong>诊股</strong>主动拉取数据填充缓存。</div>';
+      container.innerHTML = html;
+      return;
+    }
     d.results.forEach(function(s) {
       var nameDisplay = s.name ? escapeHtml(s.name) + ' ' : '';
       var price = s.price != null ? s.price.toFixed(2) : '\u2014';
@@ -515,6 +617,7 @@
           html += '</tbody></table>';
         } else {
           html += '<div class="tab-empty">未命中任何股票</div>';
+          html += '<div style="margin-top:8px;font-size:12px;color:var(--text-muted);line-height:1.6">智能综合扫描需要缓存的K线数据(&ge;30条)进行7策略评分。如果系统刚启动，请等待prefetch预热或手动诊股几只看好的股票来填充缓存。</div>';
         }
         container.innerHTML = html;
       })
@@ -539,6 +642,7 @@
       html += '</tbody></table>';
     } else {
       html += '<div class="tab-empty">未命中任何股票</div>';
+      html += '<div style="margin-top:8px;font-size:12px;color:var(--text-muted);line-height:1.6">全市场扫描依赖缓存的K线数据(&ge;20条)进行深度策略验证。如果系统刚启动，请等待prefetch预热完成(约30-60秒)后重试。</div>';
     }
     return html;
   }
@@ -599,7 +703,9 @@
   }
 
   function renderStatus(d) {
+    if (d.error) return '<div class="tab-empty">\u26A0\uFE0F ' + escapeHtml(d.error) + '</div>';
     var html = '<table class="tab-table"><tbody>';
+    html += '<tr><th>版本</th><td>' + escapeHtml(d.version || '\u2014') + '</td></tr>';
     html += '<tr><th>运行时间</th><td>' + escapeHtml(fmtTime(d.uptime_seconds)) + '</td></tr>';
     if (d.decision_stats) {
       var s = d.decision_stats;
@@ -626,9 +732,15 @@
   }
 
   function renderReportList(d, name) {
+    var hints = {
+      '宏观报告': '由 Macro Agent 定期生成。如果无数据，请确认 Agent 已正常运行且数据库连接正常。',
+      '信号报告': '由 Signal Agent 产生的技术信号报告。无数据时请检查 Signal Agent 运行状态。',
+      '资金报告': '由 Trace Agent 产生的大单/资金流向报告。无数据时请检查 Trace Agent 运行状态。',
+    };
     var html = '<div style="margin-bottom:8px;font-size:13px;color:var(--text-secondary)">' + escapeHtml(name) + ' — 最近 ' + (d.count || 0) + ' 条</div>';
     if (!d.items || !d.items.length) {
       html += '<div class="tab-empty">暂无 ' + escapeHtml(name) + ' 数据</div>';
+      html += '<div style="margin-top:8px;font-size:12px;color:var(--text-muted);line-height:1.6">' + escapeHtml(hints[name] || '') + '</div>';
       return html;
     }
     html += '<table class="tab-table"><thead><tr><th>时间</th><th>代码</th><th>摘要</th><th>置信度</th></tr></thead><tbody>';
@@ -674,7 +786,7 @@
 
     html += '<div style="margin-bottom:8px;font-size:13px;color:var(--text-secondary)">\uD83D\uDCCA 股票池 × 7策略回测 — ' + d.count + ' 笔结果</div>';
     if (!d.results || !Object.keys(d.results).length) {
-      html += '<div class="tab-empty">暂无回测数据（需先刷新缓存生成K线）</div>';
+      html += '<div class="tab-empty">暂无回测数据（需先刷新缓存生成K线 + 手动回测）</div>';
       return html;
     }
     html += '<table class="tab-table"><thead><tr><th>股票</th><th>最优策略</th><th>夏普</th><th>索提诺</th><th>回撤%</th><th>胜率%</th><th>盈亏比</th><th>Alpha</th><th>评分</th></tr></thead><tbody>';
@@ -963,7 +1075,8 @@
       });
       html += '</tbody></table>';
     } else {
-      html += '<div class="tab-empty">暂无交易 — 执行AI诊股后将自动记录纸上交易</div>';
+      html += '<div class="tab-empty">暂无交易</div>';
+      html += '<div style="margin-top:8px;font-size:12px;color:var(--text-muted);line-height:1.6">执行 AI 诊股后，系统会自动根据决策（BUY/SELL）在模拟账户中执行一笔纸上交易。请先在顶部输入框诊股。</div>';
     }
     return html;
   }
@@ -974,62 +1087,150 @@
 <div class="help-guide">\
 <h2>&#x2753; Market Trace V6.0 使用指南</h2>\
 \
-<h3>&#x1F3AF; 诊股</h3>\
-<p>在顶部输入框输入股票代码（如 <code>000001</code>），点击<strong>"诊股"</strong>按钮或按回车。</p>\
-<p>系统将拉取K线数据，计算14项技术指标（RSI/MACD/布林带/KDJ/ATR/支撑阻力/均线趋势），检测7策略信号，并通过AI七级回退链（DeepSeek → Gemini → GLM → 硅基流动 → 千帆 → 纯规则）输出交易决策。</p>\
+<h3>&#x1F4E1; 系统概览</h3>\
+<p>Market Trace V6.0 是一个 <strong>A/B 股量化分析系统</strong>，通过 5 个 Agent（宏观/信号/资金/风控/决策）协作 + 7 级 LLM 回退链，对全市场 5000+ A 股进行技术分析、策略扫描和 AI 决策。</p>\
+<p>左侧仪表盘卡片实时展示系统健康状态，下方 Tab 面板提供详细数据查阅，底部提供选股策略和全市场扫描功能。</p>\
 \
-<h3>&#x1F4BC; 持仓列表</h3>\
-<p>添加关注的股票代码，系统自动显示实时价格和涨跌幅。点击股票名称可快速诊股，点击 <strong>&#x00D7;</strong> 可移除。右上角<strong>"刷新列表"</strong>按钮可手动刷新所有持仓价格。</p>\
+<hr style="border-color:var(--border-color);margin:16px 0">\
+<h2>&#x1F4CB; 仪表盘卡片</h2>\
 \
-<h3>&#x1F4CA; 策略回测</h3>\
-<p>选择"策略回测"Tab，查看股票池×7策略的回测结果。表格展示夏普比率、索提诺比率、最大回撤、胜率、Alpha/Beta等指标。<strong>点击股票行</strong>可查看权益曲线、回撤曲线和买卖标记。</p>\
-<p>点击<strong>"手动回测"</strong>按钮可触发新一轮回测。策略评分不足时会警告但不会自动禁用。</p>\
+<h3>&#x1F9ED; 风险偏好指数 RAI</h3>\
+<p>显示当前市场的<strong>Risk Appetite Index</strong>（0~1），反映市场投机情绪。点击卡片跳转到<strong>宏观报告</strong> Tab。</p>\
+<table class="tab-table" style="margin-top:6px">\
+<tr><td style="color:var(--color-green)">RAI &ge; 0.55</td><td>市场乐观，风险偏好高</td></tr>\
+<tr><td style="color:var(--color-yellow)">0.45 &le; RAI &lt; 0.55</td><td>震荡，方向不明</td></tr>\
+<tr><td style="color:var(--color-red)">RAI &lt; 0.45</td><td>市场悲观，避险情绪浓</td></tr>\
+</table>\
 \
-<h3>&#x1F50D; 全市场扫描（选股）</h3>\
-<p>页面底部<strong>"全市场扫描"</strong>区域：</p>\
+<h3>&#x1F916; 运行 Agent</h3>\
+<p>展示 5 个 Agent 的存活状态。绿点亮起表示该 Agent 正常运行。点击跳转到<strong>健康检查</strong> Tab。</p>\
 <ul>\
-<li><strong>绿色按钮</strong> — 对5526只A股做单策略批量筛选。先按实时涨跌幅粗筛，再对有缓存K线的股票做深度策略验证。</li>\
-<li><strong>紫色"智能综合"按钮</strong> — 对全部有缓存K线的股票跑7策略综合评分排行。</li>\
-<li>扫描结果可直接点<strong>"诊股"</strong>按钮跳转详细分析。</li>\
+<li><strong>宏观 Macro</strong> &mdash; 采集指数、计算 RAI</li>\
+<li><strong>信号 Signal</strong> &mdash; 计算 14 项技术指标</li>\
+<li><strong>资金 Trace</strong> &mdash; 监控资金流向、大单异动</li>\
+<li><strong>风控 Risk</strong> &mdash; 实时风险监控、否决异常决策</li>\
+<li><strong>决策 Chief</strong> &mdash; 综合多源证据，输出 BUY/SELL/HOLD</li>\
 </ul>\
-<p>上方<strong>"股票池扫描"</strong>仅对配置的stock_pool做策略筛选。</p>\
 \
-<h3>&#x1F4B0; 纸上交易</h3>\
-<p>每次AI诊股后，系统自动在模拟账户中执行一笔纸上交易。查看<strong>"纸上交易"Tab</strong>可追踪模拟账户的权益变化、持仓和交易记录。</p>\
-<p>点击<strong>"按市价估值"</strong>可更新所有纸上持仓的当前市值。</p>\
+<h3>&#x1F4E1; AI 决策链</h3>\
+<p>系统使用<strong>七级 LLM 回退链</strong>确保决策不中断。绿勾表示该级 API Key 已配置可用，红叉表示未配置。</p>\
+<p><code>DeepSeek Chat &rarr; DeepSeek Reasoner &rarr; Gemini K1 &rarr; Gemini K2 &rarr; GLM Flash &rarr; 硅基流动 &rarr; 百度千帆 &rarr; 纯规则</code></p>\
+<p>任一环节熔断或超时自动降级到下一级，最终由纯规则兜底。</p>\
 \
 <h3>&#x1F6E1; 风控闭环</h3>\
-<p>Risk Agent 实时监控宏观RAI和资金流向。当RAI极端值(>0.75或<0.25)与资金方向矛盾时，自动降权AI决策置信度。风控历史Tab记录所有否决事件。</p>\
+<p>Risk Agent 实时监控市场风险和 AI 决策质量。当出现异常时自动否决决策或降权置信度。点击跳转到<strong>风控历史</strong> Tab。</p>\
+\
+<h3>&#x1F4BC; 持仓列表</h3>\
+<p>添加关注的股票，系统显示实时价格和涨跌幅。<strong>点击股票名称</strong>可快速诊股，<strong>拖拽</strong>可自行排序，点击 <strong>&times;</strong> 可移除。<strong>"刷新列表"</strong>按钮手动刷新所有持仓的实时价格。</p>\
+\
+<h3>&#x1F4C8; 最新决策</h3>\
+<p>显示最近一次 AI 综合决策的结果（买入/卖出/持仓观望/等待），包含置信度和推理理由。点击跳转到<strong>决策历史</strong> Tab。</p>\
+\
+<hr style="border-color:var(--border-color);margin:16px 0">\
+<h2>&#x1F4CA; Tab 面板</h2>\
+\
+<h3>&#x1FA7A; 健康检查</h3>\
+<p>查看系统运行状态：版本号、运行时间、Redis/数据库连接、LLM 链路配置、Agent 运行数。</p>\
+\
+<h3>&#x1F4CB; 状态详情</h3>\
+<p>查看运行统计：决策统计（共多少条/BUY多少/SELL多少）、案例统计、最近一次决策详情。</p>\
+\
+<h3>&#x1F4CA; 宏观报告</h3>\
+<p>由<strong>Macro Agent</strong> 定期生成的宏观分析报告。包含 RAI 指数、市场情绪评估、宏观研判。数据来自数据库，需 Agent 正常产出报告才有内容。</p>\
+<p class="kv-dim">提示：如果此 Tab 无数据，说明 Agent 尚未产出报告或 Redis/数据库未就绪。</p>\
+\
+<h3>&#x1F4C9; 信号报告</h3>\
+<p>由<strong>Signal Agent</strong> 产生的技术信号报告。记录各股票的技术指标计算结果和策略信号命中情况。</p>\
+<p class="kv-dim">提示：如果此 Tab 无数据，请确认 Signal Agent 已正常运行且数据库连接正常。</p>\
+\
+<h3>&#x1F4B9; 资金报告</h3>\
+<p>由<strong>Trace Agent</strong> 产生的资金流向报告。监控大单异动、主力资金方向、成交量异常等。</p>\
+<p class="kv-dim">提示：如果此 Tab 无数据，请确认 Trace Agent 已正常运行。</p>\
+\
+<h3>&#x1F9E0; 决策历史</h3>\
+<p>展示最近 10 条 AI 决策记录。每行显示决策动作、置信度、AI 来源和理由摘要。<strong>点击行</strong>可弹出详情弹窗，查看完整推理链、证据来源和风控否决信息。</p>\
+<p>按 <kbd>Esc</kbd> 关闭弹窗。</p>\
+\
+<h3>&#x1F6E1; 风控历史</h3>\
+<p>记录最近 20 条风控否决事件。包含严重级别（正常/警告/危险）、否决规则、相关股票和处理动作。</p>\
+\
+<h3>&#x1F4CA; 策略回测</h3>\
+<p>查看股票池 &times; 7 策略的回测结果。表格展示夏普比率、索提诺比率、最大回撤、胜率、Alpha/Beta 等指标。</p>\
+<p><strong>点击股票行</strong>可展开权益曲线、回撤曲线和买卖标记。</p>\
+<p><strong>"策略管理"</strong>面板显示各策略状态（活跃/禁用）、连续失败次数和评分。禁用的策略可手动重新启用。</p>\
+<p><strong>"手动回测"</strong>按钮触发新一轮回测计算。</p>\
 \
 <h3>&#x1F4DC; 系统日志</h3>\
-<p>查看最近100行系统日志，用于排查异常或了解系统运行状态。</p>\
+<p>查看最近 100 行服务器日志（markdown 格式）。用于排查异常、了解系统运行状态。启动日志、Agent 日志、API 调用日志均在此处。</p>\
 \
-<h3>&#x26A1; 快捷操作</h3>\
+<h3>&#x1F4B0; 纸上交易</h3>\
+<p>模拟账户的交易记录。每次 AI 诊股后，系统<strong>自动</strong>根据决策执行一笔模拟交易。此 Tab 显示：初始资金、当前权益、盈亏、持仓明细和最近交易记录。</p>\
+<p class="kv-dim">提示：如果此 Tab 显示空账户，请先执行诊股触发模拟交易。</p>\
+\
+<hr style="border-color:var(--border-color);margin:16px 0">\
+<h2>&#x1F3AF; 核心功能</h2>\
+\
+<h3>&#x1F50D; 诊股</h3>\
+<p>在顶部输入框输入股票代码（如 <code>000001</code> 或 <code>600519</code>），点击<strong>"诊股"</strong>或按回车。</p>\
+<p>系统将：</p>\
+<ol>\
+<li>拉取 K 线数据（60 日）</li>\
+<li>计算 14 项技术指标（RSI/MACD/布林带/KDJ/ATR/支撑阻力/均线趋势）</li>\
+<li>检测 7 策略信号命中（强势突破/超跌反弹/主力介入/风险预警/金叉/放量/RSI反转）</li>\
+<li>通过 AI 七级回退链输出交易决策（BUY/SELL/HOLD）</li>\
+<li>显示 K 线图、仓位建议，并自动记录纸上交易</li>\
+</ol>\
+<p>如果 LLM 链路全部不可用，会显示<strong>红色降级警告</strong>横幅，说明已降级到纯规则兜底。</p>\
+\
+<h3>&#x1F3AF; 选股策略（股票池扫描）</h3>\
+<p>对配置的 <code>stock_pool</code>（约 48 只）做指定策略筛选。4 个按钮对应 4 个策略：</p>\
 <ul>\
-<li>持仓列表中<strong>点击股票名称</strong> → 快速诊股</li>\
-<li>回测表格中<strong>点击股票行</strong> → 查看权益曲线</li>\
-<li>扫描结果中<strong>点击"诊股"</strong> → 跳转分析</li>\
-<li>风控卡片<strong>点击</strong> → 跳转风控历史</li>\
-<li>决策历史中<strong>点击行</strong> → 查看完整决策详情</li>\
+<li><strong>&#x1F525; 强势突破</strong> &mdash; 价格突破近期高点 + 放量确认</li>\
+<li><strong>&#x1F48E; 超跌反弹</strong> &mdash; RSI 超卖 + 近期跌幅较大</li>\
+<li><strong>&#x1F4B0; 主力介入</strong> &mdash; 放量上涨 + 资金流入迹象</li>\
+<li><strong>&#x1F4C9; 风险预警</strong> &mdash; RSI 偏高 + 高位放量下跌</li>\
+</ul>\
+<p class="kv-dim">提示：匹配 0 只代表股票池中暂无符合该策略条件的股票，或缓存 K 线数据不足（需 &ge; 20 条）。</p>\
+\
+<h3>&#x1F50D; 全市场扫描</h3>\
+<p>对全市场 5000+ A 股做批量策略筛选。两阶段扫描：先按实时涨跌幅粗筛，再对有缓存 K 线的股票做深度策略验证。</p>\
+<ul>\
+<li><strong>7 个绿色按钮</strong> &mdash; 单策略全市场扫描（突破/超跌/主力/风险/金叉/放量/RSI反转）</li>\
+<li><strong>&#x1F9E0; 智能综合（紫色）</strong> &mdash; 7 策略综合评分，取每只股票的最优策略排行</li>\
+</ul>\
+<p>结果按量比和涨跌幅排序，可直接点<strong>"诊股"</strong>按钮跳转详细分析。</p>\
+<p class="kv-dim">提示：扫描需要缓存的 K 线数据。如果系统刚启动或缓存未就绪，可能命中较少。等待 prefetch 预热完成（约 30 秒）后重试。</p>\
+\
+<hr style="border-color:var(--border-color);margin:16px 0">\
+<h2>&#x26A1; 快捷操作</h2>\
+<ul>\
+<li>持仓列表<strong>拖拽</strong> &rarr; 自定义排序</li>\
+<li>持仓列表<strong>点击股票名</strong> &rarr; 快速诊股</li>\
+<li>回测表格<strong>点击股票行</strong> &rarr; 展开权益曲线</li>\
+<li>扫描结果<strong>点击"诊股"</strong> &rarr; 跳转分析</li>\
+<li>风控卡片<strong>点击</strong> &rarr; 跳转风控历史</li>\
+<li>决策历史<strong>点击行</strong> &rarr; 查看完整决策弹窗</li>\
+<li>弹窗按 <kbd>Esc</kbd> &rarr; 关闭</li>\
+<li>Tab 面板右上角 <strong>&#x1F504;</strong> &rarr; 刷新当前面板</li>\
 </ul>\
 \
-<h3>&#x1F4E1; AI决策链</h3>\
-<p>系统使用七级LLM回退链确保决策不中断：<strong>DeepSeek → Gemini ×2 → GLM免费 → 硅基流动免费 → 千帆免费 → 纯规则加权</strong>。任一环节熔断或超时自动降级到下一级。</p>\
-\
-<h3>&#x1F4CA; 技术指标说明</h3>\
+<hr style="border-color:var(--border-color);margin:16px 0">\
+<h2>&#x1F4CA; 技术指标速查</h2>\
 <table class="tab-table">\
-<thead><tr><th>指标</th><th>说明</th></tr></thead>\
+<thead><tr><th>指标</th><th>说明</th><th>信号判断</th></tr></thead>\
 <tbody>\
-<tr><td>RSI</td><td>相对强弱指数，>70超买(看空)，<30超卖(看多)</td></tr>\
-<tr><td>MACD</td><td>异同移动均线，金叉看多，死叉看空</td></tr>\
-<tr><td>布林带</td><td>价格在上下轨间波动，带宽收窄预示变盘</td></tr>\
-<tr><td>KDJ</td><td>随机指标，J>100超买，J<0超卖</td></tr>\
-<tr><td>ATR</td><td>平均真实波幅，衡量波动率</td></tr>\
-<tr><td>RAI</td><td>风险偏好指数，0-1，>0.55乐观，<0.45悲观</td></tr>\
-<tr><td>Alpha</td><td>策略超额收益(相对基准)</td></tr>\
-<tr><td>Beta</td><td>系统性风险暴露(相对基准)</td></tr>\
-<tr><td>Sharpe</td><td>风险调整后收益，>1良好</td></tr>\
-<tr><td>Sortino</td><td>下行风险调整收益，>2优秀</td></tr>\
+<tr><td>RSI</td><td>相对强弱指数</td><td>&gt;70 超买看空，&lt;30 超卖看多</td></tr>\
+<tr><td>MACD</td><td>异同移动均线</td><td>金叉(DIF上穿DEA)看多，死叉看空</td></tr>\
+<tr><td>布林带</td><td>价格波动通道</td><td>触及上轨看空，触及下轨看多，带宽收窄预示变盘</td></tr>\
+<tr><td>KDJ</td><td>随机指标</td><td>J&gt;100 超买，J&lt;0 超卖</td></tr>\
+<tr><td>ATR</td><td>平均真实波幅</td><td>衡量波动率，越大越活跃</td></tr>\
+<tr><td>MA5/10/20/60</td><td>移动均线</td><td>多头排列(短>长)看多，空头排列看空</td></tr>\
+<tr><td>RAI</td><td>风险偏好指数</td><td>&gt;0.55 乐观，&lt;0.45 悲观</td></tr>\
+<tr><td>量比</td><td>当前量/均量</td><td>&gt;1.5 显著放量，&lt;0.5 缩量</td></tr>\
+<tr><td>Sharpe</td><td>风险调整收益</td><td>&gt;1 良好，&gt;2 优秀</td></tr>\
+<tr><td>Sortino</td><td>下行风险调整</td><td>&gt;2 优秀</td></tr>\
+<tr><td>Alpha</td><td>超额收益</td><td>&gt;0 跑赢基准</td></tr>\
+<tr><td>Beta</td><td>系统性风险</td><td>&gt;1 比市场波动大</td></tr>\
 </tbody>\
 </table>\
 </div>\
@@ -1046,7 +1247,7 @@
     fetchAuth('/watchlist')
       .then(function(r) { return r.ok ? r.json() : null; })
       .then(function(wl) {
-        $id('watchlist-items').innerHTML = wl && wl.items ? _renderWatchlistItems(wl.items) : '<div style="color:var(--text-muted);font-size:13px">加载失败</div>';
+        $id('watchlist-items').innerHTML = wl && wl.items ? _renderWatchlistItems(_applyWlSortOrder(wl.items)) : '<div style="color:var(--text-muted);font-size:13px">加载失败</div>';
       })
       .catch(function() {
         $id('watchlist-items').innerHTML = '<div style="color:var(--text-muted);font-size:13px">加载失败</div>';
@@ -1174,7 +1375,9 @@
   window.showDecisionModal = showDecisionModal;
 
   /* ── Init ── */
+  _loadWlSortOrder();
   _initScrollTopBtn();
+  _initWlDragDrop();
   switchTab('health');
   startPoll();
 

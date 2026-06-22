@@ -235,6 +235,20 @@ async def quick_scan(strategy: str, limit: int = 50,
         tasks = [asyncio.create_task(_deep_check(s)) for s in rough_hits]
         await asyncio.gather(*tasks, return_exceptions=True)
 
+    # Fallback: if no deep hits but rough hits exist, return rough results
+    if not hits and rough_hits:
+        for s in rough_hits[:limit]:
+            hits.append({
+                "symbol": s["symbol"],
+                "name": s["name"],
+                "price": s.get("price", 0),
+                "change_pct": s.get("change_pct", 0),
+                "vol_ratio": round(s.get("volume", 0) / 10000000, 1) if s.get("volume") else 1.0,
+            })
+        logger.info("全市场扫描降级: 缓存K线数据不足, 使用实时行情粗筛结果")
+    elif not hits:
+        logger.info("全市场扫描: 无缓存K线且无粗筛命中, 结果为空")
+
     hits.sort(key=lambda x: (-x["vol_ratio"], -abs(x["change_pct"])))
     elapsed = time.monotonic() - t0
     logger.info("全市场扫描完成: {:.1f}s, 命中 {}/{}({})", elapsed, len(hits), checked, too_few_data)

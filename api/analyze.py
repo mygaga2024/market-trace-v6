@@ -74,7 +74,28 @@ async def screen_stocks(request: Request, strategy: str):
             await ensure_symbol_cached(symbol, bus, config)
             cached = await bus.cache_get(f"market:raw:{symbol}") if bus else None
             if not cached or len(cached) < 20:
-                return None
+                # Fallback: rough strategy check using live price data (cache unavailable)
+                from services.prefetch import fetch_stock_price_via_sina
+                stock_name, live_price, live_change = await fetch_stock_price_via_sina(symbol)
+                if not live_price or live_change is None:
+                    return None
+                # Rough thresholds matching the scanner's stage-1 logic
+                rough_ok = False
+                if strategy == "breakout" and live_change > 1 and live_price > 5: rough_ok = True
+                elif strategy == "oversold" and live_change < -3: rough_ok = True
+                elif strategy == "strength" and live_change > 2: rough_ok = True
+                elif strategy == "risk" and live_change < -5: rough_ok = True
+                elif strategy == "ma_golden_cross" and live_change > 0.5: rough_ok = True
+                elif strategy == "volume_breakout" and live_change > 3: rough_ok = True
+                elif strategy == "rsi_reversal" and live_change < -2: rough_ok = True
+                if not rough_ok:
+                    return None
+                name = stock_name or await get_stock_name(symbol, bus)
+                return {
+                    "symbol": symbol, "name": name, "price": round(live_price, 2),
+                    "change_pct": round(live_change, 2),
+                    "vol_ratio": 1.0,
+                }
             closes = np.array([float(r["close"]) for r in cached])
             highs = np.array([float(r["high"]) for r in cached])
             vols = np.array([float(r["volume"]) for r in cached])

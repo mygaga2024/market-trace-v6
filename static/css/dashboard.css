@@ -547,6 +547,11 @@ scrollbar-color: var(--border-color) var(--bg-primary);
 }
 .skeleton-line:last-child { width: 60%; }
 
+/* ── Watchlist Drag & Drop ── */
+.wl-row { transition: opacity .2s, border-top .2s; }
+.wl-row[draggable="true"] { cursor: default; }
+.wl-row[draggable="true"]:hover { background: var(--bg-card-hover); }
+
 /* ── Print ── */
 @media print {
   body { background: white; color: black; }
