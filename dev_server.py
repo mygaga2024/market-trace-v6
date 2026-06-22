@@ -97,7 +97,7 @@ def handle_reports(agent, is_latest=False):
         {"report_id": f"r-{agent}-001", "agent": agent, "symbol": "000001",
          "summary": f"{agent} 分析报告测试数据", "confidence": 0.75,
          "status": "ok", "timestamp": datetime.now(timezone.utc).isoformat(),
-         "data": {"risk_appetite_index": 0.62, "regime": "震荡偏多"}},
+         "data": {"risk_appetite_index": 0.62, "interpretation": {"regime": "震荡偏多", "sentiment": "neutral"}}},
     ] if agent == "macro" else [
         {"report_id": f"r-{agent}-001", "agent": agent, "symbol": "000001",
          "summary": f"{agent} 分析报告测试数据", "confidence": 0.7,
@@ -122,17 +122,27 @@ def handle_analyze(symbol):
         "name": stock["name"],
         "price": stock["price"],
         "change_pct": stock["change_pct"],
+        "trend": "bullish" if stock["change_pct"] > 0 else "bearish",
         "indicators": {
             "ma5": round(stock["price"] * 0.99, 2),
             "ma10": round(stock["price"] * 0.97, 2),
             "ma20": round(stock["price"] * 0.95, 2),
+            "ma60": round(stock["price"] * 0.85, 2),
             "macd": {"dif": 0.35, "dea": 0.28, "histogram": 0.14},
+            "bollinger": {"upper": round(stock["price"]*1.05,2), "middle": stock["price"], "lower": round(stock["price"]*0.95,2), "bandwidth": 0.1},
+            "kdj": {"k": 58.2, "d": 52.1, "j": 70.4},
             "rsi": 58.5,
             "vol_ratio": 1.25,
+            "atr": 0.35,
+            "support_resistance": {"support": round(stock["price"]*0.92,2), "resistance": round(stock["price"]*1.08,2), "pivot": stock["price"]},
         },
         "trace_signals": [
             {"type": "VOLUME_SPIKE", "direction": "bullish", "strength": 0.6},
             {"type": "MACD_GOLDEN_CROSS", "direction": "bullish", "strength": 0.5},
+        ],
+        "strategy_hits": [
+            {"type": "BUY", "label": "MACD金叉"},
+            {"type": "BUY", "label": "放量突破"},
         ],
         "macro_rai": 0.62,
         "decision": {
@@ -179,9 +189,11 @@ def handle_kline(symbol):
 
 def handle_risk_status():
     return json_response({
-        "level": "normal", "override_count": 3, "event_count": 12,
-        "last_override": {"rule": "MAX_DRAWDOWN", "symbol": "600519", "level": "normal",
-                          "timestamp": datetime.now(timezone.utc).isoformat()},
+        "level": "normal", "daily_overrides": 3, "total_overrides": 12,
+        "last_override_time": datetime.now(timezone.utc).isoformat(),
+        "last_critical_time": "",
+        "current_circuit_breaker": "none",
+        "adaptive_suggestion": "",
     })
 
 
@@ -258,16 +270,15 @@ def handle_backtest_summary():
 
 
 def handle_backtest_strategies():
-    strategies = [
-        {"name": "breakout", "status": "active", "consecutive_losses": 0, "last_score": 1.45},
-        {"name": "oversold", "status": "active", "consecutive_losses": 2, "last_score": 0.92},
-        {"name": "strength", "status": "active", "consecutive_losses": 0, "last_score": 1.12},
-        {"name": "risk", "status": "active", "consecutive_losses": 1, "last_score": 0.78},
-        {"name": "ma_golden_cross", "status": "disabled", "consecutive_losses": 5, "last_score": -0.35},
-        {"name": "volume_breakout", "status": "active", "consecutive_losses": 0, "last_score": 1.05},
-        {"name": "rsi_reversal", "status": "active", "consecutive_losses": 3, "last_score": 0.55},
-    ]
-    return json_response({"strategies": strategies})
+    return json_response({"strategies": {
+        "breakout": {"status": "active", "consecutive_losses": 0, "last_score": 1.45},
+        "oversold": {"status": "active", "consecutive_losses": 2, "last_score": 0.92},
+        "strength": {"status": "active", "consecutive_losses": 0, "last_score": 1.12},
+        "risk": {"status": "active", "consecutive_losses": 1, "last_score": 0.78},
+        "ma_golden_cross": {"status": "disabled", "consecutive_losses": 5, "last_score": -0.35},
+        "volume_breakout": {"status": "active", "consecutive_losses": 0, "last_score": 1.05},
+        "rsi_reversal": {"status": "active", "consecutive_losses": 3, "last_score": 0.55},
+    }})
 
 
 def handle_backtest_run():
@@ -352,10 +363,24 @@ def handle_paper_account():
     })
 
 
+def handle_smart_scan(strategy: str):
+    """返回 mock 智能综合扫描结果"""
+    labels = {"breakout": "强势突破", "oversold": "超跌反弹", "strength": "主力介入",
+              "risk": "风险预警", "ma_golden_cross": "均线金叉", "volume_breakout": "放量突破", "rsi_reversal": "RSI反转"}
+    return json_response({
+        "total": 5526, "scored": 5, "elapsed_seconds": 8.3,
+        "results": [
+            {"symbol": "000001", "name": "平安银行", "price": 12.56, "change_pct": 2.34, "strategy": "breakout", "strategy_label": "强势突破", "score": 8.5},
+            {"symbol": "600519", "name": "贵州茅台", "price": 1780.00, "change_pct": 3.21, "strategy": "strength", "strategy_label": "主力介入", "score": 7.8},
+            {"symbol": "000858", "name": "五粮液", "price": 156.80, "change_pct": -1.02, "strategy": "oversold", "strategy_label": "超跌反弹", "score": 6.2},
+        ],
+    })
+
+
 def handle_full_scan(strategy: str):
     """返回 mock 全市场扫描结果"""
     labels = {"breakout": "强势突破", "oversold": "超跌反弹", "strength": "主力介入",
-              "ma_golden_cross": "均线金叉", "volume_breakout": "放量突破", "rsi_reversal": "RSI反转"}
+              "risk": "风险预警", "ma_golden_cross": "均线金叉", "volume_breakout": "放量突破", "rsi_reversal": "RSI反转"}
     return json_response({
         "strategy": labels.get(strategy, strategy), "strategy_id": strategy,
         "total_stocks": 5526, "checked": 5526, "too_few_data": 200, "errors": 5,
@@ -407,8 +432,8 @@ REGEX_ROUTES = [
      lambda _: None),  # handled via body parsing below
     (re.compile(r"^/watchlist/(.+)$"), "DELETE",
      lambda m: handle_watchlist_delete(m.group(1))),
-    (re.compile(r"^/scan/(smart|breakout|oversold|strength|ma_golden_cross|volume_breakout|rsi_reversal)$"), "POST",
-     lambda m: handle_full_scan(m.group(1))),
+     (re.compile(r"^/scan/(smart|breakout|oversold|strength|risk|ma_golden_cross|volume_breakout|rsi_reversal)$"), "POST",
+      lambda m: handle_smart_scan(m.group(1)) if m.group(1) == "smart" else handle_full_scan(m.group(1))),
 ]
 
 # prefix-based static routes for reports with query params
