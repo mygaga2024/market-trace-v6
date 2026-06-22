@@ -435,6 +435,7 @@ class LLMFallbackChain:
 
     async def analyze(self, reports: dict[str, AgentReport]) -> Decision:
         decisions: list[Decision] = []
+        failures: list[str] = []
         for i, provider in enumerate(self.providers):
             tier = ["主力(DS Chat)", "主力备选(DS Reasoner)", "备用K1(Gemini)", "备用K2(Gemini备胎)", "GLM免费", "硅基流动免费", "千帆免费"][i]
             try:
@@ -452,6 +453,7 @@ class LLMFallbackChain:
                         logger.warning("三LLM仍无共识, 采纳首个: action={}", decisions[0].action.value)
                         decisions[0].confidence *= 0.7
                         decisions[0].reasoning += " | 多LLM未达成共识(置信度×0.7)"
+                        decisions[0].provider_status = ProviderStatus.DEGRADED
                         return decisions[0]
                     logger.info("双LLM分歧({} vs {}), 继续检测...", decisions[0].action.value, decision.action.value)
                     continue
@@ -460,23 +462,35 @@ class LLMFallbackChain:
                     logger.info("单LLM高置信度({:.2f}), 直接采纳", decision.confidence)
                     return decision
             except CircuitBreakerOpenError as e:
+                msg = f"{tier}({provider.provider_name}) 熔断: {e}"
                 logger.warning("LLM [{}] 熔断: {}", provider.provider_name, e)
+                failures.append(msg)
                 continue
             except Exception as e:
+                msg = f"{tier}({provider.provider_name}) 失败: {e}"
                 logger.error("LLM [{}] 调用失败: {}", provider.provider_name, e)
+                failures.append(msg)
                 continue
 
         if decisions:
+            if failures:
+                decisions[0].reasoning += f"\n| 降级链路({len(failures)}级跳过): {'; '.join(failures)}"
+                decisions[0].provider_status = ProviderStatus.DEGRADED
             return decisions[0]
 
-        logger.critical("所有 LLM 不可用，执行纯规则降级")
+        logger.critical("所有 LLM 不可用(共{}级全部失败), 执行纯规则降级", len(failures))
         try:
             decision = await self.rule_based.analyze(reports)
             self._active_provider = "rule_based"
+            if failures:
+                decision.reasoning = f"[LLM全部失败, 降级到纯规则]\n{decision.reasoning}\n故障链(7级): {'; '.join(failures)}"
+            decision.provider_label = f"rule_based(fallback after {len(failures)} LLM failures)"
+            decision.provider_status = ProviderStatus.FALLBACK
             return decision
         except Exception as e:
             logger.error("RuleBasedAnalyzer 异常: {}", e)
-            return _dummy_decision(f"规则引擎异常: {e}")
+            failures.append(f"纯规则引擎崩溃: {e}")
+            return _dummy_decision(f"[全部LLM+规则均崩溃]\n7级LLM全失败: {'; '.join(failures[:-1])}\n纯规则也崩溃: {e}")
 
     async def health_check(self) -> dict[str, bool]:
         results = {}

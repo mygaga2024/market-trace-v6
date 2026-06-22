@@ -332,6 +332,7 @@ async def analyze_single(
             decision = {
                 "action": dec.action.value, "confidence": dec.confidence,
                 "reasoning": dec.reasoning, "provider": dec.provider_label,
+                "provider_status": dec.provider_status.value if hasattr(dec.provider_status, 'value') else str(dec.provider_status),
             }
         except Exception as e:
             logger.debug("LLM 分析异常: {}", e)

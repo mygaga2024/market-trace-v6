@@ -359,6 +359,15 @@
             html += '</div>';
           }
           if (dec) {
+            var status = dec.provider_status || '';
+            var isDegraded = status === 'degraded' || status === 'fallback' || status === 'FALLBACK' || status === 'DEGRADED';
+            if (isDegraded) {
+              var warnCls = status === 'fallback' || status === 'FALLBACK' ? 'toast-error' : 'toast-warning';
+              var warnIcon = status === 'fallback' || status === 'FALLBACK' ? '\u274C' : '\u26A0\uFE0F';
+              var warnText = status === 'fallback' || status === 'FALLBACK' ? 'LLM链路全部不可用, 已降级到兜底规则' : 'LLM链路降级, 部分模型不可用';
+              html += '<div style="margin-top:8px;padding:8px 12px;border-radius:6px;font-size:12px;background:var(--bg-red-subtle);border:1px solid var(--color-red);color:var(--color-red)">';
+              html += warnIcon + ' <strong>' + escapeHtml(warnText) + '</strong></div>';
+            }
             html += '<div style="margin-top:12px;padding:12px;background:var(--bg-primary);border-radius:8px">';
             html += '<span class="decision-action action-' + escapeHtml(dec.action) + '">' + escapeHtml(dec.action) + '</span>';
             html += ' <span style="font-size:13px">置信度 ' + (dec.confidence * 100).toFixed(0) + '%</span>';
