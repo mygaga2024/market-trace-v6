@@ -365,10 +365,12 @@ class AkShareProvider(DataProviderBase):
                     chg_pct = float(parts[3]) if len(parts) > 3 and parts[3] else 0.0
                     vol = float(parts[4]) if len(parts) > 4 and parts[4] else 0.0
                     amt = float(parts[5]) if len(parts) > 5 and parts[5] else 0.0
+                    chg_amt = float(parts[2]) if len(parts) > 2 and parts[2] else 0.0
                     indices_data.append({
                         "code": code_part,
                         "name": name or index_map.get(code_part, code_part),
                         "close": round(cur, 2),
+                        "change": round(chg_amt, 2),
                         "涨跌幅": round(chg_pct, 2),
                         "volume": vol,
                         "amount": amt,
@@ -389,9 +391,10 @@ class AkShareProvider(DataProviderBase):
                         prev_close = float(prev.get("close", 0))
                         cur_close = float(latest.get("close", 0))
                         change_pct = ((cur_close - prev_close) / prev_close * 100) if prev_close > 0 else 0.0
+                        change_amt = cur_close - prev_close
                         indices_data.append({
                             "code": code, "name": str(latest.get("name", name)),
-                            "close": cur_close, "涨跌幅": round(change_pct, 2),
+                            "close": cur_close, "change": round(change_amt, 2), "涨跌幅": round(change_pct, 2),
                             "volume": float(latest.get("volume", 0)),
                             "amount": float(latest.get("amount", 0)),
                             "date": str(latest.get("date", "")),

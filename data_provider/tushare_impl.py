@@ -156,7 +156,7 @@ class TushareProvider(DataProviderBase):
             "open": float(latest.get("open", 0)),
             "pre_close": prev_c,
             "source": "tushare",
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         await self.cache_and_publish_dict(result, f"market:realtime:{symbol}")
         return result
@@ -188,7 +188,7 @@ class TushareProvider(DataProviderBase):
             "large_net": float(r.get("buy_lg_amount", 0) or 0),
             "large_pct": 0.0,
             "source": "tushare",
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         await self.cache_and_publish_dict(result, f"market:fundflow:{symbol}")
         return result

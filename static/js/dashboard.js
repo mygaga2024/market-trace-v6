@@ -84,8 +84,14 @@
     return h ? h + 'h' + m + 'm' : m + 'm' + (s % 60) + 's';
   }
 
+  var _TZ_OPTS = { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false };
   function _ts(str) {
-    return str ? new Date(str).toLocaleString('zh') : '\u2014';
+    if (!str) return '\u2014';
+    try {
+      return new Date(str).toLocaleString('zh-CN', _TZ_OPTS);
+    } catch(e) {
+      return str.substring(0, 19).replace('T', ' ');
+    }
   }
 
   function _wcll(items, sym) {
@@ -179,22 +185,32 @@
     indices.forEach(function(idx) {
       var name = idx.name || idx.code || '';
       var close = idx.close != null ? idx.close.toFixed(2) : '\u2014';
-      var chg = idx['\u6DA8\u8DCC\u5E45'] != null ? idx['\u6DA8\u8DCC\u5E45'] : 0;
-      var cls = chg >= 0 ? 'trend-up' : 'trend-down';
-      var arrow = chg >= 0 ? '\u2191' : '\u2193';
-      html += '<div class="mi-row">';
-      html += '<span class="mi-name">' + escapeHtml(name) + '</span>';
-      html += '<span class="mi-price">' + close + '</span>';
-      html += '<span class="' + cls + '" style="font-size:12px;min-width:60px;text-align:right">' + arrow + ' ' + chg.toFixed(2) + '%</span>';
+      var chgAmt = idx.change != null ? (idx.change >= 0 ? '+' : '') + idx.change.toFixed(2) : '\u2014';
+      var chgPct = idx['\u6DA8\u8DCC\u5E45'] != null ? idx['\u6DA8\u8DCC\u5E45'] : 0;
+      var cls = chgPct >= 0 ? 'trend-up' : 'trend-down';
+      var volStr = '\u2014';
+      if (idx.volume != null) {
+        var v = idx.volume / 10000;
+        volStr = (v >= 10000 ? (v / 10000).toFixed(1) + '\u4EBF' : v.toFixed(0)) + '\u4E07';
+      }
+      html += '<div class="mi-row2">';
+      html += '<span class="mi-col-name">' + escapeHtml(name) + '</span>';
+      html += '<span class="mi-col-price">' + close + '</span>';
+      html += '<span class="mi-col-chg ' + cls + '">' + chgAmt + '</span>';
+      html += '<span class="mi-col-pct ' + cls + '">' + chgPct.toFixed(2) + '%</span>';
+      html += '<span class="mi-col-vol">' + volStr + '</span>';
       html += '</div>';
     });
     var breadth = data && data.breadth;
     if (breadth && (breadth.up || breadth.down)) {
       html += '<div class="mi-breadth">';
-      html += '<span style="color:var(--color-green)">\u2191 ' + (breadth.up || 0) + ' 家</span>';
-      html += '<span style="color:var(--color-red)">\u2193 ' + (breadth.down || 0) + ' 家</span>';
-      html += '<span style="color:var(--text-muted)">\u2194 ' + (breadth.flat || 0) + ' 家</span>';
+      html += '<span style="color:var(--color-green)">\u2191 ' + (breadth.up || 0) + ' \u5BB6</span>';
+      html += '<span style="color:var(--color-red)">\u2193 ' + (breadth.down || 0) + ' \u5BB6</span>';
+      html += '<span style="color:var(--text-muted)">\u2194 ' + (breadth.flat || 0) + ' \u5BB6</span>';
       html += '</div>';
+    }
+    if (data && data.timestamp) {
+      html += '<div class="mi-time">\u66F4\u65B0: ' + _ts(data.timestamp) + '</div>';
     }
     container.innerHTML = html;
   }
@@ -557,9 +573,8 @@
             html += '<div style="margin-top:6px;font-size:13px;color:var(--text-secondary)">' + escapeHtml(dec.reasoning) + '</div>';
             html += '<div style="font-size:11px;color:var(--text-muted);margin-top:4px">AI: ' + escapeHtml(dec.provider) + ' | RAI宏观: ' + d.macro_rai.toFixed(2) + '</div>';
             if (d.data_timestamp) {
-              var tsStr = d.data_timestamp.substring(0, 16).replace('T', ' ');
-              var isLive = d.data_source === 'akshare' && tsStr.indexOf(new Date().toISOString().substring(0, 10)) >= 0;
-              html += '<div style="font-size:10px;color:var(--text-muted);margin-top:2px">\uD83D\uDCC5 数据: ' + escapeHtml(tsStr) + (isLive ? ' <span style="color:var(--color-green)">(\u5B9E\u65F6)</span>' : '') + '</div>';
+              var isLive = d.data_source === 'akshare' && d.data_timestamp.indexOf(new Date().toISOString().substring(0, 10)) >= 0;
+              html += '<div style="font-size:10px;color:var(--text-muted);margin-top:2px">\uD83D\uDCC5 数据: ' + escapeHtml(_ts(d.data_timestamp)) + (isLive ? ' <span style="color:var(--color-green)">(\u5B9E\u65F6)</span>' : '') + '</div>';
             }
             html += '</div>';
           }

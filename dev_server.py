@@ -350,11 +350,11 @@ def handle_market_index():
     """返回 mock 大盘指数数据"""
     return json_response({
         "indices": [
-            {"code": "sh000001", "name": "上证指数", "close": 3350.68, "涨跌幅": 0.42, "volume": 285000000, "amount": 320000000000},
-            {"code": "sz399001", "name": "深证成指", "close": 10823.45, "涨跌幅": -0.21, "volume": 420000000, "amount": 480000000000},
-            {"code": "sz399006", "name": "创业板指", "close": 2215.80, "涨跌幅": 1.15, "volume": 180000000, "amount": 195000000000},
-            {"code": "sh000688", "name": "科创50", "close": 985.30, "涨跌幅": 0.87, "volume": 85000000, "amount": 72000000000},
-            {"code": "sh000300", "name": "沪深300", "close": 3980.55, "涨跌幅": 0.15, "volume": 350000000, "amount": 280000000000},
+            {"code": "sh000001", "name": "上证指数", "close": 3350.68, "change": 14.02, "涨跌幅": 0.42, "volume": 285000000, "amount": 320000000000},
+            {"code": "sz399001", "name": "深证成指", "close": 10823.45, "change": -22.80, "涨跌幅": -0.21, "volume": 420000000, "amount": 480000000000},
+            {"code": "sz399006", "name": "创业板指", "close": 2215.80, "change": 25.20, "涨跌幅": 1.15, "volume": 180000000, "amount": 195000000000},
+            {"code": "sh000688", "name": "科创50", "close": 985.30, "change": 8.50, "涨跌幅": 0.87, "volume": 85000000, "amount": 72000000000},
+            {"code": "sh000300", "name": "沪深300", "close": 3980.55, "change": 5.97, "涨跌幅": 0.15, "volume": 350000000, "amount": 280000000000},
         ],
         "breadth": {"up": 2156, "down": 2834, "flat": 136},
         "timestamp": datetime.now(timezone.utc).isoformat(),

@@ -553,19 +553,30 @@ scrollbar-color: var(--border-color) var(--bg-primary);
 .wl-row[draggable="true"]:hover { background: var(--bg-card-hover); }
 
 /* ── Market Index Card ── */
-.mi-row {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  padding: 6px 0; border-bottom: 1px solid var(--bg-tag);
-  font-size: 13px;
+.mi-row, .mi-row2 {
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 0; border-bottom: 1px solid var(--bg-tag);
+  font-size: 12px;
 }
 .mi-row:last-child { border-bottom: none; }
+.mi-row2 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr 1fr; text-align: center; }
+.mi-row2:last-child { border-bottom: none; }
 .mi-name { font-weight: 600; color: var(--text-primary); min-width: 70px; }
 .mi-price { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.mi-col-name { font-weight: 600; color: var(--text-primary); text-align: left; }
+.mi-col-price { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.mi-col-chg { font-variant-numeric: tabular-nums; }
+.mi-col-pct { font-variant-numeric: tabular-nums; }
+.mi-col-vol { color: var(--text-secondary); font-size: 11px; }
 .mi-breadth {
   display: flex; gap: 12px; justify-content: center;
   padding-top: 8px; margin-top: 4px;
   border-top: 1px solid var(--border-color);
   font-size: 12px;
+}
+.mi-time {
+  text-align: center; font-size: 10px; color: var(--text-muted);
+  margin-top: 6px;
 }
 
 /* ── Analyze Overlay ── */
