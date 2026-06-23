@@ -552,6 +552,16 @@ scrollbar-color: var(--border-color) var(--bg-primary);
 .wl-row[draggable="true"] { cursor: default; }
 .wl-row[draggable="true"]:hover { background: var(--bg-card-hover); }
 
+/* ── Market Index Card ── */
+.mi-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 6px 0; border-bottom: 1px solid var(--bg-tag);
+  font-size: 13px;
+}
+.mi-row:last-child { border-bottom: none; }
+.mi-name { font-weight: 600; color: var(--text-primary); min-width: 70px; }
+.mi-price { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+
 /* ── Analyze Overlay ── */
 .analyze-overlay {
   position: fixed; inset: 0; z-index: 999;

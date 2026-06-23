@@ -318,7 +318,9 @@ from api.kline import router as kline_router
 from api.watchlist import router as watchlist_router
 from api.paper import router as paper_router
 from api.replay import router as replay_router
+from api.market_index import router as market_index_router
 
+app.include_router(market_index_router)
 app.include_router(health_router)
 app.include_router(reports_router)
 app.include_router(analyze_router)

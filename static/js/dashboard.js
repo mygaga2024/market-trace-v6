@@ -27,6 +27,8 @@
   function fmtRiskLevel(l) { return SEVERITY_LABELS[l] || l; }
   var BTN_DIAGNOSE = '\uD83D\uDD0D 诊股';
   var LLM_TIERS = ['primary', 'secondary', 'tertiary', 'quaternary', 'quinary', 'senary', 'septenary', 'octonary'];
+  var POLL_INTERVAL = 30000;
+  var _countdownSec = Math.floor(POLL_INTERVAL / 1000);
   var TAB_FETCHERS = {
     health:       function() { return fetchAuth('/health/detail').then(function(r) { return r.json(); }); },
     status:       function() { return fetchAuth('/status').then(function(r) { return r.json(); }); },
@@ -163,6 +165,30 @@
       html += '</div>';
     });
     return html;
+  }
+
+  function _renderMarketIndex(data) {
+    var container = $id('market-index-items');
+    if (!container) return;
+    var indices = data && data.indices ? data.indices : null;
+    if (!indices || !indices.length) {
+      container.innerHTML = '<div style="color:var(--text-muted);font-size:13px">等待数据...</div>';
+      return;
+    }
+    var html = '';
+    indices.forEach(function(idx) {
+      var name = idx.name || idx.code || '';
+      var close = idx.close != null ? idx.close.toFixed(2) : '\u2014';
+      var chg = idx['\u6DA8\u8DCC\u5E45'] != null ? idx['\u6DA8\u8DCC\u5E45'] : 0;
+      var cls = chg >= 0 ? 'trend-up' : 'trend-down';
+      var arrow = chg >= 0 ? '\u2191' : '\u2193';
+      html += '<div class="mi-row">';
+      html += '<span class="mi-name">' + escapeHtml(name) + '</span>';
+      html += '<span class="mi-price">' + close + '</span>';
+      html += '<span class="' + cls + '" style="font-size:12px;min-width:60px;text-align:right">' + arrow + ' ' + chg.toFixed(2) + '%</span>';
+      html += '</div>';
+    });
+    container.innerHTML = html;
   }
 
   function _renderDiagBtn(symbol) {
@@ -329,9 +355,10 @@
         fetchAuth('/reports/trace/latest').then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; }),
         fetchAuth('/risk/status').then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; }),
         fetchAuth('/watchlist').then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; }),
+        fetchAuth('/api/market/index').then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; }),
       ]);
 
-      var h = results[0], st = results[1], mr = results[2], lr = results[3], dr = results[4], rk = results[5], wl = results[6];
+      var h = results[0], st = results[1], mr = results[2], lr = results[3], dr = results[4], rk = results[5], wl = results[6], mi = results[7];
 
       _clearSkeletons();
 
@@ -384,6 +411,8 @@
       if (wl && wl.items) {
         wl.items.forEach(function(it) { if (it.name) _stockNames[it.symbol] = it.name; });
       }
+
+      _renderMarketIndex(mi);
 
       if (mr && mr.data && mr.data.risk_appetite_index != null) {
         var rai = mr.data.risk_appetite_index;
@@ -1371,14 +1400,32 @@
   _safeClick($id('decision-area'), 'decisions');
 
   /* ── Polling ── */
+  function _updateCountdown() {
+    var el = $id('refresh-countdown');
+    if (el) el.textContent = _countdownSec + 's';
+  }
+
+  function _startCountdown() {
+    _countdownSec = Math.floor(POLL_INTERVAL / 1000);
+    _updateCountdown();
+    setInterval(function() {
+      _countdownSec -= 1;
+      if (_countdownSec <= 0) _countdownSec = Math.floor(POLL_INTERVAL / 1000);
+      _updateCountdown();
+    }, 1000);
+  }
+
   function startPoll() {
     if (_pollTimer) clearInterval(_pollTimer);
     _showSkeletons();
+    _updateCountdown();
     load();
     _pollTimer = setInterval(function() {
       if (document.hidden) return;
+      _countdownSec = Math.floor(POLL_INTERVAL / 1000);
+      _updateCountdown();
       load();
-    }, 30000);
+    }, POLL_INTERVAL);
   }
 
   document.addEventListener('visibilitychange', function() {
@@ -1424,6 +1471,7 @@
   _loadWlSortOrder();
   _initScrollTopBtn();
   _initWlDragDrop();
+  _startCountdown();
   switchTab('health');
   startPoll();
 

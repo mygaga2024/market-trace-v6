@@ -346,6 +346,21 @@ def handle_logs():
     return json_response({"file": "market_trace_dev.log", "count": len(mock_lines), "lines": mock_lines})
 
 
+def handle_market_index():
+    """返回 mock 大盘指数数据"""
+    return json_response({
+        "indices": [
+            {"code": "sh000001", "name": "上证指数", "close": 3350.68, "涨跌幅": 0.42, "volume": 285000000, "amount": 320000000000},
+            {"code": "sz399001", "name": "深证成指", "close": 10823.45, "涨跌幅": -0.21, "volume": 420000000, "amount": 480000000000},
+            {"code": "sz399006", "name": "创业板指", "close": 2215.80, "涨跌幅": 1.15, "volume": 180000000, "amount": 195000000000},
+            {"code": "sh000688", "name": "科创50", "close": 985.30, "涨跌幅": 0.87, "volume": 85000000, "amount": 72000000000},
+            {"code": "sh000300", "name": "沪深300", "close": 3980.55, "涨跌幅": 0.15, "volume": 350000000, "amount": 280000000000},
+        ],
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "source": "akshare:sina",
+    })
+
+
 def handle_paper_account():
     """返回 mock 纸上交易账户"""
     return json_response({
@@ -400,6 +415,7 @@ ROUTES = {
     "GET:/health": handle_health,
     "GET:/health/detail": handle_health_detail,
     "GET:/status": handle_status,
+    "GET:/api/market/index": handle_market_index,
     "GET:/reports/macro/latest": lambda: handle_reports("macro", is_latest=True),
     "GET:/reports/signal/latest": lambda: handle_reports("signal", is_latest=True),
     "GET:/reports/trace/latest": lambda: handle_reports("trace", is_latest=True),

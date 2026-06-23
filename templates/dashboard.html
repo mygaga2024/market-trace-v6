@@ -17,7 +17,7 @@
   <h1 aria-label="Market Trace 版本六点零">&#x1F4CA; Market Trace V6.0</h1>
   <div style="display:flex;gap:8px;align-items:center">
     <span id="sys-status" class="badge badge-ok" role="status" aria-live="polite">&#x25CF; 正常</span>
-    <span class="refresh-indicator"><span class="dot-pulse" aria-hidden="true"></span> 30s刷新</span>
+     <span class="refresh-indicator" id="refresh-indicator"><span class="dot-pulse" aria-hidden="true"></span> <span id="refresh-countdown">30s</span>后刷新</span>
   </div>
 </header>
 
@@ -42,6 +42,13 @@
       <div id="rai-label" class="rai-label">加载中...</div>
       <div class="bar-bg" role="progressbar" aria-valuenow="50" aria-valuemin="0" aria-valuemax="100" aria-label="RAI 进度条">
         <div id="rai-bar" class="bar-fill" style="width:50%;background:var(--color-yellow)"></div>
+      </div>
+    </section>
+
+    <section class="card" aria-label="大盘指数">
+      <h2 class="card-title">&#x1F4C8; 大盘指数</h2>
+      <div id="market-index-items" aria-live="polite">
+        <div style="color:var(--text-muted);font-size:13px">加载中...</div>
       </div>
     </section>
 
