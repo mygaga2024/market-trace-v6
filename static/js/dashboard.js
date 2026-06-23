@@ -756,6 +756,7 @@
     var bc = $id('backtest-chart');
     if (bc) bc.style.display = (tab === 'backtest') ? 'block' : 'none';
     loadTab(tab);
+    $id('tab-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   function refreshActiveTab() {
