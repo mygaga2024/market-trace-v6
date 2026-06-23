@@ -749,6 +749,10 @@
       b.classList.toggle('active', b.getAttribute('data-tab') === tab);
       b.setAttribute('aria-selected', b.getAttribute('data-tab') === tab ? 'true' : 'false');
     });
+    var toolbarButtons = document.querySelectorAll('.toolbar-btn');
+    toolbarButtons.forEach(function(b) {
+      b.classList.toggle('active', b.getAttribute('data-tab') === tab);
+    });
     var bc = $id('backtest-chart');
     if (bc) bc.style.display = (tab === 'backtest') ? 'block' : 'none';
     loadTab(tab);

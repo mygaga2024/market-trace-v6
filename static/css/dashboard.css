@@ -308,6 +308,26 @@ body {
 }
 .search-row button:disabled { opacity: .6; cursor: not-allowed; transform: none; }
 
+/* ── Toolbar Links (top-right above search) ── */
+.toolbar-links {
+  display: flex; justify-content: flex-end; gap: 8px;
+  margin-bottom: 12px;
+}
+.toolbar-btn {
+  padding: 5px 14px; background: var(--bg-tag);
+  color: var(--text-secondary); border: 1px solid var(--border-color);
+  border-radius: 6px; cursor: pointer; font-size: 13px;
+  transition: background .15s, color .15s, border-color .15s;
+  white-space: nowrap;
+}
+.toolbar-btn:hover {
+  background: var(--bg-card-hover); color: var(--text-primary);
+}
+.toolbar-btn.active {
+  background: var(--accent-blue); color: #fff;
+  border-color: var(--accent-blue);
+}
+
 /* ── Loading / Error ── */
 .spinner {
   text-align: center; padding: 10px; color: var(--accent-blue);
@@ -374,6 +394,7 @@ body {
   .search-row { flex-direction: column; }
   .search-row button { width: 100%; }
   .strat-btn, .tab-btn { flex: 1; text-align: center; }
+  .toolbar-btn { flex: 1; text-align: center; }
   .result-stats { gap: 10px; }
   .tab-table th { width: 100px; }
   .chart-container { height: 220px; }
