@@ -480,6 +480,11 @@ class AkShareProvider(DataProviderBase):
             logger.warning("所有宏观指数抓取失败，数据已降级")
 
         await self.cache_and_publish_dict(results, "market:macro")
+        # 延长 TTL 至 20 分钟（macRO 每 10 分钟采集，防止空窗期）
+        try:
+            await self.bus.cache_set("market:macro", results, ttl=1200)
+        except Exception:
+            pass
         return results
 
     async def _fallback_dict(self, *args: Any, **kwargs: Any) -> Optional[dict[str, Any]]:
