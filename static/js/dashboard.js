@@ -188,6 +188,14 @@
       html += '<span class="' + cls + '" style="font-size:12px;min-width:60px;text-align:right">' + arrow + ' ' + chg.toFixed(2) + '%</span>';
       html += '</div>';
     });
+    var breadth = data && data.breadth;
+    if (breadth && (breadth.up || breadth.down)) {
+      html += '<div class="mi-breadth">';
+      html += '<span style="color:var(--color-green)">\u2191 ' + (breadth.up || 0) + ' 家</span>';
+      html += '<span style="color:var(--color-red)">\u2193 ' + (breadth.down || 0) + ' 家</span>';
+      html += '<span style="color:var(--text-muted)">\u2194 ' + (breadth.flat || 0) + ' 家</span>';
+      html += '</div>';
+    }
     container.innerHTML = html;
   }
 

@@ -38,6 +38,7 @@ async def market_index(request: Request):
 
         return {
             "indices": indices,
+            "breadth": cached.get("breadth", {"up": 0, "down": 0, "flat": 0}),
             "timestamp": cached.get("timestamp"),
             "source": cached.get("source"),
         }

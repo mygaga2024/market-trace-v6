@@ -356,6 +356,7 @@ def handle_market_index():
             {"code": "sh000688", "name": "科创50", "close": 985.30, "涨跌幅": 0.87, "volume": 85000000, "amount": 72000000000},
             {"code": "sh000300", "name": "沪深300", "close": 3980.55, "涨跌幅": 0.15, "volume": 350000000, "amount": 280000000000},
         ],
+        "breadth": {"up": 2156, "down": 2834, "flat": 136},
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "source": "akshare:sina",
     })

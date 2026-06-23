@@ -425,6 +425,56 @@ class AkShareProvider(DataProviderBase):
 
         results["sectors"] = sectors_data
 
+        # ── 涨跌家数 (market breadth) ──
+        breadth_data: dict[str, int] = {"up": 0, "down": 0, "flat": 0}
+        try:
+            sina_codes: list[str] = []
+            sina_codes.extend(f"sh60{i:04d}" for i in range(0, 1000))
+            sina_codes.extend(f"sh60{i:04d}" for i in range(1000, 4000))
+            sina_codes.extend(f"sz00{i:04d}" for i in range(1, 3000))
+            sina_codes.extend(f"sz30{i:04d}" for i in range(0, 1000))
+            BATCH = 200
+            up = down = flat = total = 0
+            for i in range(0, len(sina_codes), BATCH):
+                batch = sina_codes[i:i+BATCH]
+                try:
+                    joined = ",".join(batch)
+                    r = await asyncio.to_thread(
+                        _requests.get, f"http://hq.sinajs.cn/list={joined}",
+                        headers={"Referer": "https://finance.sina.com.cn"}, timeout=15,
+                    )
+                    r.encoding = "gbk"
+                    for line in r.text.strip().split("\n"):
+                        if '="' not in line:
+                            continue
+                        try:
+                            parts = line.split('="')[1].rstrip('";').split(",")
+                            if len(parts) < 4:
+                                continue
+                            prev_close = float(parts[2]) if parts[2] else 0
+                            cur = float(parts[3]) if parts[3] else 0
+                            if prev_close <= 0:
+                                continue
+                            total += 1
+                            chg_pct = (cur - prev_close) / prev_close * 100
+                            if chg_pct > 0.01:
+                                up += 1
+                            elif chg_pct < -0.01:
+                                down += 1
+                            else:
+                                flat += 1
+                        except (ValueError, IndexError):
+                            pass
+                except Exception:
+                    pass
+                await asyncio.sleep(0.3)
+            breadth_data = {"up": up, "down": down, "flat": flat}
+            logger.info("涨跌家数: 涨{} 跌{} 平{} (共{}只)", up, down, flat, total)
+        except Exception as e:
+            logger.warning("涨跌家数抓取失败: {}", e)
+
+        results["breadth"] = breadth_data
+
         if not indices_data:
             results["degraded"] = True
             logger.warning("所有宏观指数抓取失败，数据已降级")

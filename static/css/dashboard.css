@@ -561,6 +561,12 @@ scrollbar-color: var(--border-color) var(--bg-primary);
 .mi-row:last-child { border-bottom: none; }
 .mi-name { font-weight: 600; color: var(--text-primary); min-width: 70px; }
 .mi-price { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.mi-breadth {
+  display: flex; gap: 12px; justify-content: center;
+  padding-top: 8px; margin-top: 4px;
+  border-top: 1px solid var(--border-color);
+  font-size: 12px;
+}
 
 /* ── Analyze Overlay ── */
 .analyze-overlay {
