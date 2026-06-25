@@ -68,6 +68,19 @@ def _calc_ma(closes: np.ndarray, period: int) -> float:
     return float(np.mean(closes[-period:]))
 
 
+def _calc_atr(highs: np.ndarray, lows: np.ndarray, closes: np.ndarray, period: int = 14) -> float:
+    """计算 ATR (Average True Range)，供诊股/风控/回测共用"""
+    if len(closes) < period + 1:
+        return float(np.mean(highs - lows)) if len(highs) > 0 else 0.0
+    prev_close = closes[:-1]
+    tr = np.maximum.reduce([
+        highs[1:] - lows[1:],
+        np.abs(highs[1:] - prev_close),
+        np.abs(lows[1:] - prev_close),
+    ])
+    return float(np.mean(tr[-period:]))
+
+
 # ── 策略检测函数（返回 True/False）──
 
 def check_breakout(closes: np.ndarray, highs: np.ndarray, volumes: np.ndarray,

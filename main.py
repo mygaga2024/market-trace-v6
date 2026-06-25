@@ -30,10 +30,10 @@ CONFIG_PATH = Path("config/settings.yaml")
 
 
 def _resolve_env_vars(raw: str) -> str:
-    for key, value in os.environ.items():
-        raw = raw.replace(f"${{{key}}}", value)
-    raw = re.sub(r"\$\{[^}]+\}", "", raw)
-    return raw
+    """将 ${VAR_NAME} 替换为环境变量值，未定义的变量替换为空串"""
+    def _replace(match):
+        return os.environ.get(match.group(1), "")
+    return re.sub(r"\$\{([^}]+)\}", _replace, raw)
 
 
 def load_config() -> dict:
@@ -221,7 +221,7 @@ async def lifespan(app: FastAPI):
     # LLM
     llm_chain = _build_llm_chain(CONFIG)
     app.state.llm_chain = llm_chain
-    logger.info("LLM 回退链已就绪: DS Chat → DS Reasoner → Gemini K1 → Gemini K2 → MM-S → MM → GLM Flash → GLM Plus → 纯规则")
+    logger.info("LLM 回退链已就绪: DS Chat → DS Reasoner → Gemini K1 → Gemini K2 → GLM Flash → 硅基流动 → 千帆 → 纯规则")
 
     # Notifier
     notifier = get_notifier()
@@ -305,6 +305,10 @@ app = FastAPI(
     version="1.1.8",
     lifespan=lifespan,
 )
+
+# 速率限制中间件（保护 LLM 接口）
+from api.rate_limit import RateLimitMiddleware
+app.add_middleware(RateLimitMiddleware, default_rpm=120, heavy_rpm=20)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 

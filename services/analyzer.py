@@ -14,7 +14,21 @@ import numpy as np
 from fastapi import HTTPException
 from loguru import logger
 
-from core.strategies import STRATEGIES, _calc_rsi, _calc_ma
+from core.strategies import STRATEGIES, _calc_rsi, _calc_ma, _calc_atr
+
+
+# ── 模块级 httpx 客户端，供腾讯实时价复用（避免每次诊股都创建新连接）──
+_tencent_client: httpx.AsyncClient | None = None
+
+
+def _get_tencent_client() -> httpx.AsyncClient:
+    global _tencent_client
+    if _tencent_client is None or _tencent_client.is_closed:
+        _tencent_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(5.0),
+            limits=httpx.Limits(max_keepalive_connections=2, max_connections=5),
+        )
+    return _tencent_client
 
 
 # ── 增强技术指标 ──
@@ -34,16 +48,7 @@ def _calc_bollinger(closes: np.ndarray, period: int = 20, nbdev: float = 2.0) ->
     }
 
 
-def _calc_atr(highs: np.ndarray, lows: np.ndarray, closes: np.ndarray, period: int = 14) -> float:
-    if len(closes) < period + 1:
-        return float(np.mean(highs - lows))
-    prev_close = closes[:-1]
-    tr = np.maximum.reduce([
-        highs[1:] - lows[1:],
-        np.abs(highs[1:] - prev_close),
-        np.abs(lows[1:] - prev_close),
-    ])
-    return float(np.mean(tr[-period:]))
+# （_calc_atr 已迁移到 core/strategies.py 统一复用）
 
 
 def _calc_kdj(highs: np.ndarray, lows: np.ndarray, closes: np.ndarray,
@@ -388,11 +393,11 @@ async def _apply_tencent_quote(symbol: str, cached: list[dict]) -> float | None:
     try:
         ts_prefix = "sh" if symbol.startswith(("6", "9")) else "sz"
         url = f"http://qt.gtimg.cn/q={ts_prefix}{symbol}"
-        async with httpx.AsyncClient(timeout=httpx.Timeout(5.0)) as tc:
-            resp = await tc.get(url)
-            text = resp.text
-            if "~" not in text:
-                return None
+        client = _get_tencent_client()
+        resp = await client.get(url)
+        text = resp.text
+        if "~" not in text:
+            return None
         fields = text.split("~")
         if len(fields) >= 5:
             live_price = float(fields[3])

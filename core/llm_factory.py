@@ -5,6 +5,7 @@ OpenAI 兼容接口 + 链式回退路由 (DeepSeek → Gemini → GLM Flash → 
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from abc import ABC, abstractmethod
@@ -161,7 +162,6 @@ class OpenAICompatibleLLM(LLMInterface):
             except httpx.HTTPStatusError as e:
                 if e.response.status_code == 429:
                     logger.warning("LLM [{}] 限频 429 (尝试 {}/{})", self.provider_name, attempt + 1, self.max_retries + 1)
-                    import asyncio
                     await asyncio.sleep(2 ** attempt)
                 elif e.response.status_code >= 500:
                     logger.warning("LLM [{}] 服务端错误 {} (尝试 {}/{})", self.provider_name, e.response.status_code, attempt + 1, self.max_retries + 1)
@@ -397,6 +397,19 @@ class RuleBasedAnalyzer(LLMInterface):
 
     async def health_check(self) -> bool:
         return True
+
+
+def _dummy_decision(reason: str) -> Decision:
+    """LLM 全部不可用时的兜底决策（与 chief_decision 中同名函数保持一致）"""
+    return Decision(
+        action=DecisionAction.HOLD,
+        confidence=0.3,
+        reasoning=reason,
+        evidence_sources=["none"],
+        evidence_chain={},
+        provider_label="chief:dummy",
+        provider_status=ProviderStatus.FALLBACK,
+    )
 
 
 class LLMFallbackChain:

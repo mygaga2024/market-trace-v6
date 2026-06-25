@@ -15,6 +15,7 @@ from loguru import logger
 from agents.base_agent import BaseAgent
 from core.bus import MessageBus
 from core.schema import AgentReport, AgentName, ReportStatus, RiskOverride
+from core.strategies import _calc_atr
 
 
 class RiskAgent(BaseAgent):
@@ -111,17 +112,7 @@ class RiskAgent(BaseAgent):
             return None
         return await self.bus.cache_get(f"market:raw:{symbol}")
 
-    def _calc_atr(self, highs: np.ndarray, lows: np.ndarray, closes: np.ndarray, period: int = 14) -> float:
-        """计算 ATR (Average True Range)"""
-        if len(closes) < period + 1:
-            return 0.0
-        prev_close = closes[:-1]
-        tr = np.maximum.reduce([
-            highs[1:] - lows[1:],
-            np.abs(highs[1:] - prev_close),
-            np.abs(lows[1:] - prev_close),
-        ])
-        return float(np.mean(tr[-period:]))
+    # _calc_atr 已迁移到 core/strategies.py 统一复用
 
     def _check_conflict(self) -> Optional[RiskOverride]:
         """检测多源信号逻辑冲突"""
@@ -197,7 +188,7 @@ class RiskAgent(BaseAgent):
         highs = np.array([float(r["high"]) for r in cached])
         lows = np.array([float(r["low"]) for r in cached])
 
-        atr = self._calc_atr(highs, lows, closes, self._atr_period)
+        atr = _calc_atr(highs, lows, closes, self._atr_period)
         if atr <= 0:
             return None
 
