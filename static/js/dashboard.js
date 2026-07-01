@@ -204,8 +204,8 @@
     var breadth = data && data.breadth;
     if (breadth && (breadth.up || breadth.down)) {
       html += '<div class="mi-breadth">';
-      html += '<span style="color:var(--color-green)">\u2191 ' + (breadth.up || 0) + ' \u5BB6</span>';
-      html += '<span style="color:var(--color-red)">\u2193 ' + (breadth.down || 0) + ' \u5BB6</span>';
+      html += '<span style="color:var(--color-rise)">\u2191 ' + (breadth.up || 0) + ' \u5BB6</span>';
+      html += '<span style="color:var(--color-fall)">\u2193 ' + (breadth.down || 0) + ' \u5BB6</span>';
       html += '<span style="color:var(--text-muted)">\u2194 ' + (breadth.flat || 0) + ' \u5BB6</span>';
       html += '</div>';
     }
@@ -448,7 +448,7 @@
         $id('rai-label').textContent = interp.regime || '';
         var bar = $id('rai-bar');
         bar.style.width = pct + '%';
-        bar.style.background = rai >= 0.55 ? 'var(--color-green)' : rai >= 0.45 ? 'var(--color-yellow)' : 'var(--color-red)';
+        bar.style.background = rai >= 0.55 ? 'var(--color-rise)' : rai >= 0.45 ? 'var(--color-yellow)' : 'var(--color-fall)';
       } else {
         $id('rai-value').textContent = '\u2014';
         $id('rai-label').textContent = '等待数据';
@@ -539,7 +539,7 @@
           }
           if (ind.support_resistance) {
             var sr = ind.support_resistance;
-            html += '<div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">支撑: <strong style="color:var(--color-green)">' + sr.support + '</strong> | 阻力: <strong style="color:var(--color-red)">' + sr.resistance + '</strong> | 枢轴: ' + sr.pivot + '</div>';
+            html += '<div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">支撑: <strong style="color:var(--color-rise)">' + sr.support + '</strong> | 阻力: <strong style="color:var(--color-fall)">' + sr.resistance + '</strong> | 枢轴: ' + sr.pivot + '</div>';
           }
 
           if (d.strategy_hits && d.strategy_hits.length) {
@@ -1196,9 +1196,9 @@
 <h3>&#x1F9ED; 风险偏好指数 RAI</h3>\
 <p>显示当前市场的<strong>Risk Appetite Index</strong>（0~1），反映市场投机情绪。点击卡片跳转到<strong>宏观报告</strong> Tab。</p>\
 <table class="tab-table" style="margin-top:6px">\
-<tr><td style="color:var(--color-green)">RAI &ge; 0.55</td><td>市场乐观，风险偏好高</td></tr>\
+<tr><td style="color:var(--color-rise)">RAI &ge; 0.55</td><td>市场乐观，风险偏好高</td></tr>\
 <tr><td style="color:var(--color-yellow)">0.45 &le; RAI &lt; 0.55</td><td>震荡，方向不明</td></tr>\
-<tr><td style="color:var(--color-red)">RAI &lt; 0.45</td><td>市场悲观，避险情绪浓</td></tr>\
+<tr><td style="color:var(--color-fall)">RAI &lt; 0.45</td><td>市场悲观，避险情绪浓</td></tr>\
 </table>\
 \
 <h3>&#x1F916; 运行 Agent</h3>\

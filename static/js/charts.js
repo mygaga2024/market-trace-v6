@@ -15,15 +15,17 @@ var Charts = (function() {
     grid: 'rgba(48,54,61,0.5)',
     green: '#3fb950',
     red: '#f85149',
+    rise: '#f85149',
+    fall: '#3fb950',
     blue: '#58a6ff',
     purple: '#bc8cff',
     yellow: '#d29922',
-    candleUpBorder: '#3fb950',
-    candleUpFill: 'rgba(63,185,80,0.25)',
-    candleDownBorder: '#f85149',
-    candleDownFill: 'rgba(248,81,73,0.3)',
-    volumeUp: 'rgba(63,185,80,0.35)',
-    volumeDown: 'rgba(248,81,73,0.4)',
+    candleUpBorder: '#f85149',
+    candleUpFill: 'rgba(248,81,73,0.25)',
+    candleDownBorder: '#3fb950',
+    candleDownFill: 'rgba(63,185,80,0.3)',
+    volumeUp: 'rgba(248,81,73,0.35)',
+    volumeDown: 'rgba(63,185,80,0.4)',
   };
 
   function _baseOptions(height) {

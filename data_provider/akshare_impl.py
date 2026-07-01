@@ -434,6 +434,7 @@ class AkShareProvider(DataProviderBase):
             sina_codes: list[str] = []
             sina_codes.extend(f"sh60{i:04d}" for i in range(0, 1000))
             sina_codes.extend(f"sh60{i:04d}" for i in range(1000, 4000))
+            sina_codes.extend(f"sh68{i:04d}" for i in range(0, 1000))
             sina_codes.extend(f"sz00{i:04d}" for i in range(1, 3000))
             sina_codes.extend(f"sz30{i:04d}" for i in range(0, 1000))
             BATCH = 200
