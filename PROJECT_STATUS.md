@@ -13,6 +13,7 @@
 
 | 日期 | Commit | 修复内容 |
 |------|--------|---------|
+| 2026-07-01 | `1893cd1` | 风控等级卡死修复: get_risk_state()增加_auto_heal自愈 + main.py小时级定时clear_daily_counters |
 | 2026-07-01 | `e5af383` | 涨跌家数补充科创板(sh688xxx)+涨跌颜色按国内习惯(红涨绿跌) |
 | 2026-06-25 | `09adc2f` | 代码审查修复7项: P1 _dummy_decision NameError / P3 ATR去重 / P4 asyncio规范 / P5 日志更新 / P7 API速率限制 / P8 env替换 / P10 httpx复用 + 42个新测试(237 total) |
 | 2026-06-23 | `85b110d` | 恢复switchTab的scrollIntoView: tab-panel在页面底部, 去掉滚动导致内容加载但不可见 |
