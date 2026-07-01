@@ -237,8 +237,18 @@ async def lifespan(app: FastAPI):
     app.state.risk_manager = risk_manager
     logger.info("风控闭环管理器已就绪")
 
+    async def _risk_auto_heal_loop():
+        """每小时检查一次风险等级自动降级"""
+        while True:
+            await asyncio.sleep(3600)
+            try:
+                await risk_manager.clear_daily_counters()
+            except Exception as e:
+                logger.warning("风险等级自动降级失败: {}", e)
+
     # Agents
     agent_tasks = _start_agents(app.state.bus, CONFIG, llm_chain, risk_manager, db=db)
+    agent_tasks.append(asyncio.create_task(_risk_auto_heal_loop(), name="risk-auto-heal"))
     app.state.agent_tasks = agent_tasks
     logger.info("{} 个 Agent 已启动", len(agent_tasks))
 

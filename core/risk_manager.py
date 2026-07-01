@@ -47,8 +47,9 @@ class RiskManager:
         await self._update_risk_state(event)
 
     async def get_risk_state(self) -> dict[str, Any]:
-        """当前风险状态"""
+        """当前风险状态（含自动降级：超过24h无新事件自动恢复正常）"""
         state = await self._load_state() if self.bus else {}
+        state = await self._auto_heal(state)
         return {
             "level": state.get("level", "normal"),
             "daily_overrides": int(state.get("daily_overrides", 0)),
@@ -122,17 +123,36 @@ class RiskManager:
         }
 
     async def clear_daily_counters(self) -> None:
-        """每日重置计数器（由定时任务调用）"""
+        """每日重置计数器并评估风险等级（由定时任务调用）"""
         if not self.bus:
             return
         state = await self._load_state()
         state["daily_overrides"] = 0
-        await self._save_state(state)
+        await self._auto_heal(state)
         logger.info("风险管理器: 每日计数器已重置")
 
     def _risk_multiplier(self, level: str) -> float:
         """风险等级对应的仓位乘数"""
         return {"normal": 1.0, "elevated": 0.5, "critical": 0.25}.get(level, 1.0)
+
+    async def _auto_heal(self, state: dict[str, Any]) -> dict[str, Any]:
+        """超过24h无新风控事件 → 自动重置计数器并降级风险等级"""
+        last_time_str = state.get("last_override_time", "")
+        if not last_time_str:
+            return state
+        try:
+            last_time = datetime.fromisoformat(last_time_str)
+            if (datetime.now(timezone.utc) - last_time) > timedelta(hours=24):
+                state["daily_overrides"] = 0
+                state["level"] = "normal"
+                state["circuit_breaker"] = "none"
+                state["adaptive_suggestion"] = ""
+                if self.bus:
+                    await self._save_state(state)
+                logger.info("风险等级自动降级: 距离上次风控事件已超24h → normal")
+        except (ValueError, TypeError):
+            pass
+        return state
 
     async def _append_override(self, event: dict) -> None:
         if not self.bus:
