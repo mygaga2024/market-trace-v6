@@ -430,52 +430,95 @@ class AkShareProvider(DataProviderBase):
 
         # ── 涨跌家数 (market breadth) ──
         breadth_data: dict[str, int] = {"up": 0, "down": 0, "flat": 0}
+
+        # 优先使用 East Money 全市场接口（一次调用覆盖沪深京）
         try:
-            sina_codes: list[str] = []
-            sina_codes.extend(f"sh60{i:04d}" for i in range(0, 1000))
-            sina_codes.extend(f"sh60{i:04d}" for i in range(1000, 4000))
-            sina_codes.extend(f"sh68{i:04d}" for i in range(0, 1000))
-            sina_codes.extend(f"sz00{i:04d}" for i in range(1, 3000))
-            sina_codes.extend(f"sz30{i:04d}" for i in range(0, 1000))
-            BATCH = 200
-            up = down = flat = total = 0
-            for i in range(0, len(sina_codes), BATCH):
-                batch = sina_codes[i:i+BATCH]
-                try:
-                    joined = ",".join(batch)
-                    r = await asyncio.to_thread(
-                        _requests.get, f"http://hq.sinajs.cn/list={joined}",
-                        headers={"Referer": "https://finance.sina.com.cn"}, timeout=15,
-                    )
-                    r.encoding = "gbk"
-                    for line in r.text.strip().split("\n"):
-                        if '="' not in line:
-                            continue
-                        try:
-                            parts = line.split('="')[1].rstrip('";').split(",")
-                            if len(parts) < 4:
-                                continue
-                            prev_close = float(parts[2]) if parts[2] else 0
-                            cur = float(parts[3]) if parts[3] else 0
-                            if prev_close <= 0:
-                                continue
-                            total += 1
-                            chg_pct = (cur - prev_close) / prev_close * 100
-                            if chg_pct > 0.01:
-                                up += 1
-                            elif chg_pct < -0.01:
-                                down += 1
-                            else:
-                                flat += 1
-                        except (ValueError, IndexError):
-                            pass
-                except Exception:
-                    pass
-                await asyncio.sleep(0.3)
-            breadth_data = {"up": up, "down": down, "flat": flat}
-            logger.info("涨跌家数: 涨{} 跌{} 平{} (共{}只)", up, down, flat, total)
+            df = await asyncio.to_thread(ak.stock_zh_a_spot_em)
+            if df is not None and not df.empty:
+                up = down = flat = 0
+                for _, row in df.iterrows():
+                    code = str(row.get("代码", "")).strip()
+                    if not code or len(code) != 6:
+                        continue
+                    if not (code.startswith(("0", "3", "6", "8", "9"))):
+                        continue
+                    try:
+                        chg_pct = float(row.get("涨跌幅", 0) or 0)
+                    except (ValueError, TypeError):
+                        flat += 1
+                        continue
+                    if chg_pct > 0.01:
+                        up += 1
+                    elif chg_pct < -0.01:
+                        down += 1
+                    else:
+                        flat += 1
+                breadth_data = {"up": up, "down": down, "flat": flat}
+                logger.info("涨跌家数 (East Money): 涨{} 跌{} 平{} (共{}只)", up, down, flat, up + down + flat)
         except Exception as e:
-            logger.warning("涨跌家数抓取失败: {}", e)
+            logger.warning("East Money 涨跌家数失败: {}, 回退到 Sina 批量", e)
+            # 降级：Sina 批量查询，含重试 + 补全 301xxx 范围
+            try:
+                sina_codes: list[str] = []
+                sina_codes.extend(f"sh60{i:04d}" for i in range(0, 4000))
+                sina_codes.extend(f"sh68{i:04d}" for i in range(8000, 9000))
+                sina_codes.extend(f"sz00{i:04d}" for i in range(1, 3000))
+                sina_codes.extend(f"sz30{i:04d}" for i in range(0, 2000))
+                # 北交所 (bj 前缀)
+                sina_codes.extend(f"bj83{i:04d}" for i in range(3000, 6000))
+                sina_codes.extend(f"bj87{i:04d}" for i in range(1000, 3000))
+                sina_codes.extend(f"bj92{i:04d}" for i in range(0, 2000))
+                BATCH = 300
+                MAX_RETRIES = 2
+                up = down = flat = total = 0
+                failed_batches = 0
+                for i in range(0, len(sina_codes), BATCH):
+                    batch = sina_codes[i:i+BATCH]
+                    batch_ok = False
+                    for attempt in range(MAX_RETRIES + 1):
+                        try:
+                            joined = ",".join(batch)
+                            r = await asyncio.to_thread(
+                                _requests.get, f"http://hq.sinajs.cn/list={joined}",
+                                headers={"Referer": "https://finance.sina.com.cn"}, timeout=20,
+                            )
+                            r.encoding = "gbk"
+                            for line in r.text.strip().split("\n"):
+                                if '="' not in line:
+                                    continue
+                                try:
+                                    parts = line.split('="')[1].rstrip('";').split(",")
+                                    if len(parts) < 4:
+                                        continue
+                                    prev_close = float(parts[2]) if parts[2] else 0
+                                    cur = float(parts[3]) if parts[3] else 0
+                                    if prev_close <= 0:
+                                        continue
+                                    total += 1
+                                    chg_pct = (cur - prev_close) / prev_close * 100
+                                    if chg_pct > 0.01:
+                                        up += 1
+                                    elif chg_pct < -0.01:
+                                        down += 1
+                                    else:
+                                        flat += 1
+                                except (ValueError, IndexError):
+                                    pass
+                            batch_ok = True
+                            break
+                        except Exception:
+                            if attempt < MAX_RETRIES:
+                                await asyncio.sleep(1)
+                            else:
+                                failed_batches += 1
+                    await asyncio.sleep(0.15)
+                if failed_batches > 0:
+                    logger.warning("Sina 涨跌家数: {} 个批次请求失败 (共约 {} 只代码可能缺失)",
+                                  failed_batches, failed_batches * BATCH)
+                breadth_data = {"up": up, "down": down, "flat": flat}
+                logger.info("涨跌家数 (Sina): 涨{} 跌{} 平{} (共{}只)", up, down, flat, total)
+            except Exception as e2:
+                logger.warning("涨跌家数全部失败: {}", e2)
 
         results["breadth"] = breadth_data
 
