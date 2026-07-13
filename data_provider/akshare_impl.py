@@ -460,10 +460,10 @@ class AkShareProvider(DataProviderBase):
             # 降级：Sina 批量查询，含重试 + 补全 301xxx 范围
             try:
                 sina_codes: list[str] = []
-                sina_codes.extend(f"sh60{i:04d}" for i in range(0, 4000))
-                sina_codes.extend(f"sh68{i:04d}" for i in range(8000, 9000))
-                sina_codes.extend(f"sz00{i:04d}" for i in range(1, 3000))
-                sina_codes.extend(f"sz30{i:04d}" for i in range(0, 2000))
+                sina_codes.extend(f"sh60{i:04d}" for i in range(0, 6000))
+                sina_codes.extend(f"sh68{i:04d}" for i in range(8000, 10000))
+                sina_codes.extend(f"sz00{i:04d}" for i in range(1, 5000))
+                sina_codes.extend(f"sz30{i:04d}" for i in range(0, 3000))
                 # 北交所 (bj 前缀)
                 sina_codes.extend(f"bj83{i:04d}" for i in range(3000, 6000))
                 sina_codes.extend(f"bj87{i:04d}" for i in range(1000, 3000))
