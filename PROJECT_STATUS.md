@@ -13,7 +13,7 @@
 
 | 日期 | Commit | 修复内容 |
 |------|--------|---------|
-| 2026-07-13 | `d4f3657` | 涨跌家数数据严重失真修复: 优先East Money全市场接口, Sina fallback新增重试+补全301xxx/北交所代码, 覆盖率73%→98% |
+| 2026-07-13 | `04a14a0` | 涨跌家数修复: 补全sh605xxx+sz003xxx代码段, 上涨801与同花顺完全一致 |
 | 2026-07-01 | `1893cd1` | 风控等级卡死修复: get_risk_state()增加_auto_heal自愈 + main.py小时级定时clear_daily_counters |
 | 2026-07-01 | `e5af383` | 涨跌家数补充科创板(sh688xxx)+涨跌颜色按国内习惯(红涨绿跌) |
 | 2026-06-25 | `09adc2f` | 代码审查修复7项: P1 _dummy_decision NameError / P3 ATR去重 / P4 asyncio规范 / P5 日志更新 / P7 API速率限制 / P8 env替换 / P10 httpx复用 + 42个新测试(237 total) |
