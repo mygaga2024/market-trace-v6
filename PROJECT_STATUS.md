@@ -13,7 +13,7 @@
 
 | 日期 | Commit | 修复内容 |
 |------|--------|---------|
-| 2026-07-14 | * | 全模块评估+7项P1修复: 统一技术指标计算/Scanner并发优化/版本号1.2.0/prefetch迁移httpx/前端JS拆分/Scanner粗筛去重/dev_server补全backtest rolling mock |
+| 2026-07-14 | `535b914` | 全模块评估+7项P1修复: 统一技术指标/Scanner并发/版本1.2.0/prefetch httpx/前端拆分/粗筛去重/dev_server补全mock |
 | 2026-07-01 | `1893cd1` | 风控等级卡死修复: get_risk_state()增加_auto_heal自愈 + main.py小时级定时clear_daily_counters |
 | 2026-07-01 | `e5af383` | 涨跌家数补充科创板(sh688xxx)+涨跌颜色按国内习惯(红涨绿跌) |
 | 2026-06-25 | `09adc2f` | 代码审查修复7项: P1 _dummy_decision NameError / P3 ATR去重 / P4 asyncio规范 / P5 日志更新 / P7 API速率限制 / P8 env替换 / P10 httpx复用 + 42个新测试(237 total) |
