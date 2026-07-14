@@ -72,7 +72,7 @@ async def test_health_ok(client):
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "ok"
-    assert data["version"] == "1.1.8"
+    assert data["version"] == "1.2.0"
     # 精简端点不再暴露 redis/database/agents 等内部细节
     assert "redis" not in data
     assert "agents" not in data
@@ -87,7 +87,7 @@ async def test_health_detail(client):
     assert data["status"] == "ok"
     assert data["redis"] == "connected"
     assert data["database"] == "connected"
-    assert data["version"] == "1.1.8"
+    assert data["version"] == "1.2.0"
 
 
 @pytest.mark.asyncio

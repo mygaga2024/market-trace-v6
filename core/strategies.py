@@ -14,36 +14,43 @@ STRATEGIES: dict[str, dict[str, Any]] = {
     "breakout": {
         "label": "强势突破",
         "params": {"lookback": 20, "vol_mult": 1.1},
+        "rough_threshold": {"min_chg": 1.0, "min_price": 5.0},
         "check": None,  # filled below
     },
     "oversold": {
         "label": "超跌反弹",
         "params": {"rsi_period": 14, "rsi_threshold": 30.0, "drop_pct": 0.02},
+        "rough_threshold": {"max_chg": -3.0},
         "check": None,
     },
     "strength": {
         "label": "主力介入",
         "params": {"vol_mult": 1.2, "rise_pct": 0.01, "lookback": 20},
+        "rough_threshold": {"min_chg": 2.0},
         "check": None,
     },
     "risk": {
         "label": "风险预警",
         "params": {"rsi_period": 14, "rsi_threshold": 60.0, "lookback": 20},
+        "rough_threshold": {"max_chg": -5.0},
         "check": None,
     },
     "ma_golden_cross": {
         "label": "均线金叉",
         "params": {"ma_fast": 5, "ma_slow": 20, "vol_mult": 1.0},
+        "rough_threshold": {"min_chg": 0.5},
         "check": None,
     },
     "volume_breakout": {
         "label": "放量突破",
         "params": {"vol_mult": 1.5, "rise_pct": 0.02},
+        "rough_threshold": {"min_chg": 3.0},
         "check": None,
     },
     "rsi_reversal": {
         "label": "RSI反转",
         "params": {"rsi_period": 14, "rsi_threshold": 30.0, "delta_min": 1.5},
+        "rough_threshold": {"max_chg": -2.0},
         "check": None,
     },
 }
@@ -79,6 +86,56 @@ def _calc_atr(highs: np.ndarray, lows: np.ndarray, closes: np.ndarray, period: i
         np.abs(lows[1:] - prev_close),
     ])
     return float(np.mean(tr[-period:]))
+
+
+def _calc_ema(data: np.ndarray, period: int) -> np.ndarray:
+    """计算指数移动平均，返回与输入等长的数组（前 period-1 为 NaN）"""
+    result = np.full(len(data), np.nan)
+    if len(data) < period:
+        return result
+    result[period - 1] = np.mean(data[:period])
+    alpha = 2.0 / (period + 1)
+    for i in range(period, len(data)):
+        result[i] = alpha * data[i] + (1 - alpha) * result[i - 1]
+    return result
+
+
+def _calc_macd(closes: np.ndarray, fast: int = 12, slow: int = 26, signal: int = 9) -> dict:
+    """计算 MACD，返回最后一组值的 dict（供诊股用）"""
+    if len(closes) < slow + signal:
+        return {"dif": None, "dea": None, "histogram": None}
+    ema_fast = _calc_ema(closes, fast)
+    ema_slow = _calc_ema(closes, slow)
+    dif = ema_fast - ema_slow
+    valid = dif[~np.isnan(dif)]
+    if len(valid) < signal:
+        return {"dif": None, "dea": None, "histogram": None}
+    dea_partial = _calc_ema(valid, signal)
+    dea = np.full(len(dif), np.nan)
+    dea[len(dif) - len(dea_partial):] = dea_partial
+    hist = 2 * (dif - dea)
+    return {
+        "dif": round(float(dif[-1]), 4) if not np.isnan(dif[-1]) else None,
+        "dea": round(float(dea[-1]), 4) if not np.isnan(dea[-1]) else None,
+        "histogram": round(float(hist[-1]), 4) if not np.isnan(hist[-1]) else None,
+    }
+
+
+def _calc_macd_vec(closes: np.ndarray, fast: int = 12, slow: int = 26, signal: int = 9) -> dict[str, np.ndarray] | None:
+    """计算 MACD，返回全量 ndarray（供 Agent 信号检测用）"""
+    if len(closes) < slow + signal:
+        return None
+    ema_fast = _calc_ema(closes, fast)
+    ema_slow = _calc_ema(closes, slow)
+    dif = ema_fast - ema_slow
+    dea = _calc_ema(dif[~np.isnan(dif)], signal) if len(dif[~np.isnan(dif)]) > 0 else np.array([])
+    if len(dea) == 0:
+        return None
+    dea_full = np.full(len(dif), np.nan)
+    dea_start = len(dif) - len(dea)
+    dea_full[dea_start:] = dea
+    hist = 2 * (dif - dea_full)
+    return {"dif": dif, "dea": dea_full, "hist": hist}
 
 
 # ── 策略检测函数（返回 True/False）──

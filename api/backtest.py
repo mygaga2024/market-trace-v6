@@ -4,6 +4,8 @@ Market Trace V6.0 — 回测路由
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from loguru import logger

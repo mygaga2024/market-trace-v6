@@ -14,7 +14,7 @@ import numpy as np
 from loguru import logger
 
 from backtest.runner import PortfolioRunner, BacktestResult
-from core.strategies import STRATEGIES as STRATEGY_INFO
+from core.strategies import STRATEGIES as STRATEGY_INFO, _calc_rsi, _calc_atr
 
 # 保留 STRATEGIES labels 与 core/strategies.py 同步
 STRATEGIES = {k: v["label"] for k, v in STRATEGY_INFO.items()}
@@ -32,36 +32,6 @@ def _classify_trend(closes: np.ndarray, ma_fast: int = 20, ma_slow: int = 60) ->
     elif fast < slow * 0.98:
         return "down"
     return "sideways"
-
-
-# ── 策略定义 (每个返回 BUY/SELL/HOLD + size_pct) ──
-
-
-def _calc_rsi(closes: np.ndarray, period: int = 14) -> float:
-    if len(closes) < period + 1:
-        return 50.0
-    deltas = np.diff(closes[-period - 1:])
-    gains = np.where(deltas > 0, deltas, 0)
-    losses = np.where(deltas < 0, -deltas, 0)
-    avg_gain = np.mean(gains)
-    avg_loss = np.mean(losses)
-    if avg_loss == 0:
-        return 100.0 if avg_gain > 0 else 50.0
-    return float(100 - 100 / (1 + avg_gain / avg_loss))
-
-
-def _calc_atr(highs: np.ndarray, lows: np.ndarray, closes: np.ndarray, period: int = 14) -> float:
-    if len(closes) < period + 1:
-        return float(np.mean(highs - lows))
-    tr_list = []
-    for i in range(-period, 0):
-        tr = max(
-            highs[i] - lows[i],
-            abs(highs[i] - closes[i - 1]) if i > -len(closes) else 0,
-            abs(lows[i] - closes[i - 1]) if i > -len(closes) else 0,
-        )
-        tr_list.append(tr)
-    return float(np.mean(tr_list))
 
 
 # ── 各策略信号函数 ──

@@ -14,7 +14,7 @@ import numpy as np
 from fastapi import HTTPException
 from loguru import logger
 
-from core.strategies import STRATEGIES, _calc_rsi, _calc_ma, _calc_atr
+from core.strategies import STRATEGIES, _calc_rsi, _calc_ma, _calc_atr, _calc_ema, _calc_macd
 
 
 # ── 模块级 httpx 客户端，供腾讯实时价复用（避免每次诊股都创建新连接）──
@@ -77,37 +77,6 @@ def _find_support_resistance(highs: np.ndarray, lows: np.ndarray, closes: np.nda
         "support": round(low, 2),
         "pivot": round((high + low + closes[-1]) / 3, 2),
     }
-
-
-def _calc_macd(closes: np.ndarray, fast: int = 12, slow: int = 26, signal: int = 9) -> dict:
-    if len(closes) < slow + signal:
-        return {"dif": None, "dea": None, "histogram": None}
-    ema_fast = _calc_ema(closes, fast)
-    ema_slow = _calc_ema(closes, slow)
-    dif = ema_fast - ema_slow
-    valid = dif[~np.isnan(dif)]
-    if len(valid) < signal:
-        return {"dif": None, "dea": None, "histogram": None}
-    dea_partial = _calc_ema(valid, signal)
-    dea = np.full(len(dif), np.nan)
-    dea[len(dif) - len(dea_partial):] = dea_partial
-    hist = 2 * (dif - dea)
-    return {
-        "dif": round(float(dif[-1]), 4) if not np.isnan(dif[-1]) else None,
-        "dea": round(float(dea[-1]), 4) if not np.isnan(dea[-1]) else None,
-        "histogram": round(float(hist[-1]), 4) if not np.isnan(hist[-1]) else None,
-    }
-
-
-def _calc_ema(data: np.ndarray, period: int) -> np.ndarray:
-    result = np.full(len(data), np.nan)
-    if len(data) < period:
-        return result
-    result[period - 1] = np.mean(data[:period])
-    alpha = 2 / (period + 1)
-    for i in range(period, len(data)):
-        result[i] = alpha * data[i] + (1 - alpha) * result[i - 1]
-    return result
 
 
 # ── 核心诊股 ──

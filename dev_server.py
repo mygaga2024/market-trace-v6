@@ -289,6 +289,16 @@ def handle_backtest_run():
 def handle_backtest_enable(name):
     return json_response({"strategy": name, "status": "active"})
 
+def handle_backtest_rolling(symbol):
+    return json_response({
+        "symbol": symbol, "strategy": "breakout", "label": "强势突破",
+        "train_bars": 70, "test_bars": 30, "total_windows": 5, "active_windows": 3,
+        "best_params": {"lookback": 20, "vol_mult": 1.5},
+        "avg_win_rate": 55.2, "avg_sharpe": 1.23, "avg_return": 12.5,
+        "min_return": -5.2, "max_return": 28.9, "consistency": 0.6,
+        "windows": [],
+    })
+
 
 # mock watchlist state
 _mock_watchlist: list[dict] = [
@@ -445,7 +455,9 @@ REGEX_ROUTES = [
     (re.compile(r"^/decisions/(.+)$"), "GET",
      lambda m: handle_decision_detail(m.group(1))),
     (re.compile(r"^/backtest/strategies/(.+)/enable$"), "POST",
-     lambda m: handle_backtest_enable(m.group(1))),
+      lambda m: handle_backtest_enable(m.group(1))),
+    (re.compile(r"^/backtest/rolling/(.+)$"), "GET",
+      lambda m: handle_backtest_rolling(m.group(1))),
     (re.compile(r"^/watchlist$"), "POST",
      lambda _: None),  # handled via body parsing below
     (re.compile(r"^/watchlist/(.+)$"), "DELETE",

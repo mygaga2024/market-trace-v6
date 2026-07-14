@@ -74,21 +74,17 @@ async def screen_stocks(request: Request, strategy: str):
             await ensure_symbol_cached(symbol, bus, config)
             cached = await bus.cache_get(f"market:raw:{symbol}") if bus else None
             if not cached or len(cached) < 20:
-                # Fallback: rough strategy check using live price data (cache unavailable)
+                # Fallback: rough strategy check using live price data
                 from services.prefetch import fetch_stock_price_via_sina
                 stock_name, live_price, live_change = await fetch_stock_price_via_sina(symbol)
                 if not live_price or live_change is None:
                     return None
-                # Rough thresholds matching the scanner's stage-1 logic
-                rough_ok = False
-                if strategy == "breakout" and live_change > 1 and live_price > 5: rough_ok = True
-                elif strategy == "oversold" and live_change < -3: rough_ok = True
-                elif strategy == "strength" and live_change > 2: rough_ok = True
-                elif strategy == "risk" and live_change < -5: rough_ok = True
-                elif strategy == "ma_golden_cross" and live_change > 0.5: rough_ok = True
-                elif strategy == "volume_breakout" and live_change > 3: rough_ok = True
-                elif strategy == "rsi_reversal" and live_change < -2: rough_ok = True
-                if not rough_ok:
+                th = info.get("rough_threshold", {})
+                if "min_chg" in th and live_change <= th["min_chg"]:
+                    return None
+                if "max_chg" in th and live_change >= th["max_chg"]:
+                    return None
+                if "min_price" in th and live_price <= th["min_price"]:
                     return None
                 name = stock_name or await get_stock_name(symbol, bus)
                 return {

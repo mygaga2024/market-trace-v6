@@ -16,6 +16,7 @@ from agents.base_agent import BaseAgent
 from core.bus import MessageBus
 from core.schema import AgentReport, AgentName, ReportStatus
 from core.memory import CaseMemory
+from core.strategies import _calc_ema, _calc_macd_vec
 
 
 class SignalAgent(BaseAgent):
@@ -77,7 +78,7 @@ class SignalAgent(BaseAgent):
         ma_values = {p: self._calc_ma(closep, p) for p in self._ma_periods}
         indicators["ma"] = {str(k): round(float(v[-1]), 4) for k, v in ma_values.items()} if ma_values else {}
 
-        macd = self._calc_macd(closep)
+        macd = _calc_macd_vec(closep, self._macd_fast, self._macd_slow, self._macd_signal)
         if macd:
             indicators["macd"] = {
                 "dif": round(float(macd["dif"][-1]), 4),
@@ -171,37 +172,10 @@ class SignalAgent(BaseAgent):
         if len(data) < period:
             return np.array([])
         kernel = np.ones(period) / period
-        conv = np.convolve(data, kernel, mode="valid")  # length = len(data) - period + 1
+        conv = np.convolve(data, kernel, mode="valid")
         ma = np.full(len(data), np.nan)
         ma[period - 1 :] = conv
         return ma
-
-    @staticmethod
-    def _calc_ema(data: np.ndarray, period: int) -> np.ndarray:
-        if len(data) < period:
-            return np.array([])
-        alpha = 2.0 / (period + 1)
-        ema = np.zeros(len(data))
-        ema[period - 1] = np.mean(data[:period])
-        for i in range(period, len(data)):
-            ema[i] = alpha * data[i] + (1 - alpha) * ema[i - 1]
-        ema[: period - 1] = np.nan
-        return ema
-
-    def _calc_macd(self, closep: np.ndarray) -> Optional[dict[str, np.ndarray]]:
-        if len(closep) < self._macd_slow + self._macd_signal:
-            return None
-        ema_fast = self._calc_ema(closep, self._macd_fast)
-        ema_slow = self._calc_ema(closep, self._macd_slow)
-        dif = ema_fast - ema_slow
-        dea = self._calc_ema(dif[~np.isnan(dif)], self._macd_signal) if len(dif[~np.isnan(dif)]) > 0 else np.array([])
-        if len(dea) == 0:
-            return None
-        dea_full = np.full(len(dif), np.nan)
-        dea_start = len(dif) - len(dea)
-        dea_full[dea_start:] = dea
-        hist = 2 * (dif - dea_full)
-        return {"dif": dif, "dea": dea_full, "hist": hist}
 
     @staticmethod
     def _calc_rsi(closep: np.ndarray, period: int = 14) -> Optional[np.ndarray]:

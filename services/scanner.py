@@ -174,26 +174,19 @@ async def quick_scan(strategy: str, limit: int = 50,
     logger.info("全市场扫描开始: {} ({} 只)", label, len(stocks))
 
     # 阶段1: 实时行情粗筛（无需缓存K线）
+    th = info.get("rough_threshold", {})
     rough_hits: list[dict] = []
     for s in stocks:
         price = s.get("price", 0)
         chg = s.get("change_pct", 0)
         if min_price <= price <= max_price and price > 0:
-            # 简单初筛（不同策略用不同条件）
-            if strategy == "breakout" and chg > 1 and price > 5:
-                rough_hits.append(s)
-            elif strategy == "oversold" and chg < -3:
-                rough_hits.append(s)
-            elif strategy == "strength" and chg > 2:
-                rough_hits.append(s)
-            elif strategy == "risk" and chg < -5:
-                rough_hits.append(s)
-            elif strategy == "ma_golden_cross" and chg > 0.5:
-                rough_hits.append(s)
-            elif strategy == "volume_breakout" and chg > 3:
-                rough_hits.append(s)
-            elif strategy == "rsi_reversal" and chg < -2:
-                rough_hits.append(s)
+            if "min_chg" in th and chg <= th["min_chg"]:
+                continue
+            if "max_chg" in th and chg >= th["max_chg"]:
+                continue
+            if "min_price" in th and price <= th["min_price"]:
+                continue
+            rough_hits.append(s)
 
     logger.info("阶段1粗筛: {} → {} 只", len(stocks), len(rough_hits))
 
@@ -232,8 +225,11 @@ async def quick_scan(strategy: str, limit: int = 50,
                 logger.debug("扫描 {} 失败: {}", stock["symbol"], e)
 
     if rough_hits:
-        tasks = [asyncio.create_task(_deep_check(s)) for s in rough_hits]
-        await asyncio.gather(*tasks, return_exceptions=True)
+        BATCH = 200
+        for j in range(0, len(rough_hits), BATCH):
+            batch = rough_hits[j:j + BATCH]
+            tasks = [asyncio.create_task(_deep_check(s)) for s in batch]
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     # Fallback: if no deep hits but rough hits exist, return rough results
     if not hits and rough_hits:
@@ -321,9 +317,13 @@ async def smart_scan(bus, config: dict, limit: int = 30) -> dict:
             except Exception:
                 pass
 
-    # 同时扫描全部（主要命中缓存的stock_pool股票）
-    tasks = [asyncio.create_task(_score_one(s)) for s in stocks]
-    await asyncio.gather(*tasks, return_exceptions=True)
+    # 分批扫描，每批200只，避免5000+并发创建task耗尽资源
+    BATCH_SIZE = 200
+    for i in range(0, len(stocks), BATCH_SIZE):
+        batch = stocks[i:i + BATCH_SIZE]
+        tasks = [asyncio.create_task(_score_one(s)) for s in batch]
+        await asyncio.gather(*tasks, return_exceptions=True)
+        logger.info("smart_scan 进度: {}/{} 已检查={} 命中={}", min(i + BATCH_SIZE, len(stocks)), len(stocks), checked, len(scored))
 
     scored.sort(key=lambda x: -x["score"])
     elapsed = time.monotonic() - t0

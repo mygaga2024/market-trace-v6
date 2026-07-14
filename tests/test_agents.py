@@ -160,21 +160,16 @@ class TestSignalAgent:
         assert ma[4] == pytest.approx(4.0)
 
     def test_calc_ema(self):
+        from core.strategies import _calc_ema
         data = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0])
-        ema = SignalAgent._calc_ema(data, 5)
+        ema = _calc_ema(data, 5)
         assert np.isnan(ema[3])
         assert not np.isnan(ema[5])
 
     def test_calc_macd(self):
-        agent = SignalAgent(MagicMock(spec=MessageBus), {
-            "agents": {
-                "heartbeat_interval": 1, "heartbeat_timeout": 2, "max_concurrent_msgs": 5,
-                "signal": {"ma_periods": [5], "macd_fast": 12, "macd_slow": 26, "macd_signal": 9,
-                            "rsi_period": 14, "divergence_lookback": 20},
-            }
-        })
+        from core.strategies import _calc_macd_vec
         closep = np.sin(np.linspace(0, 4 * np.pi, 100)) * 5 + 20
-        result = agent._calc_macd(closep)
+        result = _calc_macd_vec(closep)
         assert result is not None
         assert "dif" in result
         assert "dea" in result

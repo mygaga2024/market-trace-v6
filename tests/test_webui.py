@@ -66,7 +66,7 @@ def test_html_contains_core_elements(html):
         "watchlist-input", "watchlist-add-btn", "watchlist-items",
         # K 线图
         "kline-chart",
-        # 尾部
+        # 尾部 — all JS files referenced
         "dashboard.js", "charts.js", "dashboard.css",
     ]
     for elem in required:
@@ -81,10 +81,16 @@ def test_html_contains_chinese_labels(html):
 
 
 def test_html_script_order(html):
-    """charts.js 在 dashboard.js 之前加载 (依赖关系)"""
+    """charts.js + tab-*.js 在 dashboard.js 之前加载 (依赖关系)"""
     charts_idx = html.index("charts.js")
     dash_idx = html.index("dashboard.js")
     assert charts_idx < dash_idx, "charts.js 必须在 dashboard.js 之前加载"
+
+    # All tab module files must load before dashboard.js
+    for tabfile in ["tab-analyze.js", "tab-backtest.js", "tab-risk.js", "tab-reports.js", "tab-watchlist.js"]:
+        assert tabfile in html, f"HTML 缺少 {tabfile}"
+        tab_idx = html.index(tabfile)
+        assert tab_idx < dash_idx, f"{tabfile} 必须在 dashboard.js 之前加载"
 
 
 # ─────────────────────────────────────────────
@@ -94,6 +100,11 @@ def test_html_script_order(html):
 STATIC_FILES = [
     ("static/js/dashboard.js", "application/javascript"),
     ("static/js/charts.js", "application/javascript"),
+    ("static/js/tab-analyze.js", "application/javascript"),
+    ("static/js/tab-backtest.js", "application/javascript"),
+    ("static/js/tab-risk.js", "application/javascript"),
+    ("static/js/tab-reports.js", "application/javascript"),
+    ("static/js/tab-watchlist.js", "application/javascript"),
     ("static/css/dashboard.css", "text/css"),
     ("static/favicon.svg", "image"),
     ("static/manifest.json", "application/json"),
@@ -113,41 +124,51 @@ def test_static_file_exists(filepath, content_type):
 # JS 语法检查
 # ─────────────────────────────────────────────
 
-def test_dashboard_js_syntax():
-    """dashboard.js 通过 Node.js 语法检查"""
+ALL_JS_FILES = [
+    "static/js/dashboard.js",
+    "static/js/charts.js",
+    "static/js/tab-analyze.js",
+    "static/js/tab-backtest.js",
+    "static/js/tab-risk.js",
+    "static/js/tab-reports.js",
+    "static/js/tab-watchlist.js",
+]
+
+
+@pytest.mark.parametrize("filepath", ALL_JS_FILES)
+def test_js_syntax(filepath):
+    """所有 JS 文件通过 Node.js 语法检查"""
     import shutil
     if not shutil.which("node"):
         pytest.skip("Node.js 未安装，跳过 JS 语法检查")
     result = subprocess.run(
-        ["node", "--check", str(ROOT / "static/js/dashboard.js")],
+        ["node", "--check", str(ROOT / filepath)],
         capture_output=True, text=True,
     )
-    assert result.returncode == 0, f"dashboard.js 语法错误:\n{result.stderr}"
-
-
-def test_charts_js_syntax():
-    """charts.js 通过 Node.js 语法检查"""
-    import shutil
-    if not shutil.which("node"):
-        pytest.skip("Node.js 未安装，跳过 JS 语法检查")
-    result = subprocess.run(
-        ["node", "--check", str(ROOT / "static/js/charts.js")],
-        capture_output=True, text=True,
-    )
-    assert result.returncode == 0, f"charts.js 语法错误:\n{result.stderr}"
+    assert result.returncode == 0, f"{filepath} 语法错误:\n{result.stderr}"
 
 
 # ─────────────────────────────────────────────
 # JS 引用完整性检查 (所有 $id引用 的 ID 存在于 HTML)
 # ─────────────────────────────────────────────
 
+def _read_all_js() -> str:
+    """Concatenate all JS source files for comprehensive checks."""
+    parts = []
+    for fp in ALL_JS_FILES:
+        full = ROOT / fp
+        if full.exists():
+            parts.append(full.read_text(encoding="utf-8"))
+    return "\n".join(parts)
+
+
 def test_js_id_references_exist_in_html(html):
-    """dashboard.js 中 $id('...') 引用的所有 ID 都存在于 HTML 中"""
-    js_content = (ROOT / "static/js/dashboard.js").read_text(encoding="utf-8")
+    """所有 JS 文件中 $id('...') 引用的所有 ID 都存在于 HTML 中"""
     import re
-    ids_in_js = set(re.findall(r"\$id\('([^']+)'\)", js_content))
-    ids_in_js.update(re.findall(r'\$id\("([^"]+)"\)', js_content))
-    ids_in_js.update(re.findall(r'getElementById\("([^"]+)"\)', js_content))
+    all_js = _read_all_js()
+    ids_in_js = set(re.findall(r"\$id\('([^']+)'\)", all_js))
+    ids_in_js.update(re.findall(r'\$id\("([^"]+)"\)', all_js))
+    ids_in_js.update(re.findall(r'getElementById\("([^"]+)"\)', all_js))
 
     for elem_id in sorted(ids_in_js):
         assert f'id="{elem_id}"' in html or f"id='{elem_id}'" in html, \
@@ -199,11 +220,11 @@ def test_dev_server_exists():
 
 def test_dev_server_mocks_all_endpoints():
     """dev_server.py 为所有前端 fetch 调用提供了 mock"""
-    js_content = (ROOT / "static/js/dashboard.js").read_text(encoding="utf-8")
+    import re
+    all_js = _read_all_js()
     dev_content = (ROOT / "dev_server.py").read_text(encoding="utf-8")
 
-    import re
-    endpoints = set(re.findall(r"fetchAuth\('([^']+)", js_content))
+    endpoints = set(re.findall(r"fetchAuth\('([^']+)", all_js))
     # 去掉动态参数
     stripped = set()
     for ep in endpoints:

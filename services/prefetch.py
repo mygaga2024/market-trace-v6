@@ -10,6 +10,8 @@ import time
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
+import httpx
+
 from loguru import logger
 
 from core.schema import MarketData
@@ -273,13 +275,27 @@ async def prefetch_stock_names(bus, config: dict) -> dict[str, str]:
 _stock_name_cache: dict[str, str] = {}  # 进程内缓存，兜底
 
 
+_name_cache_sina: httpx.AsyncClient | None = None
+
+
+def _get_sina_client() -> httpx.AsyncClient:
+    global _name_cache_sina
+    if _name_cache_sina is None or _name_cache_sina.is_closed:
+        _name_cache_sina = httpx.AsyncClient(
+            timeout=httpx.Timeout(5.0),
+            headers={"Referer": "https://finance.sina.com.cn"},
+            limits=httpx.Limits(max_keepalive_connections=2, max_connections=5),
+        )
+    return _name_cache_sina
+
+
 async def _fetch_name_via_sina(symbol: str) -> str:
     """通过新浪行情接口获取单只股票名称"""
     prefix = "sh" if symbol.startswith(("6", "9")) else "sz"
     url = f"http://hq.sinajs.cn/list={prefix}{symbol}"
     try:
-        import requests
-        r = await asyncio.to_thread(requests.get, url, headers={"Referer": "https://finance.sina.com.cn"}, timeout=5)
+        client = _get_sina_client()
+        r = await client.get(url)
         r.encoding = "gbk"
         text = r.text
         if text and '="' in text:
@@ -296,8 +312,8 @@ async def fetch_stock_price_via_sina(symbol: str):
     prefix = "sh" if symbol.startswith(("6", "9")) else "sz"
     url = f"http://hq.sinajs.cn/list={prefix}{symbol}"
     try:
-        import requests
-        r = await asyncio.to_thread(requests.get, url, headers={"Referer": "https://finance.sina.com.cn"}, timeout=5)
+        client = _get_sina_client()
+        r = await client.get(url)
         r.encoding = "gbk"
         text = r.text
         if text and '="' in text:
@@ -326,8 +342,9 @@ async def fetch_stock_price_tencent(symbol: str):
     prefix = "sh" if symbol.startswith(("6", "9")) else "sz"
     url = f"http://qt.gtimg.cn/q={prefix}{symbol}"
     try:
-        import requests
-        r = await asyncio.to_thread(requests.get, url, timeout=5)
+        from services.analyzer import _get_tencent_client
+        client = _get_tencent_client()
+        r = await client.get(url)
         r.encoding = "gbk"
         text = r.text
         if "~" not in text:
