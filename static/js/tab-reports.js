@@ -45,20 +45,27 @@
   function renderReportList(d, name) {
     var items = d && d.items ? d.items : (Array.isArray(d) ? d : []);
     if (!items.length) return '<div class="tab-empty">暂无' + (name || '报告') + '</div>';
-    var h = '<h3>' + E(name) + ' (' + items.length + ')</h3>';
-    items.forEach(function(r) { h += '<div style="padding:6px;border-bottom:1px solid var(--bg-tag);font-size:13px">' + E(r.symbol || '') + ' ' + E(r.summary || '') + ' <small>' + S._ts(r.timestamp) + '</small></div>'; });
+    var h = '<div class="tab-section"><h3 class="tab-section-title">' + E(name) + ' (' + items.length + ')</h3>';
+    h += '<table class="status-table" style="font-size:13px"><thead><tr><th>时间</th><th>标的</th><th>摘要</th></tr></thead><tbody>';
+    items.forEach(function(r) { h += '<tr><td style="white-space:nowrap;font-size:12px">' + S._ts(r.timestamp) + '</td><td>' + E(r.symbol || '—') + '</td><td style="color:var(--text-secondary)">' + E(r.summary || '') + '</td></tr>'; });
+    h += '</tbody></table></div>';
     return h;
   }
 
   function renderDecisions(d) {
     var items = d && d.items ? d.items : [];
     if (!items.length) return '<div class="tab-empty">暂无决策</div>';
-    var h = '<h3>决策历史 (' + items.length + ')</h3>';
+    var h = '<div class="tab-section"><h3 class="tab-section-title">决策历史 (' + items.length + ')</h3>';
+    h += '<table class="status-table" style="font-size:13px"><thead><tr><th>时间</th><th>决策</th><th>置信度</th><th>理由</th><th>模型</th></tr></thead><tbody>';
     items.forEach(function(dec) {
-      h += '<div style="padding:6px;border-bottom:1px solid var(--bg-tag);font-size:13px;cursor:pointer" onclick="window._DS.showDM(\'' + E(dec.decision_id) + '\')">';
-      h += '<span class="decision-action action-' + E(dec.action) + '" style="font-size:12px;margin-right:6px">' + S.fmtAction(dec.action) + '</span>';
-      h += ((dec.confidence || 0) * 100).toFixed(0) + '% ' + E((dec.reasoning || '').substring(0, 60)) + ' <small>' + S._ts(dec.timestamp) + '</small></div>';
+      h += '<tr style="cursor:pointer" onclick="window._DS.showDM(\'' + E(dec.decision_id) + '\')">';
+      h += '<td style="white-space:nowrap;font-size:12px">' + S._ts(dec.timestamp) + '</td>';
+      h += '<td><span class="decision-action action-' + E(dec.action) + '" style="font-size:12px;padding:2px 8px">' + S.fmtAction(dec.action) + '</span></td>';
+      h += '<td style="font-weight:600;font-variant-numeric:tabular-nums">' + ((dec.confidence || 0) * 100).toFixed(0) + '%</td>';
+      h += '<td style="color:var(--text-secondary);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + E(dec.reasoning || '') + '</td>';
+      h += '<td style="font-size:12px;color:var(--text-muted)">' + E(dec.provider_label || '') + '</td></tr>';
     });
+    h += '</tbody></table></div>';
     return h;
   }
 
@@ -70,11 +77,23 @@
 
   function renderPaper(d) {
     if (d.error) return '<div class="tab-empty">' + E(d.error) + '</div>';
-    var h = '<h3>纸上交易</h3>';
-    h += '<p>本金: ' + (d.initial_capital || 0).toLocaleString() + ' | 现金: ' + (d.capital || 0).toLocaleString() + ' | 总权益: ' + (d.total_equity || 0).toLocaleString() + '</p>';
-    var pnl = d.total_pnl || 0;
-    h += '<p style="font-size:16px;font-weight:600;color:' + (pnl >= 0 ? 'var(--color-rise)' : 'var(--color-fall)') + '">累计盈亏: ' + pnl.toLocaleString() + ' (' + (d.total_pnl_pct || 0).toFixed(2) + '%)</p>';
-    h += '<p>持仓: ' + (d.position_count || 0) + ' | 交易: ' + (d.total_trades || 0) + ' | 订单: ' + (d.total_orders || 0) + '</p>';
+    var pnl = d.total_pnl || 0, pnlCls = pnl >= 0 ? 'trend-up' : 'trend-down';
+    var h = '<div class="tab-section"><h3 class="tab-section-title">纸上交易</h3>';
+    h += '<table class="status-table"><tbody>';
+    h += '<tr><td style="width:80px">账户</td><td>' + E(d.account_id || 'default') + '</td></tr>';
+    h += '<tr><td>初始本金</td><td>' + (d.initial_capital || 0).toLocaleString() + ' 元</td></tr>';
+    h += '<tr><td>可用现金</td><td>' + (d.capital || 0).toLocaleString() + ' 元</td></tr>';
+    h += '<tr><td>总权益</td><td>' + (d.total_equity || 0).toLocaleString() + ' 元</td></tr>';
+    h += '<tr><td>累计盈亏</td><td class="' + pnlCls + '" style="font-weight:600;font-size:16px">' + (pnl >= 0 ? '+' : '') + pnl.toLocaleString() + ' (' + (d.total_pnl_pct || 0).toFixed(2) + '%)</td></tr>';
+    h += '<tr><td>持仓数</td><td>' + (d.position_count || 0) + '</td></tr>';
+    h += '<tr><td>总交易</td><td>' + (d.total_trades || 0) + ' 笔</td></tr>';
+    h += '<tr><td>总订单</td><td>' + (d.total_orders || 0) + ' 笔</td></tr>';
+    h += '</tbody></table></div>';
+    if (d.positions && d.positions.length) {
+      h += '<div class="tab-section"><h3 class="tab-section-title">持仓明细</h3><table class="status-table" style="font-size:13px"><thead><tr><th>代码</th><th>数量</th><th>均价</th><th>成本</th></tr></thead><tbody>';
+      d.positions.forEach(function(p) { h += '<tr><td>' + E(p.symbol) + '</td><td>' + p.quantity + '</td><td>' + p.avg_cost.toFixed(2) + '</td><td>' + p.cost_basis.toLocaleString() + '</td></tr>'; });
+      h += '</tbody></table></div>';
+    }
     return h;
   }
 
