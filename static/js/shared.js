@@ -173,7 +173,7 @@
       html += '<span class="mi-col-price">最新价</span>';
       html += '<span class="mi-col-chg">涨跌额</span>';
       html += '<span class="mi-col-pct">涨跌幅</span>';
-      html += '<span class="mi-col-vol">成交量</span>';
+      html += '<span class="mi-col-vol">成交量(股)</span>';
       html += '</div>';
       indices.forEach(function(idx) {
         var name = idx.name || idx.code || '';
@@ -183,8 +183,14 @@
         var cls = chgPct >= 0 ? 'trend-up' : 'trend-down';
         var volStr = '\u2014';
         if (idx.volume != null) {
-          var v = idx.volume / 10000;
-          volStr = (v >= 10000 ? (v / 10000).toFixed(1) + '\u4EBF' : v.toFixed(0)) + '\u4E07';
+          var v = idx.volume;
+          if (v >= 1e8) {
+            volStr = (v / 1e8).toFixed(1) + '\u4EBF';
+          } else if (v >= 1e4) {
+            volStr = (v / 1e4).toFixed(0) + '\u4E07';
+          } else {
+            volStr = v.toFixed(0);
+          }
         }
         html += '<div class="mi-row2">';
         html += '<span class="mi-col-name">' + UTIL.escapeHtml(name) + '</span>';
