@@ -217,6 +217,54 @@ body {
 
 .tab-empty { text-align: center; color: var(--text-muted); padding: 40px 0; font-size: 14px; }
 
+/* ── Tab Panel Sections ── */
+.tab-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 16px;
+}
+.tab-section-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 12px 0;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--border-color);
+}
+
+/* ── Status / Data Tables ── */
+.status-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.status-table thead th {
+  text-align: left;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 2px solid var(--border-color);
+  background: var(--bg-subtle, rgba(22,27,34,0.5));
+}
+.status-table tbody td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--bg-tag);
+  vertical-align: middle;
+  color: var(--text-primary);
+}
+.status-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.status-table tbody tr:hover {
+  background: var(--bg-card-hover);
+}
+
 /* ── Decision Box ── */
 .decision-box {
   background: var(--bg-card); border: 1px solid var(--border-color);
