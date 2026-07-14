@@ -173,7 +173,7 @@
       html += '<span class="mi-col-price">最新价</span>';
       html += '<span class="mi-col-chg">涨跌额</span>';
       html += '<span class="mi-col-pct">涨跌幅</span>';
-      html += '<span class="mi-col-vol">成交量(股)</span>';
+      html += '<span class="mi-col-vol">成交量(手)</span>';
       html += '</div>';
       indices.forEach(function(idx) {
         var name = idx.name || idx.code || '';
