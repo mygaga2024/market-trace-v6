@@ -168,13 +168,7 @@
         container.innerHTML = '<div style="color:var(--text-muted);font-size:13px">等待数据...</div>';
         return;
       }
-      var html = '<div class="mi-row2 mi-header" style="font-weight:600;color:var(--text-muted);font-size:11px;border-bottom:2px solid var(--border-color);padding-bottom:4px;margin-bottom:2px">';
-      html += '<span class="mi-col-name">名称</span>';
-      html += '<span class="mi-col-price">最新价</span>';
-      html += '<span class="mi-col-chg">涨跌额</span>';
-      html += '<span class="mi-col-pct">涨跌幅</span>';
-      html += '<span class="mi-col-vol">成交量</span>';
-      html += '</div>';
+      var html = '';
       indices.forEach(function(idx) {
         var name = idx.name || idx.code || '';
         var close = idx.close != null ? idx.close.toFixed(2) : '\u2014';
