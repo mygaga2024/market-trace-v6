@@ -73,8 +73,12 @@ python3 -c "from core.self_evolution import get_evolution_context; print(get_evo
 3. **写入项目进化数据**：将本会话新发现的修复模式、反模式、风格偏好写入 `.project_evolution.yaml`
    ```
    python3 -c "
-   from core.self_evolution import add_fix, add_anti_pattern, add_style_pattern, add_architecture
-   # 示例: add_fix('error sig', 'fix desc', ['file.py'], 'session-xxx')
+   from core.self_evolution import add_fix, add_anti_pattern, add_style_pattern, add_architecture, backup, record_dream, record_evolution
+   backup()
+   add_fix('error sig', 'fix desc', ['file.py'], 'session-xxx')
+   # ... 更多 add_* 调用 ...
+   record_dream('今天记忆变化总结', 'session-xxx')
+   record_evolution('今天AI自我改进', 'session-xxx')
    "
    ```
 4. 同步更新 `LLM Fallback Chain` 实体（如有改动）

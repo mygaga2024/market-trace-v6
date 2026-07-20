@@ -1,7 +1,6 @@
-version: 2
+version: 1
 created: '2026-07-20T10:14:18.528063'
-updated: '2026-07-20T11:21:03.732802'
-self_evolution_enabled: true
+updated: '2026-07-20T10:28:38.467247'
 fixes:
 - error: 涨跌家数数据严重失真（只覆盖3984只，73%）
   fix: Sina fallback：ak.stock_zh_a_spot_em 被 NAS WAF 拦截时回退到 Sina 批量查询（含重试+补全代码段301xxx/bj83xxx/bj87xxx/bj92xxx）
@@ -46,13 +45,6 @@ fixes:
   - core/self_evolution.py
   session: session-2026-07-20-project-evolve
   timestamp: '2026-07-20T10:28:38.429464'
-- error: evolution.py 和 core/self_evolution.py 功能重复、API 不一致
-  fix: '统一 v2 API: record_dream/record_evolution/backup/toggle_enabled/get_dreams/get_evolution_logs，两处实现功能对齐'
-  files:
-  - core/self_evolution.py
-  - ~/.config/opencode/skills/project-evolve/evolution.py
-  session: session-2026-07-20-project-evolve
-  timestamp: '2026-07-20T11:21:03.653004'
 anti_patterns:
 - name: 静默吞异常
   description: '不要用 except Exception: pass 静默丢弃数据，必须至少记录 warning 日志'
@@ -62,10 +54,6 @@ anti_patterns:
   description: 不要在多处实现相同的技术指标计算（MACD/RSI/ATR），必须在 core/strategies.py 统一定义
   session: session-2026-07-14-epic-market-trace-v6
   timestamp: '2026-07-20T10:14:18.555295'
-- name: 无备份的进化写入
-  description: 进化数据写入前必须先 backup() 创建快照，否则无法回滚错误变更
-  session: session-2026-07-20-project-evolve
-  timestamp: '2026-07-20T11:21:03.678664'
 style:
 - category: imports
   description: 使用 from __future__ import annotations 在文件顶部
@@ -100,12 +88,6 @@ style:
   files: []
   session: session-2026-07-20-project-evolve
   timestamp: '2026-07-20T10:28:38.445518'
-- category: test_isolation
-  description: 进化模块测试必须用独立 temp_dir（而非 temp_file），确保 .evolution/ 子目录不会跨测试污染
-  files:
-  - tests/test_self_evolution.py
-  session: session-2026-07-20-project-evolve
-  timestamp: '2026-07-20T11:21:03.704532'
 architecture:
 - decision: 统一策略注册
   rationale: core/strategies.py 的 STRATEGIES 字典被诊股/选股/回测三方共用，消除重复维护
@@ -128,8 +110,3 @@ architecture:
     和 Python import 两种用法，零项目依赖
   session: session-2026-07-20-project-evolve
   timestamp: '2026-07-20T10:28:38.467239'
-- decision: 梦境蒸馏(Dream Distillation)
-  rationale: '借鉴 cow 项目: 每次会话结束生成每日元反思(dreams/YYYY-MM-DD.md)，总结记忆如何变化、什么被精简、什么仍需关注；进化日志(logs/)记录
-    AI 自我改进'
-  session: session-2026-07-20-project-evolve
-  timestamp: '2026-07-20T11:21:03.732791'
