@@ -1,6 +1,6 @@
 version: 1
 created: '2026-07-20T10:14:18.528063'
-updated: '2026-07-20T10:14:18.622141'
+updated: '2026-07-20T10:15:15.826512'
 fixes:
 - error: 涨跌家数数据严重失真（只覆盖3984只，73%）
   fix: Sina fallback：ak.stock_zh_a_spot_em 被 NAS WAF 拦截时回退到 Sina 批量查询（含重试+补全代码段301xxx/bj83xxx/bj87xxx/bj92xxx）
@@ -32,6 +32,12 @@ fixes:
   - static/js/tab-*.js
   session: session-2026-07-14-epic-market-trace-v6
   timestamp: '2026-07-20T10:14:18.540346'
+- error: YAML 文件中含冒号的值未加引号导致解析崩溃
+  fix: 描述性字段(如 error/description)含:时必须用引号包裹，或用 Python 程序写入代替手写 YAML
+  files:
+  - .project_evolution.yaml
+  session: session-2026-07-20-project-evolve
+  timestamp: '2026-07-20T10:15:15.790502'
 anti_patterns:
 - name: 静默吞异常
   description: '不要用 except Exception: pass 静默丢弃数据，必须至少记录 warning 日志'
@@ -63,6 +69,12 @@ style:
   - services/prefetch.py
   session: session-2026-07-14-epic-market-trace-v6
   timestamp: '2026-07-20T10:14:18.583625'
+- category: evolution
+  description: 进化数据应通过 Python 程序播种而非手写 YAML，避免格式错误
+  files:
+  - core/self_evolution.py
+  session: session-2026-07-20-project-evolve
+  timestamp: '2026-07-20T10:15:15.808487'
 architecture:
 - decision: 统一策略注册
   rationale: core/strategies.py 的 STRATEGIES 字典被诊股/选股/回测三方共用，消除重复维护
@@ -76,3 +88,7 @@ architecture:
   rationale: 诊股数据获取顺序 Tushare -> AkShare -> 腾讯实时价修正，任一失败自动降级
   session: session-2026-07-13-fix-breadth-data
   timestamp: '2026-07-20T10:14:18.622131'
+- decision: 项目自我进化系统
+  rationale: core/self_evolution.py 管理 .project_evolution.yaml，跨会话积累修复模式/反模式/风格/架构四类知识，每次会话启动和结束自动读写
+  session: session-2026-07-20-project-evolve
+  timestamp: '2026-07-20T10:15:15.826501'
