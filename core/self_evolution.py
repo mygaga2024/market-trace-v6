@@ -1,11 +1,11 @@
 """
 Market Trace V6.0 — 项目自我进化模块
 
-跨会话项目知识积累：
-- Bug 修复模式库
-- 反模式记录（不再重复的错误）
-- 代码风格偏好
-- 架构决策记录
+这是 project-evolve skill 的项目本地副本。
+如果 skill 目录存在，优先使用通用脚本（可复用于任何项目）；
+若不可用（如 Docker 环境），使用内置实现。
+
+通用脚本路径: ~/.config/opencode/skills/project-evolve/evolution.py
 
 数据存储在 .project_evolution.yaml，每次会话结束自动更新。
 """

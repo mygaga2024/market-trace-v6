@@ -1,6 +1,6 @@
 version: 1
 created: '2026-07-20T10:14:18.528063'
-updated: '2026-07-20T10:15:15.826512'
+updated: '2026-07-20T10:28:38.467247'
 fixes:
 - error: 涨跌家数数据严重失真（只覆盖3984只，73%）
   fix: Sina fallback：ak.stock_zh_a_spot_em 被 NAS WAF 拦截时回退到 Sina 批量查询（含重试+补全代码段301xxx/bj83xxx/bj87xxx/bj92xxx）
@@ -38,6 +38,13 @@ fixes:
   - .project_evolution.yaml
   session: session-2026-07-20-project-evolve
   timestamp: '2026-07-20T10:15:15.790502'
+- error: 进化模块绑定到单一项目，无法复用
+  fix: 抽成通用 evolution.py 脚本（位于 skill 目录），任何项目 cwd 下运行即可读写 .project_evolution.yaml
+  files:
+  - ~/.config/opencode/skills/project-evolve/evolution.py
+  - core/self_evolution.py
+  session: session-2026-07-20-project-evolve
+  timestamp: '2026-07-20T10:28:38.429464'
 anti_patterns:
 - name: 静默吞异常
   description: '不要用 except Exception: pass 静默丢弃数据，必须至少记录 warning 日志'
@@ -75,6 +82,12 @@ style:
   - core/self_evolution.py
   session: session-2026-07-20-project-evolve
   timestamp: '2026-07-20T10:15:15.808487'
+- category: evolution
+  description: skill 中附带独立脚本（evolution.py）供 AI 调用，项目内 core/self_evolution.py 作为本地副本/Docker
+    回退
+  files: []
+  session: session-2026-07-20-project-evolve
+  timestamp: '2026-07-20T10:28:38.445518'
 architecture:
 - decision: 统一策略注册
   rationale: core/strategies.py 的 STRATEGIES 字典被诊股/选股/回测三方共用，消除重复维护
@@ -92,3 +105,8 @@ architecture:
   rationale: core/self_evolution.py 管理 .project_evolution.yaml，跨会话积累修复模式/反模式/风格/架构四类知识，每次会话启动和结束自动读写
   session: session-2026-07-20-project-evolve
   timestamp: '2026-07-20T10:15:15.826501'
+- decision: 通用进化脚本
+  rationale: evolution.py 通过 cwd 发现 .project_evolution.yaml，支持 CLI(--init/--summary/--add-*)
+    和 Python import 两种用法，零项目依赖
+  session: session-2026-07-20-project-evolve
+  timestamp: '2026-07-20T10:28:38.467239'

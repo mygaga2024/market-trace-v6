@@ -59,6 +59,7 @@ curl -s localhost:19377/health            # API 健康检查
 ```
 python3 -c "from core.self_evolution import get_evolution_context; print(get_evolution_context())"
 ```
+
 读取跨会话积累的修复模式、反模式、代码风格偏好。遇到类似错误时优先尝试已记录的修复方案，严格遵守反模式禁止规则。
 
 违反后果：跳过步骤视为失职，可能基于过期信息决策。
