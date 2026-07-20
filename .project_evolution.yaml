@@ -1,0 +1,78 @@
+version: 1
+created: '2026-07-20T10:14:18.528063'
+updated: '2026-07-20T10:14:18.622141'
+fixes:
+- error: 涨跌家数数据严重失真（只覆盖3984只，73%）
+  fix: Sina fallback：ak.stock_zh_a_spot_em 被 NAS WAF 拦截时回退到 Sina 批量查询（含重试+补全代码段301xxx/bj83xxx/bj87xxx/bj92xxx）
+  files:
+  - data_provider/akshare_impl.py
+  session: session-2026-07-13-fix-breadth-data
+  timestamp: '2026-07-20T10:14:18.529424'
+- error: _calc_macd 在 analyzer.py / signal_agent.py / backtest.py 三处重复实现
+  fix: 统一定义在 core/strategies.py，三处改为 import 复用
+  files:
+  - core/strategies.py
+  - services/analyzer.py
+  - agents/signal_agent.py
+  - backtest/strategy_backtest.py
+  session: session-2026-07-14-epic-market-trace-v6
+  timestamp: '2026-07-20T10:14:18.531908'
+- error: Scanner 全市场扫描对 5000+ 股票串行太慢
+  fix: 分批并发处理（200 只/批），引入 rough_threshold 粗筛提前过滤
+  files:
+  - services/scanner.py
+  - core/strategies.py
+  session: session-2026-07-14-epic-market-trace-v6
+  timestamp: '2026-07-20T10:14:18.535115'
+- error: 前端JS变量泄露到全局 + JSX风格代码泄露到生产JS
+  fix: 提取 window.MT6 到 shared.js，确保在 tab-*.js 之前初始化
+  files:
+  - static/js/shared.js
+  - static/js/dashboard.js
+  - static/js/tab-*.js
+  session: session-2026-07-14-epic-market-trace-v6
+  timestamp: '2026-07-20T10:14:18.540346'
+anti_patterns:
+- name: 静默吞异常
+  description: '不要用 except Exception: pass 静默丢弃数据，必须至少记录 warning 日志'
+  session: session-2026-07-13-fix-breadth-data
+  timestamp: '2026-07-20T10:14:18.547898'
+- name: 硬编码指标计算
+  description: 不要在多处实现相同的技术指标计算（MACD/RSI/ATR），必须在 core/strategies.py 统一定义
+  session: session-2026-07-14-epic-market-trace-v6
+  timestamp: '2026-07-20T10:14:18.555295'
+style:
+- category: imports
+  description: 使用 from __future__ import annotations 在文件顶部
+  files:
+  - core/strategies.py
+  - services/analyzer.py
+  - core/chief_decision.py
+  session: session-2026-07-14-epic-market-trace-v6
+  timestamp: '2026-07-20T10:14:18.563125'
+- category: frontend
+  description: 前端 JS 应按功能模块拆分为 tab-*.js，避免单文件过大
+  files:
+  - static/js/dashboard.js
+  - static/js/tab-*.js
+  session: session-2026-07-14-epic-market-trace-v6
+  timestamp: '2026-07-20T10:14:18.571444'
+- category: error_handling
+  description: 异步函数统一使用 httpx 替代 requests，避免阻塞事件循环
+  files:
+  - services/prefetch.py
+  session: session-2026-07-14-epic-market-trace-v6
+  timestamp: '2026-07-20T10:14:18.583625'
+architecture:
+- decision: 统一策略注册
+  rationale: core/strategies.py 的 STRATEGIES 字典被诊股/选股/回测三方共用，消除重复维护
+  session: session-2026-07-14-epic-market-trace-v6
+  timestamp: '2026-07-20T10:14:18.596483'
+- decision: 共享 ChiefDecision 引擎
+  rationale: core/chief_decision.py 被 Agent 事件路径和 Web API 路径双路径调用，确保决策逻辑一致
+  session: session-2026-07-14-epic-market-trace-v6
+  timestamp: '2026-07-20T10:14:18.609252'
+- decision: 数据源三层降级
+  rationale: 诊股数据获取顺序 Tushare -> AkShare -> 腾讯实时价修正，任一失败自动降级
+  session: session-2026-07-13-fix-breadth-data
+  timestamp: '2026-07-20T10:14:18.622131'

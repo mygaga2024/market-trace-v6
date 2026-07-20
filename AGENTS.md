@@ -13,6 +13,7 @@
 □ git add + git commit + git push 已执行
 □ PROJECT_STATUS.md 已更新
 □ Memory Session 已记录
+□ 进化数据已写入 (.project_evolution.yaml)
 □ 临时文件已清理
 □ git status 显示 clean
 ```
@@ -54,6 +55,12 @@ docker ps --filter name=mt6-app 2>/dev/null || echo "无 Docker，跳过"
 curl -s localhost:19377/health            # API 健康检查
 ```
 
+### 5. 项目进化数据
+```
+python3 -c "from core.self_evolution import get_evolution_context; print(get_evolution_context())"
+```
+读取跨会话积累的修复模式、反模式、代码风格偏好。遇到类似错误时优先尝试已记录的修复方案，严格遵守反模式禁止规则。
+
 违反后果：跳过步骤视为失职，可能基于过期信息决策。
 
 ## 会话结束
@@ -62,11 +69,18 @@ curl -s localhost:19377/health            # API 健康检查
 
 1. 创建 `Session` 类型实体，命名格式 `session-YYYY-MM-DD-简要描述`
 2. 记录内容：改了什么、为什么改、涉及哪些文件、commit hash、测试结果
-3. 同步更新 `LLM Fallback Chain` 实体（如有改动）
-4. 执行 `git commit` 提交所有更改
-5. 更新 `PROJECT_STATUS.md` 的修复记录表
-6. 清理临时文件：`__pycache__`、`.pytest_cache`、`*.pyc`、`logs/`、`.DS_Store` 等
-7. 三地同步：`git push origin main`（敏感文件已在 .gitignore 排除）
+3. **写入项目进化数据**：将本会话新发现的修复模式、反模式、风格偏好写入 `.project_evolution.yaml`
+   ```
+   python3 -c "
+   from core.self_evolution import add_fix, add_anti_pattern, add_style_pattern, add_architecture
+   # 示例: add_fix('error sig', 'fix desc', ['file.py'], 'session-xxx')
+   "
+   ```
+4. 同步更新 `LLM Fallback Chain` 实体（如有改动）
+5. 执行 `git commit` 提交所有更改
+6. 更新 `PROJECT_STATUS.md` 的修复记录表
+7. 清理临时文件：`__pycache__`、`.pytest_cache`、`*.pyc`、`logs/`、`.DS_Store` 等
+8. 三地同步：`git push origin main`（敏感文件已在 .gitignore 排除）
 
 ## 任务交付前
 

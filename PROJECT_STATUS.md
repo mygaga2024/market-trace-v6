@@ -13,7 +13,7 @@
 
 | 日期 | Commit | 修复内容 |
 |------|--------|---------|
-| 2026-07-14 | `6725db8` | 修复前端JS加载顺序：提取window.MT6到shared.js，确保在tab-*.js之前初始化 |
+| 2026-07-20 | — | 新增项目自我进化模块: core/self_evolution.py + .project_evolution.yaml + 13项测试 + opencode skill |
 | 2026-07-14 | `535b914` | 全模块评估+7项P1修复: 统一技术指标/Scanner并发/版本1.2.0/prefetch httpx/前端拆分/粗筛去重/dev_server补全mock |
 | 2026-07-01 | `1893cd1` | 风控等级卡死修复: get_risk_state()增加_auto_heal自愈 + main.py小时级定时clear_daily_counters |
 | 2026-07-01 | `e5af383` | 涨跌家数补充科创板(sh688xxx)+涨跌颜色按国内习惯(红涨绿跌) |
