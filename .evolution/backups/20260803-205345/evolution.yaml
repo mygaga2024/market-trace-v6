@@ -1,6 +1,6 @@
 version: 2
 created: '2026-07-20T10:14:18.528063'
-updated: '2026-08-03T20:53:45.347471'
+updated: '2026-07-20T11:21:03.732802'
 self_evolution_enabled: true
 fixes:
 - error: 涨跌家数数据严重失真（只覆盖3984只，73%）
@@ -53,53 +53,6 @@ fixes:
   - ~/.config/opencode/skills/project-evolve/evolution.py
   session: session-2026-07-20-project-evolve
   timestamp: '2026-07-20T11:21:03.653004'
-- error: '认证形同虚设: / 无条件发 session cookie'
-  fix: 新增 /login 登录页(API_TOKEN 换取 cookie), / 仅对已认证请求发 cookie; verify_token 与 login
-    用 secrets.compare_digest
-  files:
-  - api/kline.py
-  - api/deps.py
-  - static/js/shared.js
-  - tests/test_auth.py
-  session: session-2026-08-03-security-fix
-  timestamp: '2026-08-03T20:53:45.038296'
-- error: dev_server 静态文件路径遍历可读任意文件
-  fix: resolve + relative_to 校验, 越界返回 403; 新增运行时测试
-  files:
-  - dev_server.py
-  - tests/test_webui.py
-  session: session-2026-08-03-security-fix
-  timestamp: '2026-08-03T20:53:45.067849'
-- error: 无 Redis 模式数据链路 AttributeError 静默失败
-  fix: cache_and_publish*/各 provider 裸 bus 调用统一判空; main.py 降级日志改诚实(API 直连模式)
-  files:
-  - data_provider/base.py
-  - data_provider/akshare_impl.py
-  - data_provider/tushare_impl.py
-  - data_provider/fallback_handler.py
-  session: session-2026-08-03-security-fix
-  timestamp: '2026-08-03T20:53:45.098345'
-- error: Chief 微信通知永不生效
-  fix: main.py _start_agents 传 notifier; payload 从 signal 报告提取 symbol + 缓存取最新价
-  files:
-  - agents/chief_analyst.py
-  - main.py
-  session: session-2026-08-03-security-fix
-  timestamp: '2026-08-03T20:53:45.130402'
-- error: MACD 值 None 时 LLM prompt 构建 TypeError 全链退化
-  fix: format 前整体判空 dif/dea/histogram
-  files:
-  - core/llm_factory.py
-  - tests/test_chief.py
-  session: session-2026-08-03-security-fix
-  timestamp: '2026-08-03T20:53:45.163899'
-- error: 凯利公式 avg_win=0 除零
-  fix: 提前返回 0.0 条件补 avg_win<=0
-  files:
-  - core/position_sizing.py
-  - tests/test_risk_manager.py
-  session: session-2026-08-03-security-fix
-  timestamp: '2026-08-03T20:53:45.198345'
 anti_patterns:
 - name: 静默吞异常
   description: '不要用 except Exception: pass 静默丢弃数据，必须至少记录 warning 日志'
@@ -113,20 +66,6 @@ anti_patterns:
   description: 进化数据写入前必须先 backup() 创建快照，否则无法回滚错误变更
   session: session-2026-07-20-project-evolve
   timestamp: '2026-07-20T11:21:03.678664'
-- name: from api.deps import _API_TOKEN 拿值副本
-  description: monkeypatch api.deps 不影响已 import 方; 测试需分别 patch api.deps 与 api.kline
-    模块属性; 产品代码优先模块引用
-  session: session-2026-08-03-security-fix
-  timestamp: '2026-08-03T20:53:45.234045'
-- name: 测试环境被 load_dotenv 污染
-  description: main.py 加载 env 文件会注入 API_TOKEN 使全量受保护端点 401; conftest.py 预置 API_TOKEN=""
-    利用 override=False 不覆盖语义屏蔽
-  session: session-2026-08-03-security-fix
-  timestamp: '2026-08-03T20:53:45.270903'
-- name: dict 字面量 {**kw} 同名键陷阱
-  description: make_signal_report(data=...) 不会覆盖默认 data, 而是挂成 data["data"] 子键; 覆盖应传具体字段名(indicators=...)
-  session: session-2026-08-03-security-fix
-  timestamp: '2026-08-03T20:53:45.308774'
 style:
 - category: imports
   description: 使用 from __future__ import annotations 在文件顶部
@@ -167,13 +106,6 @@ style:
   - tests/test_self_evolution.py
   session: session-2026-07-20-project-evolve
   timestamp: '2026-07-20T11:21:03.704532'
-- category: 安全修复配套
-  description: 每个安全修复带回归测试(test_auth.py 认证全流程/dev_server 运行时遍历测试)+ 运行时 curl 实测验证
-  files:
-  - tests/test_auth.py
-  - tests/test_webui.py
-  session: session-2026-08-03-security-fix
-  timestamp: '2026-08-03T20:53:45.347463'
 architecture:
 - decision: 统一策略注册
   rationale: core/strategies.py 的 STRATEGIES 字典被诊股/选股/回测三方共用，消除重复维护
