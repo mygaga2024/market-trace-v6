@@ -139,9 +139,24 @@ class ChiefAnalyst(BaseAgent):
 
     async def _publish_decision(self, decision: Decision) -> None:
         """发布最终决策到 Redis"""
+        # 通知字段：symbol/price 从 signal 报告提取（P1-2 修复）
+        symbol = ""
+        price = 0.0
+        signal_report = self._reports.get("signal")
+        if signal_report and signal_report.data:
+            symbol = str(signal_report.data.get("symbol", ""))
+            if symbol and self.bus is not None:
+                try:
+                    cached = await self.bus.cache_get(f"market:raw:{symbol}")
+                    if cached:
+                        price = float(cached[-1].get("close", 0) or 0)
+                except Exception as e:
+                    logger.debug("Chief 通知取价失败: {}", e)
         payload = {
             "event": "DECISION_FINAL",
             "decision_id": decision.decision_id,
+            "symbol": symbol,
+            "price": price,
             "action": decision.action.value,
             "confidence": decision.confidence,
             "reasoning": decision.reasoning,

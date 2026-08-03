@@ -2,7 +2,7 @@
 
 ## 版本
 
-**1.2.0**
+**1.3.0**
 
 ## 已知问题
 
@@ -13,7 +13,7 @@
 
 | 日期 | Commit | 修复内容 |
 |------|--------|---------|
-| 2026-07-20 | — | 新增项目自我进化模块: core/self_evolution.py + .project_evolution.yaml + 13项测试 + opencode skill |
+| 2026-08-03 | — | 安全审查修复: S1 dev_server路径遍历403 + S2 /login登录流程(替换无条件发cookie) + S3 启动API_TOKEN预检 + compare_digest防时序攻击 + 默认无认证警告; P1: 无Redis模式判空/Chief通知接线(notifier+symbol+price)/MACD-None不崩溃/凯利除零; 顺手: watchlist非法JSON 400 / bus health_check_interval / stdout日志脱敏 / env加载 / 版本残留1.1.8→1.3.0 / env.example重复变量 / GitHub链接; 新增 test_auth.py 9项 + 修复测试 4项 (284 total) |
 | 2026-07-14 | `535b914` | 全模块评估+7项P1修复: 统一技术指标/Scanner并发/版本1.2.0/prefetch httpx/前端拆分/粗筛去重/dev_server补全mock |
 | 2026-07-01 | `1893cd1` | 风控等级卡死修复: get_risk_state()增加_auto_heal自愈 + main.py小时级定时clear_daily_counters |
 | 2026-07-01 | `e5af383` | 涨跌家数补充科创板(sh688xxx)+涨跌颜色按国内习惯(红涨绿跌) |

@@ -254,3 +254,40 @@ def test_dev_server_mocks_all_endpoints():
 
     for ep in sorted(stripped):
         assert ep in dev_content, f"dev_server.py 缺少端点 mock: {ep}"
+
+
+def test_dev_server_static_path_traversal_blocked():
+    """dev_server 静态文件服务应拦截路径遍历请求（S1 修复）"""
+    import sys
+    import threading
+    import urllib.error
+    import urllib.request
+
+    sys.path.insert(0, str(ROOT))
+    try:
+        import http.server
+        from dev_server import DevHandler
+
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), DevHandler)
+        port = server.server_address[1]
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            # 路径遍历：/static/../env 应被 403 拒绝而非返回项目根目录文件
+            # 禁用系统代理，防止 CI 环境 http_proxy 干扰本地请求
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            req = urllib.request.Request(f"http://127.0.0.1:{port}/static/../env")
+            with pytest.raises(urllib.error.HTTPError) as exc:
+                opener.open(req, timeout=5)
+            assert exc.value.code == 403
+
+            # 正常静态文件仍可访问
+            ok = opener.open(
+                f"http://127.0.0.1:{port}/static/css/dashboard.css", timeout=5
+            )
+            assert ok.status == 200
+        finally:
+            server.shutdown()
+            thread.join(timeout=5)
+    finally:
+        sys.path.remove(str(ROOT))

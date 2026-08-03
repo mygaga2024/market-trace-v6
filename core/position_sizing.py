@@ -23,7 +23,7 @@ def kelly_criterion(win_prob: float, avg_win: float, avg_loss: float, fraction: 
     Returns:
         建议仓位比例 (0-1)，max 25% 单票
     """
-    if avg_loss <= 0 or win_prob <= 0:
+    if avg_loss <= 0 or avg_win <= 0 or win_prob <= 0:
         return 0.0
 
     b = avg_win / avg_loss  # 盈亏比

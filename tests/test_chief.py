@@ -173,6 +173,19 @@ class TestOpenAICompatibleLLM:
         assert "宏观报告" in prompt
         assert "技术信号报告" not in prompt
 
+    def test_build_prompt_macd_none_no_crash(self, llm):
+        """K线不足时 MACD 值为 None，prompt 构建不应崩溃（P1-3 修复）"""
+        reports = {
+            "macro": make_macro_report(),
+            "signal": make_signal_report(
+                indicators={"macd": {"dif": None, "dea": None, "histogram": None}, "rsi": 55.0},
+                signals=[], signal_count=0, reliability=0.5,
+            ),
+        }
+        prompt = llm._build_prompt(reports)
+        assert "技术信号报告" in prompt
+        assert "MACD: DIF=" not in prompt
+
     def test_parse_decision(self, llm):
         llm_result = {
             "action": "BUY",

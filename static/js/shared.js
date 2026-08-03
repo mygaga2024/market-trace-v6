@@ -55,6 +55,10 @@
       var isPost = options.method === 'POST';
       if (isPost) retries = 0;
       return fetch(url, options).then(function(r) {
+        if (r.status === 401 && !UTIL._loginPromptShown) {
+          UTIL._loginPromptShown = true;
+          UTIL.showToast('未登录：请访问 /login 完成认证', 'error');
+        }
         if (!r.ok && retries > 0 && r.status >= 500) {
           return new Promise(function(resolve) {
             setTimeout(function() { resolve(UTIL.fetchWithRetry(url, options, retries - 1, delay * 2)); }, delay);

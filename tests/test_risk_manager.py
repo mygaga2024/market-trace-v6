@@ -11,6 +11,14 @@ import pytest
 from core.risk_manager import RiskManager
 
 
+def test_kelly_criterion_zero_avg_win_returns_zero():
+    """avg_win=0 时凯利公式不应除零（P1-4 修复）"""
+    from core.position_sizing import kelly_criterion
+    assert kelly_criterion(0.6, 0.0, 1.0) == 0.0
+    assert kelly_criterion(0.6, 0.5, 0.0) == 0.0  # avg_loss=0 原有保护
+    assert kelly_criterion(0.0, 0.5, 1.0) == 0.0  # win_prob=0 原有保护
+
+
 @pytest.fixture
 def mock_bus():
     store: dict[str, dict] = {}

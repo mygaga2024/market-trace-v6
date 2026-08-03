@@ -28,6 +28,7 @@ class MessageBus:
         self._password = password or None
         self._max_connections = max_connections
         self._retry_interval = retry_interval
+        self._health_check_interval = health_check_interval
         self._redis: Optional[aioredis.Redis] = None
         self._subscribers: list[aioredis.client.PubSub] = []
         self._connected = False
@@ -51,7 +52,7 @@ class MessageBus:
                     max_connections=self._max_connections,
                     decode_responses=True,
                     socket_keepalive=True,
-                    health_check_interval=self._retry_interval,
+                    health_check_interval=self._health_check_interval,
                 )
                 await self._redis.ping()
                 self._connected = True

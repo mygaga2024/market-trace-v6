@@ -54,14 +54,14 @@ def make_route(path: str, method: str = "GET") -> str:
 def handle_health():
     uptime = (datetime.now(timezone.utc) - START_TIME).total_seconds()
     return json_response({
-        "status": "ok", "version": "1.1.8", "uptime_seconds": round(uptime, 1),
+        "status": "ok", "version": "1.3.0", "uptime_seconds": round(uptime, 1),
     })
 
 
 def handle_health_detail():
     uptime = (datetime.now(timezone.utc) - START_TIME).total_seconds()
     return json_response({
-        "status": "ok", "version": "1.1.8", "uptime_seconds": round(uptime, 1),
+        "status": "ok", "version": "1.3.0", "uptime_seconds": round(uptime, 1),
         "redis": "connected", "database": "connected",
         "agents": {"macro": True, "signal": True, "trace": True, "risk": True, "chief": True},
         "llm_chain": {
@@ -80,7 +80,7 @@ def handle_health_detail():
 def handle_status():
     uptime = (datetime.now(timezone.utc) - START_TIME).total_seconds()
     return json_response({
-        "version": "1.1.8", "uptime_seconds": round(uptime, 1),
+        "version": "1.3.0", "uptime_seconds": round(uptime, 1),
         "decision_stats": {"total": 42, "buy": 15, "sell": 8, "hold": 19},
         "case_stats": {"total": 128, "avg_outcome": 0.023, "win_rate": 0.62},
         "latest_decision": {
@@ -558,8 +558,15 @@ class DevHandler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(html.encode("utf-8"))
         elif path.startswith("/static/"):
+            # 路径规范化，防止 /static/../env 等路径遍历读取任意文件
+            static_root = STATIC_DIR.resolve()
+            try:
+                file_path = (STATIC_DIR / path[len("/static/"):]).resolve().relative_to(static_root)
+            except ValueError:
+                self.send_error(403, "Forbidden")
+                return
+            file_path = static_root / file_path
             self.send_response(200)
-            file_path = STATIC_DIR / path[len("/static/"):]
             if file_path.suffix == ".js":
                 self.send_header("Content-Type", "application/javascript; charset=utf-8")
             elif file_path.suffix == ".css":

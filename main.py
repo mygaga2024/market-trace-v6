@@ -25,6 +25,8 @@ from loguru import logger
 from core.log_filter import desensitize as log_filter
 
 load_dotenv()
+# 本地开发：仓库只有 env（无 .env），补充加载（不覆盖已注入的环境变量）
+load_dotenv(dotenv_path=Path(__file__).resolve().parent / "env", override=False)
 
 CONFIG_PATH = Path("config/settings.yaml")
 
@@ -60,7 +62,8 @@ logger.add(
 )
 logger.add(sys.stdout, level="INFO",
            format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>",
-           colorize=True)
+           colorize=True,
+           filter=log_filter)
 
 
 def _build_llm_chain(cfg: dict):
@@ -108,7 +111,7 @@ def _build_llm_chain(cfg: dict):
     return LLMFallbackChain(primary, secondary, tertiary, quaternary, quinary, senary, septenary, rule_based)
 
 
-def _start_agents(bus, config: dict, llm_chain, risk_manager=None, db=None) -> list[asyncio.Task]:
+def _start_agents(bus, config: dict, llm_chain, risk_manager=None, db=None, notifier=None) -> list[asyncio.Task]:
     from data_provider.akshare_impl import AkShareProvider
     from data_provider.tushare_impl import TushareProvider
     from core.memory import CaseMemory
@@ -141,7 +144,7 @@ def _start_agents(bus, config: dict, llm_chain, risk_manager=None, db=None) -> l
     risk = RiskAgent(bus, config, risk_manager=risk_manager)
     tasks.append(asyncio.create_task(risk.start(), name="risk-agent"))
 
-    chief = ChiefAnalyst(bus, config, llm_chain=llm_chain, db=db)
+    chief = ChiefAnalyst(bus, config, llm_chain=llm_chain, notifier=notifier, db=db)
     tasks.append(asyncio.create_task(chief.start(), name="chief-agent"))
 
     return tasks
@@ -196,6 +199,11 @@ async def lifespan(app: FastAPI):
     app.state.start_time = time.time()
     app.state.agent_tasks = []
 
+    # API Token 认证预检（S3）
+    _api_token = os.environ.get("API_TOKEN", "").strip()
+    if not _api_token or _api_token.startswith("your-"):
+        logger.warning("⚠️ API_TOKEN 未配置或仍为占位符：受保护 API 端点无认证保护，请设置 API_TOKEN，切勿将本服务暴露到公网")
+
     # Redis
     redis_cfg = CONFIG["redis"]
     bus_instance = MessageBus(
@@ -208,7 +216,7 @@ async def lifespan(app: FastAPI):
         app.state.bus = bus_instance
         logger.info("Redis 已连接")
     except Exception:
-        logger.warning("Redis 不可用，将以无 Redis 模式运行")
+        logger.warning("Redis 不可用：Agent 协作与数据发布不可用，系统降级为 API 直连模式（/analyze 等仍可工作）")
         app.state.bus = None
 
     # Database
@@ -247,7 +255,7 @@ async def lifespan(app: FastAPI):
                 logger.warning("风险等级自动降级失败: {}", e)
 
     # Agents
-    agent_tasks = _start_agents(app.state.bus, CONFIG, llm_chain, risk_manager, db=db)
+    agent_tasks = _start_agents(app.state.bus, CONFIG, llm_chain, risk_manager, db=db, notifier=notifier)
     agent_tasks.append(asyncio.create_task(_risk_auto_heal_loop(), name="risk-auto-heal"))
     app.state.agent_tasks = agent_tasks
     logger.info("{} 个 Agent 已启动", len(agent_tasks))
@@ -312,7 +320,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Market Trace V6.0",
     description="A/B 股量化分析系统 — 多 Agent 协作 + AI 决策",
-    version="1.2.0",
+    version="1.3.0",
     lifespan=lifespan,
 )
 

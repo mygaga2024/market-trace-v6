@@ -112,7 +112,7 @@ class TushareProvider(DataProviderBase):
         return result
 
     async def _fallback_kline(self, symbol: str, start: str, end: str, period: str = "daily") -> list[MarketData]:
-        cached = await self.bus.cache_get(f"market:raw:{symbol}")
+        cached = await self.bus.cache_get(f"market:raw:{symbol}") if self.bus else None
         if cached:
             return [MarketData(
                 symbol=r["symbol"], timestamp=datetime.fromisoformat(r["timestamp"]),

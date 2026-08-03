@@ -93,6 +93,9 @@ class DataProviderBase(ABC):
         1. 数据写入 Redis 缓存（key: market:raw:{symbol}）
         2. 发布事件通知所有订阅 Agent
         """
+        if self.bus is None:
+            # 无 Redis 模式：跳过缓存与发布，避免 AttributeError（P1-1）
+            return
         cache_key = f"market:raw:{symbol}"
         payload = [
             {
@@ -128,6 +131,9 @@ class DataProviderBase(ABC):
         event_type: str = "DATA_UPDATED",
     ) -> None:
         """非 K 线数据的缓存与发布（资金流向、宏观等）"""
+        if self.bus is None:
+            # 无 Redis 模式：跳过缓存与发布，避免 AttributeError（P1-1）
+            return
         ttl = self.config.get("anti_scraping", {}).get("max_cache_age_seconds", 300)
         await self.bus.cache_set(cache_key, data, ttl=ttl)
 

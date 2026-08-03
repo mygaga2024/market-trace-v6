@@ -178,7 +178,7 @@ class AkShareProvider(DataProviderBase):
     ) -> list[MarketData]:
         """降级：从 Redis 缓存读取"""
         logger.warning("AkShare K 线降级: 尝试从缓存读取 {}", symbol)
-        cached = await self.bus.cache_get(f"market:raw:{symbol}")
+        cached = await self.bus.cache_get(f"market:raw:{symbol}") if self.bus else None
         if cached:
             records = [
                 MarketData(
@@ -529,7 +529,8 @@ class AkShareProvider(DataProviderBase):
         await self.cache_and_publish_dict(results, "market:macro")
         # 延长 TTL 至 20 分钟（macRO 每 10 分钟采集，防止空窗期）
         try:
-            await self.bus.cache_set("market:macro", results, ttl=1200)
+            if self.bus:
+                await self.bus.cache_set("market:macro", results, ttl=1200)
         except Exception:
             pass
         return results
@@ -538,7 +539,7 @@ class AkShareProvider(DataProviderBase):
         """通用降级：读取相关缓存"""
         logger.warning("AkShare 数据请求降级")
         cache_key = kwargs.get("cache_key", "market:realtime")
-        cached = await self.bus.cache_get(cache_key)
+        cached = await self.bus.cache_get(cache_key) if self.bus else None
         if cached:
             cached["source"] = "cache:akshare"
             cached["degraded"] = True

@@ -51,12 +51,12 @@ async def verify_token(request: Request, authorization: str = Header(None)) -> N
     if not _API_TOKEN:
         return  # 未配置 token，跳过认证
     # 1) Bearer Token 认证 (外部 API 调用)
-    if authorization and authorization.startswith("Bearer ") and authorization[7:] == _API_TOKEN:
+    if authorization and authorization.startswith("Bearer ") and secrets.compare_digest(authorization[7:], _API_TOKEN):
         return
     # 2) httpOnly Cookie 认证 (仪表盘浏览器访问，Cookie 存的是 session token 而非原始 API_TOKEN)
     if request:
         cookie_val = request.cookies.get(SESSION_COOKIE_NAME, "")
-        if cookie_val and cookie_val == SESSION_TOKEN:
+        if cookie_val and secrets.compare_digest(cookie_val, SESSION_TOKEN):
             return
     if authorization and authorization.startswith("Bearer "):
         raise HTTPException(403, "API Token 无效")

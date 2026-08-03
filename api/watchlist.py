@@ -90,7 +90,10 @@ async def add_to_watchlist(request: Request):
     try:
         import json
         body = await request.body()
-        data = json.loads(body) if body else {}
+        try:
+            data = json.loads(body) if body else {}
+        except ValueError:
+            return JSONResponse({"error": "请求体不是合法 JSON"}, status_code=400)
         symbol = str(data.get("symbol", "")).strip()
         if not symbol:
             return JSONResponse({"error": "请提供股票代码"}, status_code=400)

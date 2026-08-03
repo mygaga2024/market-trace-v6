@@ -202,7 +202,8 @@ class OpenAICompatibleLLM(LLMInterface):
             parts.append("## 技术信号报告")
             if indicators.get("macd"):
                 m = indicators["macd"]
-                parts.append(f"- MACD: DIF={m['dif']:.4f}, DEA={m['dea']:.4f}, 柱={m['histogram']:.4f}")
+                if m.get("dif") is not None and m.get("dea") is not None and m.get("histogram") is not None:
+                    parts.append(f"- MACD: DIF={m['dif']:.4f}, DEA={m['dea']:.4f}, 柱={m['histogram']:.4f}")
             if indicators.get("rsi") is not None:
                 parts.append(f"- RSI: {indicators['rsi']:.2f}")
             if signals:
@@ -423,7 +424,7 @@ class LLMFallbackChain:
     4. tertiary 熔断/失败 → quaternary (Gemini Key2 备胎) → 成功则返回
     5. quaternary 熔断/失败 → quinary (GLM-4-Flash 免费) → 成功则返回
     6. quinary 熔断/失败 → senary (GLM-Z1-9B-0414 硅基流动免费) → 成功则返回
-    7. senary 熔断/失败 → septenary (ERNIE-Speed-8K 百度千帆免费) → 成功则返回
+    7. senary 熔断/失败 → septenary (ernie-speed-pro-128k 百度千帆免费) → 成功则返回
     8. 全部不可用 → RuleBasedAnalyzer 纯规则降级
     """
 

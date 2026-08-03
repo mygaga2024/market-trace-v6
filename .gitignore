@@ -43,3 +43,7 @@ dist/
 build/
 *.tar.gz
 *.whl
+
+# Reasonix 工具文件
+.reasonix/
+reasonix.toml

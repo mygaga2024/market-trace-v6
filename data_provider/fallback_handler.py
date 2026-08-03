@@ -69,7 +69,7 @@ class FallbackHandler:
             return None
 
         cache_key = f"market:raw:{symbol}"
-        cached = await self.bus.cache_get(cache_key)
+        cached = await self.bus.cache_get(cache_key) if self.bus else None
 
         if cached is None:
             logger.error("缓存完全未命中 [{}]: {}", source_name, symbol)
@@ -91,6 +91,8 @@ class FallbackHandler:
 
         severity = "critical" if consecutive >= self._max_unavailable else "warning"
 
+        if self.bus is None:
+            return
         await self.bus.publish("events:data", {
             "event": "DATA_MISSING",
             "symbol": symbol,

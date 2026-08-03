@@ -66,13 +66,21 @@ async def client(db):
 
 
 @pytest.mark.asyncio
+async def test_watchlist_add_invalid_json_400(client):
+    """watchlist 添加接口对非法 JSON 请求体应返回 400 而非 500（P2 修复）"""
+    resp = await client.post("/watchlist", content="{not-valid-json")
+    assert resp.status_code == 400
+    assert "JSON" in resp.json().get("error", "")
+
+
+@pytest.mark.asyncio
 async def test_health_ok(client):
     """公开端点仅返回精简状态"""
     response = await client.get("/health")
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "ok"
-    assert data["version"] == "1.2.0"
+    assert data["version"] == "1.3.0"
     # 精简端点不再暴露 redis/database/agents 等内部细节
     assert "redis" not in data
     assert "agents" not in data
@@ -87,7 +95,7 @@ async def test_health_detail(client):
     assert data["status"] == "ok"
     assert data["redis"] == "connected"
     assert data["database"] == "connected"
-    assert data["version"] == "1.2.0"
+    assert data["version"] == "1.3.0"
 
 
 @pytest.mark.asyncio
