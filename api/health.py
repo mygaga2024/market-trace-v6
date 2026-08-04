@@ -40,7 +40,7 @@ async def health(request: Request):
 
     return {
         "status": "ok" if all_ok else "degraded",
-        "version": "1.3.3",
+        "version": "1.3.4",
         "uptime_seconds": round(uptime, 1),
     }
 
@@ -89,7 +89,7 @@ async def health_detail(request: Request):
 
     return {
         "status": "ok" if all_ok else "degraded",
-        "version": "1.3.3",
+        "version": "1.3.4",
         "uptime_seconds": round(uptime, 1),
         "redis": "connected" if redis_ok else "disconnected",
         "database": "connected" if db_ok else "disconnected",
@@ -104,7 +104,7 @@ async def status(request: Request):
     """系统状态详情（需认证）"""
     db = request.app.state.db
     response: dict[str, Any] = {
-        "version": "1.3.3",
+        "version": "1.3.4",
         "uptime_seconds": round(time.time() - request.app.state.start_time, 1),
     }
 

@@ -144,7 +144,7 @@
       '<h4>诊股</h4><p>输入股票代码（如 000001），系统拉取 K 线 → 计算 14 项技术指标 → 检测 7 策略信号 → 调 LLM 做 AI 决策。结果包含完整的指标数值、策略命中、AI 建议和仓位计算。</p>' +
       '<h4>选股策略</h4><p>按策略（强势突破/超跌反弹/主力介入/风险预警）扫描股票池中的标的，返回匹配结果。</p>' +
       '<h4>全市场扫描</h4><p>对 5000+ A 股做全市场策略扫描（粗筛+深度检查），耗时约 5-30 秒。智能综合扫描会对有缓存 K 线的股票做 7 策略评分排序。</p></div>' +
-      '<p style="color:var(--text-muted);font-size:12px;text-align:center;margin-top:16px">版本 1.3.3 | Market Trace V6</p></div>';
+      '<p style="color:var(--text-muted);font-size:12px;text-align:center;margin-top:16px">版本 1.3.4 | Market Trace V6</p></div>';
   }
 
   window.TAB_REPORTS = { renderHealth: renderHealth, renderStatus: renderStatus, renderReportList: renderReportList, renderDecisions: renderDecisions, renderLogs: renderLogs, renderPaper: renderPaper, renderHelp: renderHelp };

@@ -927,3 +927,87 @@ html { scrollbar-width: thin; scrollbar-color: rgba(148, 163, 184, 0.25) var(--b
   .search-row, .strat-btn, .tab-bar, button { display: none; }
   .tab-panel { display: block !important; border-color: #ccc; }
 }
+
+/* ──────────────────────────────────────
+   1.3.4 结构性改版: 双栏仪表盘 + 全局 Tab 导航
+   ────────────────────────────────────── */
+
+/* 双栏容器 */
+.dash-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+/* 左栏: 监控卡片区 */
+.dash-left { min-width: 0; }
+.dash-left .grid {
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  margin-bottom: 20px;
+}
+
+/* 右栏: 数据面板区 */
+.dash-right { min-width: 0; }
+
+/* Tab 导航置顶跟随 */
+.dash-right .tab-bar {
+  position: sticky;
+  top: 10px;
+  z-index: 60;
+  box-shadow: var(--shadow-sm), 0 6px 24px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  background: rgba(20, 26, 38, 0.92);
+}
+.dash-right .tab-btn {
+  padding: 8px 12px;
+  font-size: 12.5px;
+}
+.dash-right .tab-btn.active::after { bottom: -6px; }
+
+/* 系统/数据 tab 分组分隔线 */
+.tab-sep {
+  width: 1px; align-self: stretch;
+  margin: 6px 4px;
+  background: linear-gradient(180deg, transparent, var(--border-strong), transparent);
+}
+
+/* 大屏: 双栏 (左 400px 监控 + 右 自适应) */
+@media (min-width: 1280px) {
+  .dash-layout {
+    grid-template-columns: 400px minmax(0, 1fr);
+  }
+  .dash-left .grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+  }
+  .dash-left .card { padding: 16px 16px; }
+  .dash-left .card-title { font-size: 10.5px; margin-bottom: 10px; }
+  .dash-left .rai-value { font-size: 40px; }
+  .dash-left .scan-section { display: none; }
+}
+
+/* 超宽屏微调 */
+@media (min-width: 1700px) {
+  .dash-layout { grid-template-columns: 460px minmax(0, 1fr); }
+}
+
+/* 移动端: 左栏卡片单列, tab 横向滚动 */
+@media (max-width: 768px) {
+  .dash-right .tab-bar {
+    position: static;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+  .dash-right .tab-btn { flex: 0 0 auto; }
+  .dash-left .grid { grid-template-columns: 1fr; }
+  .tab-sep { display: none; }
+}
+
+/* 左栏: 信息密集卡片跨双列 */
+.dash-left .card[aria-label="大盘指数"],
+.dash-left .card[aria-label="持仓列表"] {
+  grid-column: span 2;
+}

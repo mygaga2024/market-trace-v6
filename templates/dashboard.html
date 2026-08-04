@@ -6,16 +6,16 @@
 <title>Market Trace V6.0</title>
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 <link rel="manifest" href="/static/manifest.json">
-<meta name="theme-color" content="#0d1117">
+<meta name="theme-color" content="#0b0e14">
 <meta name="description" content="A/B 股量化分析系统">
-<link rel="stylesheet" href="/static/css/dashboard.css?v=1.3.3">
+<link rel="stylesheet" href="/static/css/dashboard.css?v=1.3.4">
 <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
 </head>
 <body>
 
 <header class="header" role="banner">
   <h1 aria-label="Market Trace 版本六点零">&#x1F4CA; Market Trace V6.0</h1>
-  <div style="display:flex;gap:8px;align-items:center">
+  <div class="header-right">
     <span id="auth-area">{{AUTH_STATE}}</span>
     <span id="sys-status" class="badge badge-ok" role="status" aria-live="polite">&#x25CF; 正常</span>
      <span class="refresh-indicator" id="refresh-indicator"><span class="dot-pulse" aria-hidden="true"></span> <span id="refresh-countdown">30s</span>后刷新</span>
@@ -23,16 +23,11 @@
 </header>
 
 <noscript>
-  <div style="background:var(--bg-red-subtle);border:1px solid var(--color-red);border-radius:8px;padding:12px;margin-bottom:10px;color:var(--color-red);font-size:14px" role="alert">&#x26A0;&#xFE0F; 请启用 JavaScript 以使用仪表盘功能</div>
+  <div style="background:var(--bg-rise-subtle);border:1px solid var(--color-red);border-radius:8px;padding:12px;margin-bottom:10px;color:var(--color-red);font-size:14px" role="alert">&#x26A0;&#xFE0F; 请启用 JavaScript 以使用仪表盘功能</div>
 </noscript>
 
 <main id="main-content" role="main">
-  <div class="toolbar-links">
-    <button class="toolbar-btn active" data-tab="health" onclick="switchTab('health')">&#x1FA7A; 健康检查</button>
-    <button class="toolbar-btn" data-tab="status" onclick="switchTab('status')">&#x1F4CB; 状态详情</button>
-    <button class="toolbar-btn" data-tab="logs" onclick="switchTab('logs')">&#x1F4DC; 系统日志</button>
-    <button class="toolbar-btn" data-tab="help" onclick="switchTab('help')">&#x2753; 帮助</button>
-  </div>
+
   <div class="search-row">
     <label for="stock-input" class="sr-only">股票代码</label>
     <input id="stock-input" type="text" placeholder="输入股票代码 如 000001" aria-label="输入股票代码，如零零零零零一">
@@ -42,121 +37,140 @@
   <div id="kline-chart" class="chart-container chart-container--hidden" role="img" aria-label="K线图"></div>
   <section id="analyze-result" style="display:none" aria-live="polite" aria-label="诊股结果"></section>
 
-  <div class="grid">
-    <section class="card" aria-label="风险偏好指数">
-      <h2 class="card-title">&#x1F9ED; 风险偏好指数 RAI</h2>
-      <div id="rai-value" class="rai-value rai-warm" aria-live="polite" aria-atomic="true">&mdash;</div>
-      <div id="rai-label" class="rai-label">加载中...</div>
-      <div class="bar-bg" role="progressbar" aria-valuenow="50" aria-valuemin="0" aria-valuemax="100" aria-label="RAI 进度条">
-        <div id="rai-bar" class="bar-fill" style="width:50%;background:var(--color-yellow)"></div>
-      </div>
-    </section>
+  <div class="dash-layout">
 
-    <section class="card" aria-label="大盘指数">
-      <h2 class="card-title">&#x1F4C8; 大盘指数</h2>
-      <div id="market-index-items" aria-live="polite">
-        <div style="color:var(--text-muted);font-size:13px">加载中...</div>
-      </div>
-    </section>
+    <!-- ── 左栏: 实时监控 ── -->
+    <div class="dash-left">
 
-    <section class="card" aria-label="持仓列表">
-      <h2 class="card-title">&#x1F4BC; 持仓列表</h2>
-      <div style="display:flex;gap:6px;margin-bottom:10px">
-        <input id="watchlist-input" type="text" placeholder="股票代码 如 000001" style="flex:1;padding:6px 10px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-input);color:var(--text-primary);font-size:13px" aria-label="添加股票代码">
-        <button id="watchlist-add-btn" onclick="addToWatchlist()" style="padding:6px 12px;background:var(--btn-primary-bg);border:none;border-radius:6px;color:#fff;font-size:13px;cursor:pointer;white-space:nowrap">+ 添加</button>
-        <button id="watchlist-refresh-btn" onclick="refreshWatchlist()" style="padding:6px 12px;background:var(--btn-primary-bg);border:none;border-radius:6px;color:#fff;font-size:13px;cursor:pointer;white-space:nowrap" title="刷新价格">刷新列表</button>
-      </div>
-      <div id="watchlist-items" aria-live="polite" style="max-height:280px;overflow-y:auto">
-        <div style="color:var(--text-muted);font-size:13px">加载中...</div>
-      </div>
-    </section>
+      <div class="grid">
+        <section class="card" aria-label="风险偏好指数">
+          <h2 class="card-title">&#x1F9ED; 风险偏好指数 RAI</h2>
+          <div id="rai-value" class="rai-value rai-warm" aria-live="polite" aria-atomic="true">&mdash;</div>
+          <div id="rai-label" class="rai-label">加载中...</div>
+          <div class="bar-bg" role="progressbar" aria-valuenow="50" aria-valuemin="0" aria-valuemax="100" aria-label="RAI 进度条">
+            <div id="rai-bar" class="bar-fill" style="width:50%;background:var(--color-yellow)"></div>
+          </div>
+        </section>
 
-    <section class="card" aria-label="运行中的 Agent">
-      <h2 class="card-title">&#x1F916; 运行 Agent <span id="agent-count" style="color:var(--accent-blue)">5/5</span></h2>
-      <div class="agent-grid">
-        <div class="agent-dot"><span class="dot dot-on" aria-hidden="true"></span>宏观 Macro</div>
-        <div class="agent-dot"><span class="dot dot-on" aria-hidden="true"></span>信号 Signal</div>
-        <div class="agent-dot"><span class="dot dot-on" aria-hidden="true"></span>资金 Trace</div>
-        <div class="agent-dot"><span class="dot dot-on" aria-hidden="true"></span>风控 Risk</div>
-        <div class="agent-dot"><span class="dot dot-on" aria-hidden="true"></span>决策 Chief</div>
-      </div>
-    </section>
+        <section class="card" aria-label="大盘指数">
+          <h2 class="card-title">&#x1F4C8; 大盘指数</h2>
+          <div id="market-index-items" aria-live="polite">
+            <div style="color:var(--text-muted);font-size:13px">加载中...</div>
+          </div>
+        </section>
 
-    <section class="card" aria-label="AI 决策链">
-      <h2 class="card-title">&#x1F4E1; AI 决策链</h2>
-      <div id="llm-chain" aria-live="polite">加载中...</div>
-    </section>
+        <section class="card" aria-label="持仓列表">
+          <h2 class="card-title">&#x1F4BC; 持仓列表</h2>
+          <div style="display:flex;gap:6px;margin-bottom:10px">
+            <input id="watchlist-input" type="text" placeholder="股票代码 如 000001" style="flex:1;padding:6px 10px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-input);color:var(--text-primary);font-size:13px" aria-label="添加股票代码">
+            <button id="watchlist-add-btn" onclick="addToWatchlist()" style="padding:6px 12px;background:var(--btn-primary-bg);border:none;border-radius:6px;color:#fff;font-size:13px;cursor:pointer;white-space:nowrap">+ 添加</button>
+            <button id="watchlist-refresh-btn" onclick="refreshWatchlist()" style="padding:6px 12px;background:var(--btn-primary-bg);border:none;border-radius:6px;color:#fff;font-size:13px;cursor:pointer;white-space:nowrap" title="刷新价格">刷新列表</button>
+          </div>
+          <div id="watchlist-items" aria-live="polite" style="max-height:280px;overflow-y:auto">
+            <div style="color:var(--text-muted);font-size:13px">加载中...</div>
+          </div>
+        </section>
 
-    <section class="card risk-card" aria-label="风控闭环">
-      <h2 class="card-title">&#x1F6E1; 风控闭环</h2>
-      <div id="risk-level-display" aria-live="polite">
-        <span class="risk-indicator risk-loading">加载中...</span>
+        <section class="card" aria-label="运行中的 Agent">
+          <h2 class="card-title">&#x1F916; 运行 Agent <span id="agent-count" style="color:var(--accent-blue)">5/5</span></h2>
+          <div class="agent-grid">
+            <div class="agent-dot"><span class="dot dot-on" aria-hidden="true"></span>宏观 Macro</div>
+            <div class="agent-dot"><span class="dot dot-on" aria-hidden="true"></span>信号 Signal</div>
+            <div class="agent-dot"><span class="dot dot-on" aria-hidden="true"></span>资金 Trace</div>
+            <div class="agent-dot"><span class="dot dot-on" aria-hidden="true"></span>风控 Risk</div>
+            <div class="agent-dot"><span class="dot dot-on" aria-hidden="true"></span>决策 Chief</div>
+          </div>
+        </section>
+
+        <section class="card" aria-label="AI 决策链">
+          <h2 class="card-title">&#x1F4E1; AI 决策链</h2>
+          <div id="llm-chain" aria-live="polite">加载中...</div>
+        </section>
+
+        <section class="card risk-card" aria-label="风控闭环">
+          <h2 class="card-title">&#x1F6E1; 风控闭环</h2>
+          <div id="risk-level-display" aria-live="polite">
+            <span class="risk-indicator risk-loading">加载中...</span>
+          </div>
+          <div id="risk-stats" style="margin-top:12px;font-size:13px;color:var(--text-secondary);display:flex;gap:16px;flex-wrap:wrap">
+            <span>否决: <strong id="risk-override-count">&mdash;</strong></span>
+            <span>事件: <strong id="risk-event-count">&mdash;</strong></span>
+          </div>
+        </section>
+
       </div>
-      <div id="risk-stats" style="margin-top:12px;font-size:13px;color:var(--text-secondary);display:flex;gap:16px;flex-wrap:wrap">
-        <span>否决: <strong id="risk-override-count">&mdash;</strong></span>
-        <span>事件: <strong id="risk-event-count">&mdash;</strong></span>
-      </div>
-    </section>
+
+      <section id="decision-area" class="decision-box" style="display:none" aria-live="polite" aria-label="最新决策">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap">
+          <h2 class="card-title" style="margin-bottom:0">&#x1F4C8; 最新决策</h2>
+          <span id="decision-action"></span>
+          <span style="color:var(--text-secondary);font-size:13px">置信度 <strong id="decision-conf"></strong></span>
+        </div>
+        <div id="decision-reason" style="font-size:14px;color:var(--text-secondary);line-height:1.6"></div>
+        <div style="margin-top:8px;font-size:12px;color:var(--text-muted)">AI: <span id="decision-provider"></span></div>
+      </section>
+
+    </div>
+
+    <!-- ── 右栏: 数据面板 ── -->
+    <div class="dash-right">
+
+      <nav class="tab-bar" role="tablist" aria-label="数据面板">
+        <button class="tab-btn active" role="tab" aria-selected="true" data-tab="health" onclick="switchTab('health')">&#x1FA7A; 健康检查</button>
+        <button class="tab-btn" role="tab" aria-selected="false" data-tab="status" onclick="switchTab('status')">&#x1F4CB; 状态详情</button>
+        <button class="tab-btn" role="tab" aria-selected="false" data-tab="logs" onclick="switchTab('logs')">&#x1F4DC; 系统日志</button>
+        <span class="tab-sep" aria-hidden="true"></span>
+        <button class="tab-btn" role="tab" aria-selected="false" data-tab="reports" onclick="switchTab('reports')">&#x1F4CA; 宏观报告</button>
+        <button class="tab-btn" role="tab" aria-selected="false" data-tab="signal" onclick="switchTab('signal')">&#x1F4C9; 信号报告</button>
+        <button class="tab-btn" role="tab" aria-selected="false" data-tab="trace" onclick="switchTab('trace')">&#x1F4B9; 资金报告</button>
+        <button class="tab-btn" role="tab" aria-selected="false" data-tab="decisions" onclick="switchTab('decisions')">&#x1F9E0; 决策历史</button>
+        <button class="tab-btn" role="tab" aria-selected="false" data-tab="risk-history" onclick="switchTab('risk-history')">&#x1F6E1; 风控历史</button>
+        <button class="tab-btn" role="tab" aria-selected="false" data-tab="backtest" onclick="switchTab('backtest')">&#x1F4CA; 策略回测</button>
+        <button class="tab-btn" role="tab" aria-selected="false" data-tab="paper" onclick="switchTab('paper')">&#x1F4B0; 纸上交易</button>
+        <button class="tab-btn" role="tab" aria-selected="false" data-tab="help" onclick="switchTab('help')">&#x2753; 帮助</button>
+        <button class="tab-refresh-btn" onclick="refreshActiveTab()" title="刷新当前面板" aria-label="刷新当前面板">&#x1F504;</button>
+      </nav>
+      <section class="tab-panel active" id="tab-panel" role="tabpanel" aria-label="数据面板内容">
+        <div class="spinner">&#x23F3; 加载中...</div>
+      </section>
+      <div id="backtest-chart" class="chart-container chart-container--compact" style="display:none" role="img" aria-label="策略对比图"></div>
+
+      <section class="scan-section" aria-label="选股策略">
+        <h2 class="card-title" style="margin-bottom:10px">&#x1F3AF; 选股策略
+          <span style="font-size:12px;color:var(--text-muted);margin-left:8px">股票池扫描</span>
+        </h2>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+          <button onclick="screenStocks('breakout')" class="strat-btn">&#x1F525; 强势突破</button>
+          <button onclick="screenStocks('oversold')" class="strat-btn">&#x1F48E; 超跌反弹</button>
+          <button onclick="screenStocks('strength')" class="strat-btn">&#x1F4B0; 主力介入</button>
+          <button onclick="screenStocks('risk')" class="strat-btn">&#x1F4C9; 风险预警</button>
+        </div>
+        <div id="screen-results" style="display:none" aria-live="polite" aria-label="选股结果"></div>
+
+        <h2 class="card-title" style="margin:16px 0 10px">&#x1F50D; 全市场扫描
+          <span style="font-size:12px;color:var(--text-muted);margin-left:8px">5000+ A股</span>
+        </h2>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+          <button onclick="fullScan('breakout')" class="strat-btn strat-btn-primary">&#x1F525; 突破</button>
+          <button onclick="fullScan('oversold')" class="strat-btn strat-btn-primary">&#x1F48E; 超跌</button>
+          <button onclick="fullScan('strength')" class="strat-btn strat-btn-primary">&#x1F4B0; 主力</button>
+          <button onclick="fullScan('risk')" class="strat-btn strat-btn-primary">&#x1F6E1; 风险</button>
+          <button onclick="fullScan('ma_golden_cross')" class="strat-btn strat-btn-primary">&#x1F4C8; 金叉</button>
+          <button onclick="fullScan('volume_breakout')" class="strat-btn strat-btn-primary">&#x1F4CA; 放量</button>
+          <button onclick="fullScan('rsi_reversal')" class="strat-btn strat-btn-primary">&#x1F504; RSI反转</button>
+          <button onclick="smartScan()" class="strat-btn strat-btn-smart">&#x1F9E0; 智能综合</button>
+        </div>
+        <div id="fullscan-results" style="display:none" aria-live="polite" aria-label="全市场扫描结果"></div>
+      </section>
+
+    </div>
 
   </div>
-
-  <section id="decision-area" class="decision-box" style="display:none" aria-live="polite" aria-label="最新决策">
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap">
-      <h2 class="card-title" style="margin-bottom:0">&#x1F4C8; 最新决策</h2>
-      <span id="decision-action"></span>
-      <span style="color:var(--text-secondary);font-size:13px">置信度 <strong id="decision-conf"></strong></span>
-    </div>
-    <div id="decision-reason" style="font-size:14px;color:var(--text-secondary);line-height:1.6"></div>
-    <div style="margin-top:8px;font-size:12px;color:var(--text-muted)">AI: <span id="decision-provider"></span></div>
-  </section>
-
-  <nav class="tab-bar" role="tablist" aria-label="数据面板">
-    <button class="tab-btn" role="tab" aria-selected="false" data-tab="reports" onclick="switchTab('reports')">&#x1F4CA; 宏观报告</button>
-    <button class="tab-btn" role="tab" aria-selected="false" data-tab="signal" onclick="switchTab('signal')">&#x1F4C9; 信号报告</button>
-    <button class="tab-btn" role="tab" aria-selected="false" data-tab="trace" onclick="switchTab('trace')">&#x1F4B9; 资金报告</button>
-    <button class="tab-btn" role="tab" aria-selected="false" data-tab="decisions" onclick="switchTab('decisions')">&#x1F9E0; 决策历史</button>
-    <button class="tab-btn" role="tab" aria-selected="false" data-tab="risk-history" onclick="switchTab('risk-history')">&#x1F6E1; 风控历史</button>
-    <button class="tab-btn" role="tab" aria-selected="false" data-tab="backtest" onclick="switchTab('backtest')">&#x1F4CA; 策略回测</button>
-    <button class="tab-btn" role="tab" aria-selected="false" data-tab="paper" onclick="switchTab('paper')">&#x1F4B0; 纸上交易</button>
-    <button class="tab-refresh-btn" onclick="refreshActiveTab()" title="刷新当前面板" aria-label="刷新当前面板">&#x1F504;</button>
-  </nav>
-  <section class="tab-panel active" id="tab-panel" role="tabpanel" aria-label="数据面板内容">
-    <div class="spinner">&#x23F3; 加载中...</div>
-  </section>
-  <div id="backtest-chart" class="chart-container chart-container--compact" style="display:none" role="img" aria-label="策略对比图"></div>
-
-  <section class="scan-section" aria-label="选股策略">
-    <h2 class="card-title" style="margin-bottom:10px">&#x1F3AF; 选股策略
-      <span style="font-size:12px;color:var(--text-muted);margin-left:8px">股票池扫描</span>
-    </h2>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-      <button onclick="screenStocks('breakout')" class="strat-btn">&#x1F525; 强势突破</button>
-      <button onclick="screenStocks('oversold')" class="strat-btn">&#x1F48E; 超跌反弹</button>
-      <button onclick="screenStocks('strength')" class="strat-btn">&#x1F4B0; 主力介入</button>
-      <button onclick="screenStocks('risk')" class="strat-btn">&#x1F4C9; 风险预警</button>
-    </div>
-    <div id="screen-results" style="display:none" aria-live="polite" aria-label="选股结果"></div>
-
-    <h2 class="card-title" style="margin:16px 0 10px">&#x1F50D; 全市场扫描
-      <span style="font-size:12px;color:var(--text-muted);margin-left:8px">5000+ A股</span>
-    </h2>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-      <button onclick="fullScan('breakout')" class="strat-btn strat-btn-primary">&#x1F525; 突破</button>
-      <button onclick="fullScan('oversold')" class="strat-btn strat-btn-primary">&#x1F48E; 超跌</button>
-      <button onclick="fullScan('strength')" class="strat-btn strat-btn-primary">&#x1F4B0; 主力</button>
-      <button onclick="fullScan('risk')" class="strat-btn strat-btn-primary">&#x1F6E1; 风险</button>
-      <button onclick="fullScan('ma_golden_cross')" class="strat-btn strat-btn-primary">&#x1F4C8; 金叉</button>
-      <button onclick="fullScan('volume_breakout')" class="strat-btn strat-btn-primary">&#x1F4CA; 放量</button>
-      <button onclick="fullScan('rsi_reversal')" class="strat-btn strat-btn-primary">&#x1F504; RSI反转</button>
-      <button onclick="smartScan()" class="strat-btn strat-btn-smart">&#x1F9E0; 智能综合</button>
-    </div>
-    <div id="fullscan-results" style="display:none" aria-live="polite" aria-label="全市场扫描结果"></div>
-  </section>
 </main>
 
 <footer class="footer" role="contentinfo">
   运行时间: <strong id="uptime">—</strong> &nbsp;|&nbsp;
-  版本 <span id="footer-version">1.3.3</span> &nbsp;|&nbsp;
+  版本 <span id="footer-version">1.3.4</span> &nbsp;|&nbsp;
   <a href="https://github.com/mygaga2024/market-trace-v6" style="color:var(--text-muted)">GitHub</a>
 </footer>
 
@@ -170,13 +184,13 @@
   </div>
 </div>
 
-<script src="/static/js/charts.js?v=1.3.3"></script>
-<script src="/static/js/shared.js?v=1.3.3"></script>
-<script src="/static/js/tab-analyze.js?v=1.3.3"></script>
-<script src="/static/js/tab-backtest.js?v=1.3.3"></script>
-<script src="/static/js/tab-risk.js?v=1.3.3"></script>
-<script src="/static/js/tab-reports.js?v=1.3.3"></script>
-<script src="/static/js/tab-watchlist.js?v=1.3.3"></script>
-<script src="/static/js/dashboard.js?v=1.3.3"></script>
+<script src="/static/js/charts.js?v=1.3.4"></script>
+<script src="/static/js/shared.js?v=1.3.4"></script>
+<script src="/static/js/tab-analyze.js?v=1.3.4"></script>
+<script src="/static/js/tab-backtest.js?v=1.3.4"></script>
+<script src="/static/js/tab-risk.js?v=1.3.4"></script>
+<script src="/static/js/tab-reports.js?v=1.3.4"></script>
+<script src="/static/js/tab-watchlist.js?v=1.3.4"></script>
+<script src="/static/js/dashboard.js?v=1.3.4"></script>
 </body>
 </html>
