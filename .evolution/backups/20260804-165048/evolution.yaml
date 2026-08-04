@@ -1,6 +1,6 @@
 version: 2
 created: '2026-07-20T10:14:18.528063'
-updated: '2026-08-04T14:11:33.952607'
+updated: '2026-08-04T14:24:06.197339'
 self_evolution_enabled: true
 fixes:
 - error: 涨跌家数数据严重失真（只覆盖3984只，73%）
@@ -125,6 +125,21 @@ fixes:
   - api/kline.py
   session: session-2026-08-04-auth-entry
   timestamp: '2026-08-04T14:11:33.952596'
+- error: Python 字符串 emoji 代理对编码崩溃
+  fix: Python 3 字符串写 \uD83D\uDD10 是 unpaired surrogate, HTMLResponse.encode 抛 UnicodeEncodeError;
+    必须用完整码点 \U0001F510 (JS 可写代理对, Python 不行)
+  files:
+  - api/kline.py
+  session: session-2026-08-04-auth-entry
+  timestamp: '2026-08-04T14:11:38.980538'
+- error: CSS 改版后忘记 cache-busting
+  fix: '改 CSS/JS 后必须同步 templates/dashboard.html 的 ?v= 版本号, 否则浏览器缓存旧样式导致用户看不到新界面; 版本号清单:
+    main.py/health.py/dev_server.py/dashboard.html/tab-reports.js/test_web.py/PROJECT_STATUS.md'
+  files:
+  - templates/dashboard.html
+  - main.py
+  session: session-2026-08-04-ui-redesign
+  timestamp: '2026-08-04T14:24:06.086550'
 anti_patterns:
 - name: 静默吞异常
   description: '不要用 except Exception: pass 静默丢弃数据，必须至少记录 warning 日志'
@@ -160,6 +175,14 @@ anti_patterns:
   description: fetch 把 401/非 OK 响应当成功数据传给 renderer 会渲染成「暂无数据」假象; 未认证时应明确引导登录而非静默空数据
   session: session-2026-08-04-tab-fix
   timestamp: '2026-08-04T13:56:03.268043'
+- name: 服务端渲染占位符残留
+  description: 模板 {{XXX}} 占位符若只被真机替换而 dev_server 直接 read_text 返回, 页面会残留字面量; 所有渲染路径(真机+dev_server)都必须处理占位符
+  session: session-2026-08-04-auth-entry
+  timestamp: '2026-08-04T14:11:39.032414'
+- name: 前端猜 httpOnly cookie 登录态
+  description: cookie 是 httpOnly 前端 JS 读不到; 登录态必须由服务端注入模板或提供状态端点
+  session: session-2026-08-04-auth-entry
+  timestamp: '2026-08-04T14:11:39.085474'
 style:
 - category: imports
   description: 使用 from __future__ import annotations 在文件顶部
@@ -215,6 +238,27 @@ style:
   - static/js/shared.js
   session: session-2026-08-04-tab-fix
   timestamp: '2026-08-04T13:56:03.314018'
+- category: 认证 UI 入口设计
+  description: 登录态由服务端注入模板({{AUTH_STATE}})而非前端 JS 猜测; 认证未启用时隐藏入口避免无意义点击; 登出后回登录页是自然闭环
+  files:
+  - api/kline.py
+  - templates/dashboard.html
+  session: session-2026-08-04-auth-entry
+  timestamp: '2026-08-04T14:11:39.140224'
+- category: UI 视觉对比验证法
+  description: playwright 截图 + PIL/numpy 像素统计对比新旧版本 (品牌光带强度/色调分布/std); 移动端用 390px
+    viewport 检查 scrollWidth 溢出; 必须 0 JS 错误 + 全 tab 回归
+  files:
+  - static/css/dashboard.css
+  session: session-2026-08-04-ui-redesign
+  timestamp: '2026-08-04T14:24:06.141794'
+- category: 深色金融终端设计规范
+  description: 背景多层径向渐变光晕+顶部品牌光带; 卡片内高光 inset 高光+hover 光晕+标题竖条; 边框用 rgba 而非纯色; 数字统一
+    tabular-nums; 按钮三级层次; 过渡 160ms cubic-bezier
+  files:
+  - static/css/dashboard.css
+  session: session-2026-08-04-ui-redesign
+  timestamp: '2026-08-04T14:24:06.197333'
 architecture:
 - decision: 统一策略注册
   rationale: core/strategies.py 的 STRATEGIES 字典被诊股/选股/回测三方共用，消除重复维护

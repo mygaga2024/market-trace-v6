@@ -1,6 +1,6 @@
 version: 2
 created: '2026-07-20T10:14:18.528063'
-updated: '2026-08-04T16:50:53.417172'
+updated: '2026-08-04T14:24:06.197339'
 self_evolution_enabled: true
 fixes:
 - error: 涨跌家数数据严重失真（只覆盖3984只，73%）
@@ -183,10 +183,6 @@ anti_patterns:
   description: cookie 是 httpOnly 前端 JS 读不到; 登录态必须由服务端注入模板或提供状态端点
   session: session-2026-08-04-auth-entry
   timestamp: '2026-08-04T14:11:39.085474'
-- name: 只换皮不改结构
-  description: 用户说界面丑时, 纯 CSS 换肤可能不被认可; 需先区分"视觉"与"结构"诉求, 结构性改版=重组布局(DOM 位置)而非只改样式
-  session: session-2026-08-04-layout-redesign
-  timestamp: '2026-08-04T16:50:53.291054'
 style:
 - category: imports
   description: 使用 from __future__ import annotations 在文件顶部
@@ -263,21 +259,6 @@ style:
   - static/css/dashboard.css
   session: session-2026-08-04-ui-redesign
   timestamp: '2026-08-04T14:24:06.197333'
-- category: 原生 JS 结构安全改版法
-  description: 只移动 DOM 位置、不改 id/class/onclick/aria → 双栏重组 JS 零改动; querySelectorAll
-    对删除的元素无害; 大屏双栏 grid(固定宽+minmax(0,1fr))+sticky 导航+移动端单列/横向滚动
-  files:
-  - templates/dashboard.html
-  - static/css/dashboard.css
-  session: session-2026-08-04-layout-redesign
-  timestamp: '2026-08-04T16:50:53.354051'
-- category: 双栏仪表盘布局
-  description: 左栏固定宽(400px)监控卡片 2 列+信息密集卡跨双列(grid-column:span 2); 右栏 minmax(0,1fr)
-    防溢出; tab 导航 sticky+毛玻璃; tab-sep 渐变竖线分组; 移动端 tab 横向滚动
-  files:
-  - static/css/dashboard.css
-  session: session-2026-08-04-layout-redesign
-  timestamp: '2026-08-04T16:50:53.417164'
 architecture:
 - decision: 统一策略注册
   rationale: core/strategies.py 的 STRATEGIES 字典被诊股/选股/回测三方共用，消除重复维护
