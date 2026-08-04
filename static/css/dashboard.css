@@ -1011,3 +1011,11 @@ html { scrollbar-width: thin; scrollbar-color: rgba(148, 163, 184, 0.25) var(--b
 .dash-left .card[aria-label="持仓列表"] {
   grid-column: span 2;
 }
+
+/* 左栏 grid: dense 流, 防止跨列卡片造成空洞错位 */
+.dash-left .grid { grid-auto-flow: dense; }
+
+/* RAI 卡内垂直节奏对齐 */
+.dash-left .rai-value { line-height: 1.05; }
+.dash-left .rai-label { margin-top: 5px; }
+.dash-left .bar-bg { margin-top: 11px; }
