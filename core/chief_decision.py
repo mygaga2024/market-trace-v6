@@ -10,6 +10,7 @@ from typing import Any, Optional
 from loguru import logger
 
 from core.llm_factory import LLMFallbackChain
+from core.strategies import DIVERGENCE_MIN_STRENGTH
 from core.schema import (
     AgentReport,
     Decision,
@@ -116,15 +117,15 @@ def evaluate_risk_sync(
     for sig in all_sigs:
         if isinstance(sig, dict) and sig.get("type") == "BEARISH_DIVERGENCE":
             strength = sig.get("strength", 0)
-            if strength > 0.8:
+            if strength >= DIVERGENCE_MIN_STRENGTH:
                 return ("critical", "强势顶背离 → 强制平仓/减仓")
 
-    if rai < 0.35 and trace_direction == "bullish":
+    if rai is not None and rai < 0.35 and trace_direction == "bullish":
         return (
             "warning",
             f"宏观极度悲观(RAI={rai:.2f}) vs 资金大幅流入({trace_direction})",
         )
-    if rai > 0.65 and trace_direction == "bearish":
+    if rai is not None and rai > 0.65 and trace_direction == "bearish":
         return (
             "warning",
             f"宏观过度乐观(RAI={rai:.2f}) vs 资金大幅流出({trace_direction})",

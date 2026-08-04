@@ -16,6 +16,9 @@ from loguru import logger
 from backtest.runner import PortfolioRunner, BacktestResult
 from core.strategies import STRATEGIES as STRATEGY_INFO, _calc_rsi, _calc_atr
 
+# 回测结果纳入排名所需的最小成交笔数（样本不足的统计无意义，1.3.7）
+MIN_TRADES_FOR_RESULT = 5
+
 # 保留 STRATEGIES labels 与 core/strategies.py 同步
 STRATEGIES = {k: v["label"] for k, v in STRATEGY_INFO.items()}
 
@@ -201,7 +204,7 @@ async def run_strategy_backtest(
                 result = _run_single_backtest(
                     symbol, strategy, label, signal_fn, closes, highs, lows, volumes, cached
                 )
-                if result and result.total_trades > 0:
+                if result and result.total_trades >= MIN_TRADES_FOR_RESULT:
                     symbol_results[strategy] = result.to_dict()
 
         if symbol_results:

@@ -15,7 +15,7 @@ from loguru import logger
 from agents.base_agent import BaseAgent
 from core.bus import MessageBus
 from core.schema import AgentReport, AgentName, ReportStatus, RiskOverride
-from core.strategies import _calc_atr
+from core.strategies import _calc_atr, DIVERGENCE_MIN_STRENGTH
 
 
 class RiskAgent(BaseAgent):
@@ -124,9 +124,9 @@ class RiskAgent(BaseAgent):
 
         macro_data = macro_report.data
         if isinstance(macro_data, dict):
-            rai = macro_data.get("risk_appetite_index", 0.5)
+            rai = macro_data.get("risk_appetite_index")
         else:
-            rai = 0.5
+            rai = None
 
         trace_data = trace_report.data
         if isinstance(trace_data, dict):
@@ -134,14 +134,14 @@ class RiskAgent(BaseAgent):
         else:
             direction = "neutral"
 
-        if rai < 0.35 and direction == "bullish":
+        if rai is not None and rai < 0.35 and direction == "bullish":
             return RiskOverride(
                 reason=f"宏观极度悲观(RAI={rai:.2f}) vs 资金大幅流入({direction})，强制置信度 x{self._conflict_multiplier}",
                 action="REDUCE_CONFIDENCE",
                 severity="warning",
                 source_agent=AgentName.RISK,
             )
-        elif rai > 0.65 and direction == "bearish":
+        elif rai is not None and rai > 0.65 and direction == "bearish":
             return RiskOverride(
                 reason=f"宏观过度乐观(RAI={rai:.2f}) vs 资金大幅流出({direction})，强制置信度 x{self._conflict_multiplier}",
                 action="REDUCE_CONFIDENCE",
@@ -160,7 +160,7 @@ class RiskAgent(BaseAgent):
         signals = signal_report.data.get("signals", [])
 
         for sig in signals:
-            if sig.get("type") == "BEARISH_DIVERGENCE" and sig.get("strength", 0) > 0.8:
+            if sig.get("type") == "BEARISH_DIVERGENCE" and sig.get("strength", 0) >= DIVERGENCE_MIN_STRENGTH:
                 return RiskOverride(
                     reason="强势顶背离 → 强制平仓/减仓",
                     action="FORCE_SELL",

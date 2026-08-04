@@ -221,6 +221,84 @@ class TestMacroAgent:
         assert MacroAgent._calc_breadth([]) == 0.5
 
 
+# ---- 1.3.7 高严重度修复测试 ----
+
+class TestHighSeverityFixes:
+    """RSI/MA 兜底、顶背离阈值脱节、回测小样本、RAI None 传播"""
+
+    def test_strategies_rsi_insufficient_returns_none(self):
+        from core.strategies import _calc_rsi, _calc_ma
+        assert _calc_rsi(np.array([1.0] * 10), 14) is None  # 10 < 15, 不再返回伪中性 50
+        assert _calc_ma(np.array([1.0] * 5), 20) is None    # 5 < 20, 不再拿现价冒充均线
+
+    def test_strategies_rsi_ma_normal_still_work(self):
+        from core.strategies import _calc_rsi, _calc_ma
+        closes = np.linspace(10, 20, 30)
+        rsi = _calc_rsi(closes, 14)
+        assert rsi is not None and 0 <= rsi <= 100
+        # arange(30): 最后 20 个为 10..29, 均值 19.5
+        assert _calc_ma(np.arange(30), 20) == pytest.approx(19.5)
+
+    def test_checks_safe_with_insufficient_data(self):
+        from core.strategies import check_oversold, check_risk, check_rsi_reversal
+        closes = np.array([1.0] * 5)
+        assert check_oversold(closes, closes, closes) is False
+        assert check_risk(closes, closes, closes) is False
+        assert check_rsi_reversal(closes, closes, closes) is False
+
+    def test_divergence_strength_is_measurable(self):
+        """顶背离强度由幅度计算, 应 >= 0.5 (可被风控捕获), 不再硬编码 0.7"""
+        agent = object.__new__(SignalAgent)
+        agent._divergence_lookback = 20
+        closep = np.array([10.0 + i * 0.2 for i in range(20)])      # 价格稳步创新高
+        rsi = np.concatenate([np.full(10, 65.0), np.linspace(65, 55, 10)])  # RSI 回落
+        signals = []
+        SignalAgent._detect_divergence(agent, closep, closep, closep, rsi, signals)
+        bear = [s for s in signals if s["type"] == "BEARISH_DIVERGENCE"]
+        assert bear, "应检测到顶背离"
+        assert bear[0]["strength"] >= 0.5
+        assert bear[0]["strength"] <= 1.0
+
+    def test_risk_override_fires_on_divergence(self):
+        """strength 0.6 的顶背离应触发 FORCE_SELL (修复 >0.8 永不触发)"""
+        from agents.risk_agent import RiskAgent
+        from core.schema import AgentReport, AgentName, ReportStatus
+        agent = RiskAgent.__new__(RiskAgent)
+        agent._latest_reports = {
+            "signal": AgentReport(
+                agent=AgentName.SIGNAL,
+                data={"signals": [{"type": "BEARISH_DIVERGENCE", "strength": 0.6}]},
+            )
+        }
+        override = agent._check_bearish_divergence()
+        assert override is not None
+        assert override.action == "FORCE_SELL"
+        assert override.severity == "critical"
+
+    def test_risk_conflict_skips_when_rai_none(self):
+        """宏观 RAI 缺失(None)时冲突检测跳过, 不崩溃 (修复 None>0.65 TypeError)"""
+        from agents.risk_agent import RiskAgent
+        from core.schema import AgentReport, AgentName
+        agent = RiskAgent.__new__(RiskAgent)
+        agent._conflict_multiplier = 0.3
+        agent._latest_reports = {
+            "macro": AgentReport(agent=AgentName.MACRO, data={"risk_appetite_index": None}),
+            "trace": AgentReport(agent=AgentName.TRACE, data={"direction": "bullish"}),
+        }
+        assert agent._check_conflict() is None
+
+    def test_chief_evaluate_risk_sync_rai_none(self):
+        """chief 同步风控: RAI 缺失时不崩溃"""
+        from core.chief_decision import evaluate_risk_sync
+        from core.schema import AgentReport, AgentName
+        reports = {
+            "macro": AgentReport(agent=AgentName.MACRO, data={"risk_appetite_index": None}),
+            "trace": AgentReport(agent=AgentName.TRACE, data={"direction": "bullish"}),
+        }
+        level, reason = evaluate_risk_sync(reports, daily_change_pct=0.5)
+        assert level is None and reason is None
+
+
 # ---- Signal Agent Tests ----
 
 class TestSignalAgent:

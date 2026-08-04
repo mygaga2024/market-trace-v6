@@ -253,13 +253,20 @@ class SignalAgent(BaseAgent):
         rsi_now = rsi_w[-1]
 
         if price_now > price_prev and rsi_now < rsi_prev:
-            signals.append({"type": "BEARISH_DIVERGENCE", "direction": "bearish", "strength": 0.7})
+            # 背离强度由幅度决定: 价格创新高的幅度 + RSI 回落幅度 (1.3.7 修复硬编码 0.7)
+            price_rise = (price_now - price_prev) / price_prev if price_prev > 0 else 0.0
+            rsi_drop = (rsi_prev - rsi_now) / 100.0
+            strength = min(1.0, 0.5 + price_rise * 5.0 + rsi_drop * 2.0)
+            signals.append({"type": "BEARISH_DIVERGENCE", "direction": "bearish", "strength": round(strength, 2)})
 
         price_prev_low = np.min(price[:idx_prev]) if idx_prev > 0 else price[0]
         rsi_prev_low = np.min(rsi_w[:idx_prev]) if idx_prev > 0 else rsi_w[0]
 
         if price_now < price_prev_low and rsi_now > rsi_prev_low:
-            signals.append({"type": "BULLISH_DIVERGENCE", "direction": "bullish", "strength": 0.7})
+            price_drop = (price_prev_low - price_now) / price_prev_low if price_prev_low > 0 else 0.0
+            rsi_rise = (rsi_now - rsi_prev_low) / 100.0
+            strength = min(1.0, 0.5 + price_drop * 5.0 + rsi_rise * 2.0)
+            signals.append({"type": "BULLISH_DIVERGENCE", "direction": "bullish", "strength": round(strength, 2)})
 
     def _estimate_reliability(
         self, symbol: str, closep: np.ndarray, signal_count: int, volumes: np.ndarray

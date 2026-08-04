@@ -6,7 +6,7 @@ Market Trace V6.0 — 统一策略定义
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 import numpy as np
 
@@ -56,9 +56,14 @@ STRATEGIES: dict[str, dict[str, Any]] = {
 }
 
 
-def _calc_rsi(closes: np.ndarray, period: int = 14) -> float:
+# 顶背离触发风控所需的最低强度（signal_agent 生成与 risk/chief 判断共用，防止阈值脱节）
+DIVERGENCE_MIN_STRENGTH = 0.5
+
+
+def _calc_rsi(closes: np.ndarray, period: int = 14) -> Optional[float]:
+    """RSI；数据不足返回 None（调用方需显式处理，不再用 50 兜底伪中性）"""
     if len(closes) < period + 1:
-        return 50.0
+        return None
     deltas = np.diff(closes[-period - 1:])
     gains = np.where(deltas > 0, deltas, 0)
     losses = np.where(deltas < 0, -deltas, 0)
@@ -69,9 +74,10 @@ def _calc_rsi(closes: np.ndarray, period: int = 14) -> float:
     return float(100 - 100 / (1 + avg_gain / avg_loss))
 
 
-def _calc_ma(closes: np.ndarray, period: int) -> float:
+def _calc_ma(closes: np.ndarray, period: int) -> Optional[float]:
+    """简单移动平均；数据不足返回 None（调用方需显式处理，不再拿现价冒充均线）"""
     if len(closes) < period:
-        return float(closes[-1])
+        return None
     return float(np.mean(closes[-period:]))
 
 
@@ -155,6 +161,8 @@ def check_oversold(closes: np.ndarray, highs: np.ndarray, volumes: np.ndarray,
     if len(closes) < max(rsi_period + 1, 6):
         return False
     rsi = _calc_rsi(closes, rsi_period)
+    if rsi is None:
+        return False
     drop = (closes[-1] - closes[-5]) / closes[-5] if len(closes) >= 6 else 0
     return bool(rsi < rsi_threshold and drop < -drop_pct)
 
@@ -174,6 +182,8 @@ def check_risk(closes: np.ndarray, highs: np.ndarray, volumes: np.ndarray,
     if len(closes) < max(rsi_period + 1, lookback + 1):
         return False
     rsi = _calc_rsi(closes, rsi_period)
+    if rsi is None:
+        return False
     return bool(rsi > rsi_threshold
                 and closes[-1] < closes[-2]
                 and volumes[-1] > np.mean(volumes[-lookback:-1]) * 1.1)
@@ -207,6 +217,8 @@ def check_rsi_reversal(closes: np.ndarray, highs: np.ndarray, volumes: np.ndarra
         return False
     rsi_now = _calc_rsi(closes, rsi_period)
     rsi_prev = _calc_rsi(closes[:-1], rsi_period)
+    if rsi_now is None or rsi_prev is None:
+        return False
     return bool(rsi_now < rsi_threshold and (rsi_now - rsi_prev) > delta_min)
 
 

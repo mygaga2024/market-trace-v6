@@ -152,12 +152,12 @@ async def analyze_single(
         prev_k = float(closes[-2]) if len(closes) > 1 else price
         change_pct = round((price - prev_k) / prev_k * 100, 2) if prev_k else 0
 
-    ma5 = round(_calc_ma(closes, 5), 2)
-    ma10 = round(_calc_ma(closes, 10), 2)
-    ma20 = round(_calc_ma(closes, 20), 2)
+    ma5 = round(_calc_ma(closes, 5), 2) if len(closes) >= 5 else None
+    ma10 = round(_calc_ma(closes, 10), 2) if len(closes) >= 10 else None
+    ma20 = round(_calc_ma(closes, 20), 2) if len(closes) >= 20 else None
     ma60 = round(_calc_ma(closes, 60), 2) if len(closes) >= 60 else None
 
-    rsi = round(_calc_rsi(closes, 14), 2)
+    rsi = round(_calc_rsi(closes, 14), 2) if len(closes) >= 15 else None
     macd = _calc_macd(closes)
     bollinger = _calc_bollinger(closes)
     atr = round(_calc_atr(highs, lows, closes), 2)
@@ -168,9 +168,9 @@ async def analyze_single(
     avg_vol_5 = round(float(np.mean(volumes[-5:])), 0) if len(volumes) >= 5 else 0
     avg_vol_20 = round(float(np.mean(volumes[-20:])), 0) if len(volumes) >= 20 else 0
 
-    # 趋势判断：优先用 ma60，不足时回退到 ma5/ma20
+    # 趋势判断：优先用 ma60，不足时回退到 ma5/ma20（任一缺失则不参与比较）
     trend = "sideways"
-    if ma20:
+    if ma20 is not None and ma5 is not None:
         if ma60 and ma5 > ma20 > ma60:
             trend = "bullish"
         elif ma60 and ma5 < ma20 < ma60:
@@ -179,7 +179,7 @@ async def analyze_single(
             trend = "bullish"
         elif ma5 < ma20:
             trend = "bearish"
-        elif ma5 and ma10:
+        elif ma10 is not None:
             if ma5 > ma10:
                 trend = "bullish"
             elif ma5 < ma10:
@@ -208,12 +208,12 @@ async def analyze_single(
                     "direction": "bullish" if name != "risk" else "bearish",
                     "strength": 0.7,
                 })
-                logger.info("策略命中: {} {} (RSI={:.1f})", symbol, name, rsi)
+                logger.info("策略命中: {} {} (RSI={})", symbol, name, rsi if rsi is not None else "N/A")
         except Exception:
             logger.warning("策略检测异常 strategy={}", name, exc_info=True)
 
-    logger.info("诊股 {}: trend={} RSI={:.1f} 策略命中{}个",
-                symbol, trend, rsi, len(strategy_signals))
+    logger.info("诊股 {}: trend={} RSI={} 策略命中{}个",
+                symbol, trend, rsi if rsi is not None else "N/A", len(strategy_signals))
 
     # ── Signal Agent 实时信号(从缓存读取) ──
     signal_agent_signals: list[dict] = []
@@ -251,12 +251,12 @@ async def analyze_single(
                 symbol, trend, rsi, len(strategy_signals), len(trace_signals), len(signal_agent_signals))
 
     # ── 宏观RAI ──
-    macro_rai = 0.5
+    macro_rai = None  # 缓存缺失时不兜底 0.5，显式标注数据缺失（1.3.7）
     macro_data = {}
     if bus:
         mc = await bus.cache_get("market:macro")
         if mc and isinstance(mc, dict):
-            macro_rai = mc.get("risk_appetite_index", 0.5)
+            macro_rai = mc.get("risk_appetite_index")
             macro_data = mc
 
     # ── 构建 AI 决策输入 ──
@@ -272,6 +272,7 @@ async def analyze_single(
             raw_indices = macro_data.get("indices", [])
             macro_reports_data = {
                 "risk_appetite_index": macro_rai,
+                "rai_available": macro_rai is not None,
                 "interpretation": interp,
                 "components": components,
                 "indices_summary": [
@@ -298,9 +299,12 @@ async def analyze_single(
             reports = {
                 "macro": AgentReport(
                     agent=AgentName.MACRO,
-                    summary=f"RAI={macro_rai:.2f} ({interp.get('regime', '未知')})",
+                    summary=(
+                        f"RAI={macro_rai:.2f} ({interp.get('regime', '未知')})"
+                        if macro_rai is not None else "宏观数据缺失"
+                    ),
                     data=macro_reports_data,
-                    confidence=abs(macro_rai - 0.5) * 2,
+                    confidence=abs(macro_rai - 0.5) * 2 if macro_rai is not None else 0.0,
                 ),
                 "signal": AgentReport(
                     agent=AgentName.SIGNAL,

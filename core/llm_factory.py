@@ -183,16 +183,21 @@ class OpenAICompatibleLLM(LLMInterface):
 
         macro = reports.get("macro")
         if macro and macro.data:
-            rai = macro.data.get("risk_appetite_index", 0.5)
+            rai = macro.data.get("risk_appetite_index")
             interp = macro.data.get("interpretation", {})
             components = macro.data.get("components", {})
             parts.append("## 宏观报告")
-            parts.append(f"- 风险偏好指数(RAI): {rai:.2f}")
-            parts.append(f"- 市场状态: {interp.get('regime', '未知')}")
-            parts.append(f"- 偏向: {interp.get('bias', 'neutral')}")
-            parts.append(f"- 涨跌比: {components.get('index_breadth', 'N/A')}")
-            parts.append(f"- 板块动量: {components.get('sector_momentum', 'N/A')}")
-            parts.append(f"> Agent结论: 宏观环境为{interp.get('bias', '中性')}，RAI={rai:.2f}")
+            if rai is None:
+                parts.append("- 风险偏好指数(RAI): 数据缺失（宏观报告不可用）")
+                parts.append("- 市场状态: 未知")
+                parts.append("- 偏向: unknown")
+            else:
+                parts.append(f"- 风险偏好指数(RAI): {rai:.2f}")
+                parts.append(f"- 市场状态: {interp.get('regime', '未知')}")
+                parts.append(f"- 偏向: {interp.get('bias', 'neutral')}")
+                parts.append(f"- 涨跌比: {components.get('index_breadth', 'N/A')}")
+                parts.append(f"- 板块动量: {components.get('sector_momentum', 'N/A')}")
+                parts.append(f"> Agent结论: 宏观环境为{interp.get('bias', '中性')}，RAI={rai:.2f}")
             parts.append("")
 
         signal = reports.get("signal")
@@ -338,11 +343,14 @@ class RuleBasedAnalyzer(LLMInterface):
         insights: list[str] = []
 
         if "macro" in reports and reports["macro"].data:
-            rai = reports["macro"].data.get("risk_appetite_index", 0.5)
+            rai = reports["macro"].data.get("risk_appetite_index")
             bias = reports["macro"].data.get("interpretation", {}).get("bias", "neutral")
-            macro_score = (rai - 0.5) * 2
-            score += macro_score * self.weights.get("macro", 0.25)
-            insights.append(f"宏观RAI={rai:.2f}({bias})")
+            if rai is not None:
+                macro_score = (rai - 0.5) * 2
+                score += macro_score * self.weights.get("macro", 0.25)
+                insights.append(f"宏观RAI={rai:.2f}({bias})")
+            else:
+                insights.append("宏观数据缺失")
 
         if "signal" in reports and reports["signal"].data:
             signals = reports["signal"].data.get("signals", [])
