@@ -2,7 +2,7 @@
 
 ## 版本
 
-**1.3.2**
+**1.3.3**
 
 ## 已知问题
 
@@ -13,6 +13,7 @@
 
 | 日期 | Commit | 修复内容 |
 |------|--------|---------|
+| 2026-08-04 | — | Web UI 视觉重构: 深空蓝黑金融终端风 — 背景径向渐变+顶部品牌光带+卡片内高光/悬浮光晕+tab 渐变高亮+表格/按钮/滚动条/模态/扫描区系统性打磨; 纯 CSS 强化(类名全保留) + scan-section 容器; 版本 1.3.2→1.3.3 |
 | 2026-08-04 | — | Web 登录/登出入口: header 工具栏新增认证状态区, 认证启用时显示「登录」链接(/login)或「登出」按钮; 登录态由服务端注入(api/kline.py _get_dashboard_html 渲染 {{AUTH_STATE}}) + 新增 POST /logout 清 cookie; dev_server 兼容替换; 版本 1.3.1→1.3.2; 新增 test_auth.py 4项 |
 | 2026-08-04 | — | Web 多 Tab 显示异常修复: 根因=API_TOKEN 占位符(your-*)被当作真实 token 启用认证, 浏览器未登录全部 API 401 被静默渲染成「暂无数据」; 修复: deps.py 占位符归一化为未配置(与 S3 语义一致) + shared.js 401 自动引导 /login; 版本 1.3.0→1.3.1; 新增 test_auth.py 4项 |
 | 2026-08-03 | — | 安全审查修复: S1 dev_server路径遍历403 + S2 /login登录流程(替换无条件发cookie) + S3 启动API_TOKEN预检 + compare_digest防时序攻击 + 默认无认证警告; P1: 无Redis模式判空/Chief通知接线(notifier+symbol+price)/MACD-None不崩溃/凯利除零; 顺手: watchlist非法JSON 400 / bus health_check_interval / stdout日志脱敏 / env加载 / 版本残留1.1.8→1.3.0 / env.example重复变量 / GitHub链接; 新增 test_auth.py 9项 + 修复测试 4项 (284 total) |
