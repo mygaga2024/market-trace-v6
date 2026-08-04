@@ -125,6 +125,56 @@ class TestMacroAgent:
         rai = MacroAgent._compute_rai_score({})
         assert rai == 0.5
 
+    def test_rai_breadth_only_no_sector_dilution(self):
+        """修复: 板块数据缺失时不再用 0.5 兜底稀释 (1.3.6)"""
+        rai = MacroAgent._compute_rai_score({"index_breadth": 1.0})
+        assert rai == 1.0
+        rai = MacroAgent._compute_rai_score({"index_breadth": 0.0})
+        assert rai == 0.0
+
+    def test_rai_with_position_factor(self):
+        """位置因子参与合成: breadth 0.6 + position 0.4"""
+        rai = MacroAgent._compute_rai_score({"index_breadth": 1.0, "position": 0.3})
+        assert rai == pytest.approx(0.72)
+        rai = MacroAgent._compute_rai_score({"index_breadth": 0.0, "position": 0.8})
+        assert rai == pytest.approx(0.32)
+
+    def test_rai_three_factors(self):
+        """breadth/sector/position 三因子: 0.4/0.3/0.3"""
+        rai = MacroAgent._compute_rai_score(
+            {"index_breadth": 1.0, "sector_momentum": 0.5, "position": 0.3}
+        )
+        assert rai == pytest.approx(0.64)
+
+    def test_rai_position_only(self):
+        """仅有位置因子时按 1.0 权重"""
+        rai = MacroAgent._compute_rai_score({"position": 0.8})
+        assert rai == 0.8
+
+    def test_calc_position(self):
+        """位置因子: 现价贴近一年高点 → 接近 1"""
+        from types import SimpleNamespace
+        # 59 天横盘后 +10% 跳涨, 现价=一年最高
+        closes = [100.0] * 59 + [110.0]
+        bars = [SimpleNamespace(close=c) for c in closes]
+        pos = MacroAgent._calc_position([{"code": "sh000001"}], {"sh000001": bars})
+        assert pos is not None
+        assert pos >= 0.9
+
+    def test_calc_position_low(self):
+        """现价贴近一年低点 → 接近 0"""
+        from types import SimpleNamespace
+        closes = [110.0] * 59 + [100.0]
+        bars = [SimpleNamespace(close=c) for c in closes]
+        pos = MacroAgent._calc_position([{"code": "sh000001"}], {"sh000001": bars})
+        assert pos is not None
+        assert pos <= 0.1
+
+    def test_calc_position_no_data(self):
+        """无 K 线数据 → None (不参与合成)"""
+        assert MacroAgent._calc_position([], {}) is None
+        assert MacroAgent._calc_position([{"code": "sh000001"}], {}) is None
+
     @pytest.mark.parametrize("rai,expected_bias", [
         (0.8, "bullish"),
         (0.6, "slightly_bullish"),
@@ -135,6 +185,29 @@ class TestMacroAgent:
     def test_interpret_rai(self, rai, expected_bias):
         result = MacroAgent._interpret_rai(rai)
         assert result["bias"] == expected_bias
+
+    def test_interpret_rai_low_position_high_rai(self):
+        """低位 + 高 RAI → 低位强势反弹(右侧机会), 不再误报追高风险"""
+        result = MacroAgent._interpret_rai(0.8, position=0.2)
+        assert result["regime"] == "低位强势反弹 - 右侧机会"
+        assert result["bias"] == "bullish"
+
+    def test_interpret_rai_high_position_high_rai(self):
+        """高位 + 高 RAI → 仍是追高风险"""
+        result = MacroAgent._interpret_rai(0.8, position=0.8)
+        assert result["regime"] == "极度乐观 - 追高风险大"
+        assert result["bias"] == "bullish"
+
+    def test_interpret_rai_high_position_low_rai(self):
+        """高位 + 低 RAI → 高位走弱"""
+        result = MacroAgent._interpret_rai(0.2, position=0.7)
+        assert result["regime"] == "高位走弱 - 警惕回落"
+        assert result["bias"] == "bearish"
+
+    def test_interpret_rai_without_position_backward_compat(self):
+        """无 position 参数时行为与旧版一致"""
+        assert MacroAgent._interpret_rai(0.8)["regime"] == "极度乐观 - 追高风险大"
+        assert MacroAgent._interpret_rai(0.2)["regime"] == "极度悲观 - 恐慌机会"
 
     def test_calc_breadth(self):
         indices = [
