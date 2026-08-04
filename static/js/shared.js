@@ -58,6 +58,10 @@
         if (r.status === 401 && !UTIL._loginPromptShown) {
           UTIL._loginPromptShown = true;
           UTIL.showToast('未登录：请访问 /login 完成认证', 'error');
+          // 页面未认证 → 引导到登录页，避免把 401 响应当成功数据渲染成「暂无数据」
+          if (window.location.pathname !== '/login' && !options.headers) {
+            window.location.href = '/login';
+          }
         }
         if (!r.ok && retries > 0 && r.status >= 500) {
           return new Promise(function(resolve) {

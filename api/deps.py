@@ -17,7 +17,19 @@ from loguru import logger
 # API Token 认证（可选，未配置 API_TOKEN 时跳过）
 # ─────────────────────────────────────────────
 
-_API_TOKEN = os.environ.get("API_TOKEN", "")
+def _normalize_api_token(value: str) -> str:
+    """API_TOKEN 归一化：空串或占位符（your- 开头）视为未配置
+
+    env/env.example 默认值是占位符 `your-random-api-token`；若把占位符当真实
+    token 启用认证，默认部署会进入「所有 API 需要认证但无人知道密码」的假死态。
+    """
+    value = (value or "").strip()
+    if value.startswith("your-"):
+        return ""
+    return value
+
+
+_API_TOKEN = _normalize_api_token(os.environ.get("API_TOKEN", ""))
 SESSION_COOKIE_NAME = "mt6_session"
 
 _SESSION_TOKEN_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", ".session_token")

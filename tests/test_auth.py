@@ -161,3 +161,32 @@ async def test_protected_endpoint_401_without_auth(client):
     """未认证访问受保护端点 → 401"""
     resp = await client.get("/health/detail")
     assert resp.status_code == 401
+
+
+# ─────────────────────────────────────────────
+# 占位符 API_TOKEN 归一化（1.3.1 修复）
+# ─────────────────────────────────────────────
+
+def test_normalize_api_token_placeholder_is_empty():
+    """占位符（your- 开头）→ 视为未配置"""
+    from api.deps import _normalize_api_token
+    assert _normalize_api_token("your-random-api-token") == ""
+    assert _normalize_api_token("your-anything") == ""
+
+
+def test_normalize_api_token_keeps_real_and_empty():
+    """真实 token 保留；空串/空白 → 空"""
+    from api.deps import _normalize_api_token
+    assert _normalize_api_token("s3cr3t-token") == "s3cr3t-token"
+    assert _normalize_api_token("") == ""
+    assert _normalize_api_token("   ") == ""
+    assert _normalize_api_token(None) == ""
+
+
+@pytest.mark.asyncio
+async def test_verify_token_skipped_when_placeholder(monkeypatch):
+    """占位符被视为未配置 → 匿名请求直接放行，不再 401（认证假死修复）"""
+    from api.deps import verify_token
+    monkeypatch.setattr(api.deps, "_API_TOKEN", "")
+    result = await verify_token(None, authorization=None)
+    assert result is None
