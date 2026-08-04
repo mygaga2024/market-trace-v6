@@ -84,10 +84,21 @@ class RiskManager:
         risk_multiplier = self._risk_multiplier(state["level"])
 
         if method == "kelly":
-            win_prob = kwargs.get("win_prob", 0.5)
-            avg_win = kwargs.get("avg_win", 0.03)
-            avg_loss = kwargs.get("avg_loss", 0.02)
+            win_prob = kwargs.get("win_prob")
+            avg_win = kwargs.get("avg_win")
+            avg_loss = kwargs.get("avg_loss")
             kelly_fraction = kwargs.get("kelly_fraction", 0.5)
+            if win_prob is None or avg_win is None or avg_loss is None:
+                return {
+                    "method": method,
+                    "risk_level": state["level"],
+                    "risk_multiplier": risk_multiplier,
+                    "position_pct": 0.0,
+                    "shares": 0,
+                    "amount": 0.0,
+                    "detail": "数据不足: 缺少真实胜率/盈亏比统计，无法给出凯利建议",
+                    "data_insufficient": True,
+                }
             pct = kelly_criterion(win_prob, avg_win, avg_loss, kelly_fraction)
             detail = f"凯利公式(F={kelly_fraction}) × 风险乘数({risk_multiplier:.0%})"
         elif method == "equal":
@@ -95,9 +106,31 @@ class RiskManager:
             pct = equal_weight(num_stocks)
             detail = f"等权重({num_stocks}只) × 风险乘数({risk_multiplier:.0%})"
         elif method == "parity":
-            volatilities = kwargs.get("volatilities", [0.2, 0.3, 0.25, 0.35, 0.28])
+            volatilities = kwargs.get("volatilities")
+            if not volatilities:
+                return {
+                    "method": method,
+                    "risk_level": state["level"],
+                    "risk_multiplier": risk_multiplier,
+                    "position_pct": 0.0,
+                    "shares": 0,
+                    "amount": 0.0,
+                    "detail": "数据不足: 缺少真实波动率数据，无法计算风险平价",
+                    "data_insufficient": True,
+                }
             weights = risk_parity(volatilities)
-            pct = weights[0] if weights and len(weights) > 0 else 0.1
+            if weights is None:
+                return {
+                    "method": method,
+                    "risk_level": state["level"],
+                    "risk_multiplier": risk_multiplier,
+                    "position_pct": 0.0,
+                    "shares": 0,
+                    "amount": 0.0,
+                    "detail": "数据不足: 波动率数据无效(存在<=0)，无法计算风险平价",
+                    "data_insufficient": True,
+                }
+            pct = weights[0] if weights else 0.1
             detail = f"风险平价 × 风险乘数({risk_multiplier:.0%})"
         else:
             pct = 0.1

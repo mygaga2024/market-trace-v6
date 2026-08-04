@@ -305,6 +305,9 @@ class PaperTradeManager:
             return None
 
         if decision == "BUY":
+            if confidence is None or confidence <= 0:
+                logger.info("纸上交易: {} BUY跳过 无置信度数据", symbol)
+                return None
             allocation = confidence * 0.20 * account.capital
             # 高价股(单价>capital/100)允许单股买入, 普通股按100股一手
             if price > account.capital / 100:
@@ -326,11 +329,13 @@ class PaperTradeManager:
         return None
 
     async def mark_to_market(self, prices: dict[str, float]):
-        """按市价估值所有持仓（用于P&L快照）"""
+        """按市价估值所有持仓（用于P&L快照）；无报价持仓跳过估值，不静默记为 0 盈亏"""
         for account in self._accounts.values():
             equity = account.capital
             for sym, pos in account.positions.items():
-                current_price = prices.get(sym, pos.avg_cost)
+                current_price = prices.get(sym)
+                if current_price is None or current_price <= 0:
+                    continue  # 无报价(如停牌)持仓不参与估值
                 equity += pos.market_value(current_price)
             account.equity_history.append({
                 "time": datetime.now(timezone.utc).isoformat(),

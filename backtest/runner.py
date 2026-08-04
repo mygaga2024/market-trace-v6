@@ -82,8 +82,8 @@ class BacktestResult:
     final_equity: float = 0.0
     total_return: float = 0.0
     annual_return: float = 0.0
-    sharpe_ratio: float = 0.0
-    sortino_ratio: float = 0.0
+    sharpe_ratio: Optional[float] = None
+    sortino_ratio: Optional[float] = None
     calmar_ratio: float = 0.0
     max_drawdown: float = 0.0
     max_drawdown_duration: int = 0
@@ -102,11 +102,11 @@ class BacktestResult:
 
     # --- 基准对比 ---
     benchmark_return: float = 0.0
-    benchmark_sharpe: float = 0.0
+    benchmark_sharpe: Optional[float] = None
     benchmark_max_dd: float = 0.0
-    alpha: float = 0.0
-    beta: float = 0.0
-    information_ratio: float = 0.0
+    alpha: Optional[float] = None
+    beta: Optional[float] = None
+    information_ratio: Optional[float] = None
 
     # --- 参数 ---
     params: dict[str, Any] = field(default_factory=dict)
@@ -119,9 +119,9 @@ class BacktestResult:
     period_returns: list[dict[str, Any]] = field(default_factory=list)
 
     def score(self) -> float:
-        """综合评分"""
+        """综合评分（样本不足的指标按 0 计，不因 None 崩溃）"""
         s = 0.0
-        s += self.sharpe_ratio * 1.5
+        s += (self.sharpe_ratio or 0) * 1.5
         s += self.win_rate * 2.0
         s -= self.max_drawdown * 2.0
         s += self.profit_factor * 0.5
@@ -139,8 +139,8 @@ class BacktestResult:
             "final_equity": round(self.final_equity, 2),
             "total_return_pct": round(self.total_return * 100, 2),
             "annual_return_pct": round(self.annual_return * 100, 2),
-            "sharpe_ratio": round(self.sharpe_ratio, 4),
-            "sortino_ratio": round(self.sortino_ratio, 4),
+            "sharpe_ratio": round(self.sharpe_ratio, 4) if self.sharpe_ratio is not None else None,
+            "sortino_ratio": round(self.sortino_ratio, 4) if self.sortino_ratio is not None else None,
             "calmar_ratio": round(self.calmar_ratio, 4),
             "max_drawdown_pct": round(self.max_drawdown * 100, 2),
             "max_drawdown_duration": self.max_drawdown_duration,
@@ -157,11 +157,11 @@ class BacktestResult:
             "max_consecutive_wins": self.max_consecutive_wins,
             "max_consecutive_losses": self.max_consecutive_losses,
             "benchmark_return_pct": round(self.benchmark_return * 100, 2),
-            "benchmark_sharpe": round(self.benchmark_sharpe, 4),
+            "benchmark_sharpe": round(self.benchmark_sharpe, 4) if self.benchmark_sharpe is not None else None,
             "benchmark_max_dd_pct": round(self.benchmark_max_dd * 100, 2),
-            "alpha": round(self.alpha, 4),
-            "beta": round(self.beta, 4),
-            "information_ratio": round(self.information_ratio, 4),
+            "alpha": round(self.alpha, 4) if self.alpha is not None else None,
+            "beta": round(self.beta, 4) if self.beta is not None else None,
+            "information_ratio": round(self.information_ratio, 4) if self.information_ratio is not None else None,
             "params": self.params,
             "score": self.score(),
             "equity_curve": self.equity_curve,

@@ -220,7 +220,8 @@ class OpenAICompatibleLLM(LLMInterface):
                 parts.append("- Agent 信号:")
                 for s in agent_sigs_prompt:
                     parts.append(f"  * {s.get('type', '?')} ({s.get('direction', 'N/A')}, 强度={s.get('strength', 'N/A')})")
-            parts.append(f"- 可靠性评分: {signal.data.get('reliability', 0.5):.2f}")
+            reliability = signal.data.get("reliability")
+            parts.append(f"- 可靠性评分: {reliability:.2f}" if reliability is not None else "- 可靠性评分: 数据不足")
             all_sigs = signals + signal.data.get("agent_signals", [])
             bull_sigs = [s for s in all_sigs if s.get('direction') in ('bullish', 'buy')]
             bear_sigs = [s for s in all_sigs if s.get('direction') in ('bearish', 'sell')]

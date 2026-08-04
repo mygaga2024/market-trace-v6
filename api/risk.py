@@ -4,6 +4,8 @@ Market Trace V6.0 — 风控路由
 
 from __future__ import annotations
 
+from typing import Optional
+
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse
 from loguru import logger
@@ -48,11 +50,12 @@ async def risk_position(
     method: str = Query(default="kelly"),
     capital: float = Query(default=100000, ge=1000),
     price: float = Query(default=10.0, gt=0),
-    win_prob: float = Query(default=0.5, ge=0, le=1),
-    avg_win: float = Query(default=0.03, gt=0),
-    avg_loss: float = Query(default=0.02, gt=0),
+    win_prob: Optional[float] = Query(default=None, ge=0, le=1),
+    avg_win: Optional[float] = Query(default=None, gt=0),
+    avg_loss: Optional[float] = Query(default=None, gt=0),
 ):
-    """风控加权仓位建议：根据当前风险等级调整仓位"""
+    """风控加权仓位建议：根据当前风险等级调整仓位
+    注: 凯利建议需要真实胜率/盈亏比统计, 缺省时返回 data_insufficient 而非写死默认值"""
     risk_manager = request.app.state.risk_manager
     if not risk_manager:
         return JSONResponse({"error": "风控管理器未就绪"}, status_code=503)

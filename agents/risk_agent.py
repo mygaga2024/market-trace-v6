@@ -189,7 +189,7 @@ class RiskAgent(BaseAgent):
         lows = np.array([float(r["low"]) for r in cached])
 
         atr = _calc_atr(highs, lows, closes, self._atr_period)
-        if atr <= 0:
+        if not atr or atr <= 0:
             return None
 
         recent_high = float(np.max(highs[-self._atr_period:]))

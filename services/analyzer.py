@@ -44,7 +44,7 @@ def _calc_bollinger(closes: np.ndarray, period: int = 20, nbdev: float = 2.0) ->
     return {
         "upper": round(upper, 2), "middle": round(mid, 2), "lower": round(lower, 2),
         "bandwidth": round(bandwidth, 4),
-        "position": round((closes[-1] - lower) / (upper - lower), 4) if upper > lower else 0.5,
+        "position": round((closes[-1] - lower) / (upper - lower), 4) if upper > lower else None,
     }
 
 
@@ -54,7 +54,7 @@ def _calc_bollinger(closes: np.ndarray, period: int = 20, nbdev: float = 2.0) ->
 def _calc_kdj(highs: np.ndarray, lows: np.ndarray, closes: np.ndarray,
               period: int = 9, smooth: int = 3) -> dict:
     if len(closes) < period:
-        return {"k": 50, "d": 50, "j": 50}
+        return {"k": None, "d": None, "j": None}
     k, d = 50.0, 50.0
     for i in range(period - 1, len(closes)):
         high_n = float(np.max(highs[i - period + 1:i + 1]))
@@ -160,13 +160,13 @@ async def analyze_single(
     rsi = round(_calc_rsi(closes, 14), 2) if len(closes) >= 15 else None
     macd = _calc_macd(closes)
     bollinger = _calc_bollinger(closes)
-    atr = round(_calc_atr(highs, lows, closes), 2)
+    atr = round(_calc_atr(highs, lows, closes), 2) if len(closes) >= 15 else None
     kdj = _calc_kdj(highs, lows, closes)
     sr_levels = _find_support_resistance(highs, lows, closes)
 
-    vol_ratio = round(float(volumes[-1] / np.mean(volumes[:-1])), 2) if len(volumes) > 1 and np.mean(volumes[:-1]) > 0 else 1.0
-    avg_vol_5 = round(float(np.mean(volumes[-5:])), 0) if len(volumes) >= 5 else 0
-    avg_vol_20 = round(float(np.mean(volumes[-20:])), 0) if len(volumes) >= 20 else 0
+    vol_ratio = round(float(volumes[-1] / np.mean(volumes[:-1])), 2) if len(volumes) > 1 and np.mean(volumes[:-1]) > 0 else None
+    avg_vol_5 = round(float(np.mean(volumes[-5:])), 0) if len(volumes) >= 5 else None
+    avg_vol_20 = round(float(np.mean(volumes[-20:])), 0) if len(volumes) >= 20 else None
 
     # 趋势判断：优先用 ma60，不足时回退到 ma5/ma20（任一缺失则不参与比较）
     trend = "sideways"
@@ -217,13 +217,13 @@ async def analyze_single(
 
     # ── Signal Agent 实时信号(从缓存读取) ──
     signal_agent_signals: list[dict] = []
-    signal_agent_confidence = 0.5
+    signal_agent_confidence = None  # 缓存缺失时不兜底 0.5
     if bus:
         try:
             sig_cache = await bus.cache_get(f"reports:signal:{symbol}")
             if sig_cache and isinstance(sig_cache, dict):
                 signal_agent_signals = sig_cache.get("signals", [])
-                signal_agent_confidence = sig_cache.get("confidence", 0.5)
+                signal_agent_confidence = sig_cache.get("confidence")
         except Exception:
             pass
 
@@ -314,9 +314,9 @@ async def analyze_single(
                 ),
                 "trace": AgentReport(
                     agent=AgentName.TRACE,
-                    summary=f"量比{vol_ratio}x 异动{len(trace_signals)}个",
+                    summary=f"量比{vol_ratio if vol_ratio is not None else 'N/A'}x 异动{len(trace_signals)}个",
                     data=trace_report_data,
-                    confidence=min(1.0, len(trace_signals) * 0.3 + 0.3),
+                    confidence=min(1.0, len(trace_signals) * 0.3) if trace_signals else 0.0,
                 ),
             }
 

@@ -179,7 +179,8 @@ class SignalAgent(BaseAgent):
 
     @staticmethod
     def _calc_rsi(closep: np.ndarray, period: int = 14) -> Optional[np.ndarray]:
-        if len(closep) < period + 1:
+        # 至少 2 倍周期样本, 避免小样本下 avg_loss=0 产生极端 RSI 误触发超买/超卖
+        if len(closep) < period * 2:
             return None
         delta = np.diff(closep)
         rsi = np.full(len(closep), np.nan)
@@ -273,7 +274,7 @@ class SignalAgent(BaseAgent):
     ) -> float:
         """基于历史胜率估算信号可靠性（调用 memory.py）"""
         if self._memory is None:
-            return 0.5
+            return None
 
         recent_change = (closep[-1] - closep[-5]) / closep[-5] if len(closep) >= 5 else 0.0
         avg_vol = np.mean(volumes[-20:]) if len(volumes) >= 20 else volumes[-1]
@@ -283,7 +284,7 @@ class SignalAgent(BaseAgent):
         similar = self._memory.find_similar(features, k=5)
 
         if not similar:
-            return 0.5
+            return None
 
         win_rate = np.mean([s.outcome or 0.0 for s in similar])
         return round(min(1.0, max(0.1, win_rate)), 4)

@@ -73,7 +73,8 @@ class TraceAgent(BaseAgent):
         self._detect_range_breakout(highs, lows, closes, volumes, signals)
 
         signal_count = len(signals)
-        confidence = min(1.0, signal_count * 0.3) if signal_count > 0 else 0.0
+        strength_sum = sum(s.get("strength", 0.3) for s in signals)
+        confidence = min(1.0, strength_sum * 0.5) if signal_count > 0 else 0.0
         direction = self._determine_direction(signals)
 
         report = AgentReport(
@@ -207,11 +208,12 @@ class TraceAgent(BaseAgent):
 
     @staticmethod
     def _determine_direction(signals: list) -> str:
-        bullish = sum(1 for s in signals if s["direction"] == "bullish")
-        bearish = sum(1 for s in signals if s["direction"] == "bearish")
-        if bullish > bearish:
+        """按信号强度加权投票决定方向（避免 1 条弱信号与 1 条强信号等权）"""
+        bull = sum(s.get("strength", 0.3) for s in signals if s.get("direction") == "bullish")
+        bear = sum(s.get("strength", 0.3) for s in signals if s.get("direction") == "bearish")
+        if bull > bear:
             return "bullish"
-        elif bearish > bullish:
+        elif bear > bull:
             return "bearish"
         return "neutral"
 

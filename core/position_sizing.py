@@ -53,7 +53,10 @@ def risk_parity(volatilities: list[float]) -> list[float]:
     if not volatilities:
         return []
 
-    inv_vol = [1.0 / max(v, 0.001) for v in volatilities]
+    if any(v <= 0 for v in volatilities):
+        return None  # 波动率必须为正, 0/负值 clamp 会产生失真权重
+
+    inv_vol = [1.0 / v for v in volatilities]
     total = sum(inv_vol)
     if total <= 0:
         return [1.0 / len(volatilities)] * len(volatilities)

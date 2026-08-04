@@ -87,7 +87,7 @@ def signal_risk(closes: np.ndarray, highs: np.ndarray, volumes: np.ndarray,
     rsi = _calc_rsi(closes, rsi_period)
     below_lookback = closes[-1] < closes[-lookback] if len(closes) >= lookback else False
     falling = closes[-1] < closes[-2]
-    vol_up = volumes[-1] > np.mean(volumes[-21:-1]) * 1.2 if len(volumes) > 21 else True
+    vol_up = volumes[-1] > np.mean(volumes[-21:-1]) * 1.2 if len(volumes) > 21 else False
     if rsi > rsi_threshold and below_lookback and falling and vol_up:
         return "SELL", 0
     return "HOLD", 0
@@ -357,6 +357,7 @@ async def run_rolling_backtest(
         "train_bars": train_end, "test_bars": n - train_end,
         "total_windows": len(windows),
         "active_windows": len(win_rates),
+        "sample_ok": len(win_rates) >= 5,
         "best_params": best_params,
         "avg_win_rate": round(np.mean(win_rates), 2) if win_rates else 0,
         "avg_sharpe": round(np.mean(sharpes), 2),

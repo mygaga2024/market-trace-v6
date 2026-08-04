@@ -116,7 +116,7 @@
       var h = '<h3>' + E(d.strategy || strategy) + ' <span style="font-weight:400;color:var(--text-muted);font-size:14px">匹配 ' + d.matched + ' 只</span></h3>';
       if (d.results && d.results.length) {
         h += '<table class="status-table" style="font-size:13px"><thead><tr><th>代码</th><th>名称</th><th>价格</th><th>涨跌幅</th><th>量比</th><th></th></tr></thead><tbody>';
-        d.results.forEach(function(r) { h += '<tr><td>' + E(r.symbol) + '</td><td>' + E(r.name || '') + '</td><td>' + (r.price || 0).toFixed(2) + '</td><td class="' + (r.change_pct >= 0 ? 'trend-up' : 'trend-down') + '">' + (r.change_pct || 0).toFixed(2) + '%</td><td>' + (r.vol_ratio || 0).toFixed(2) + '</td><td>' + S._renderDiagBtn(r.symbol) + '</td></tr>'; });
+        d.results.forEach(function(r) { h += '<tr><td>' + E(r.symbol) + '</td><td>' + E(r.name || '') + '</td><td>' + (r.price || 0).toFixed(2) + '</td><td class="' + (r.change_pct >= 0 ? 'trend-up' : 'trend-down') + '">' + (r.change_pct || 0).toFixed(2) + '%</td><td>' + (r.vol_ratio != null ? r.vol_ratio.toFixed(2) : '—') + '</td><td>' + S._renderDiagBtn(r.symbol) + '</td></tr>'; });
         h += '</tbody></table>';
       } else { h += '<div class="tab-empty">无匹配结果</div>'; }
       panel.innerHTML = h;
@@ -131,7 +131,7 @@
       var h = '<h3>全市场: ' + E(d.strategy || strategy) + ' <span style="font-weight:400;color:var(--text-muted);font-size:14px">' + d.matched + '/' + d.total_stocks + ' 只 | 耗时 ' + (d.elapsed_seconds || 0) + 's</span></h3>';
       if (d.results && d.results.length) {
         h += '<table class="status-table" style="font-size:13px"><thead><tr><th>代码</th><th>名称</th><th>价格</th><th>涨跌幅</th><th>量比</th><th></th></tr></thead><tbody>';
-        d.results.forEach(function(r) { h += '<tr><td>' + E(r.symbol) + '</td><td>' + E(r.name || '') + '</td><td>' + (r.price || 0).toFixed(2) + '</td><td class="' + (r.change_pct >= 0 ? 'trend-up' : 'trend-down') + '">' + (r.change_pct || 0).toFixed(2) + '%</td><td>' + (r.vol_ratio || 0).toFixed(2) + '</td><td>' + S._renderDiagBtn(r.symbol) + '</td></tr>'; });
+        d.results.forEach(function(r) { h += '<tr><td>' + E(r.symbol) + '</td><td>' + E(r.name || '') + '</td><td>' + (r.price || 0).toFixed(2) + '</td><td class="' + (r.change_pct >= 0 ? 'trend-up' : 'trend-down') + '">' + (r.change_pct || 0).toFixed(2) + '%</td><td>' + (r.vol_ratio != null ? r.vol_ratio.toFixed(2) : '—') + '</td><td>' + S._renderDiagBtn(r.symbol) + '</td></tr>'; });
         h += '</tbody></table>';
       } else { h += '<div class="tab-empty">无匹配结果</div>'; }
       panel.innerHTML = h;

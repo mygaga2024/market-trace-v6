@@ -212,7 +212,7 @@ async def quick_scan(strategy: str, limit: int = 50,
 
                 kwargs = info.get("params", {}).copy()
                 if check_fn(closes, highs, volumes, **kwargs):
-                    vol_r = round(float(volumes[-1] / np.mean(volumes[:-1])), 2) if len(volumes) > 1 and np.mean(volumes[:-1]) > 0 else 1.0
+                    vol_r = round(float(volumes[-1] / np.mean(volumes[:-1])), 2) if len(volumes) > 1 and np.mean(volumes[:-1]) > 0 else None
                     hits.append({
                         "symbol": stock["symbol"],
                         "name": stock["name"],
@@ -239,13 +239,13 @@ async def quick_scan(strategy: str, limit: int = 50,
                 "name": s["name"],
                 "price": s.get("price", 0),
                 "change_pct": s.get("change_pct", 0),
-                "vol_ratio": round(s.get("volume", 0) / 10000000, 1) if s.get("volume") else 1.0,
+                "vol_ratio": None,  # 降级结果无量比数据, 不参与量比排序
             })
         logger.info("全市场扫描降级: 缓存K线数据不足, 使用实时行情粗筛结果")
     elif not hits:
         logger.info("全市场扫描: 无缓存K线且无粗筛命中, 结果为空")
 
-    hits.sort(key=lambda x: (-x["vol_ratio"], -abs(x["change_pct"])))
+    hits.sort(key=lambda x: (-(x["vol_ratio"] or 0), -abs(x["change_pct"])))
     elapsed = time.monotonic() - t0
     logger.info("全市场扫描完成: {:.1f}s, 命中 {}/{}({})", elapsed, len(hits), checked, too_few_data)
 
@@ -295,8 +295,8 @@ async def smart_scan(bus, config: dict, limit: int = 30) -> dict:
                         kwargs = info.get("params", {}).copy()
                         if info["check"](closes, highs, volumes, **kwargs):
                             chg = abs((closes[-1] - closes[-2]) / closes[-2]) if len(closes) > 1 else 0
-                            vol_r = float(volumes[-1] / np.mean(volumes[:-1])) if len(volumes) > 1 and np.mean(volumes[:-1]) > 0 else 1.0
-                            score = vol_r + chg * 10 + (abs(stock.get("change_pct", 0)) * 0.5)
+                            vol_r = float(volumes[-1] / np.mean(volumes[:-1])) if len(volumes) > 1 and np.mean(volumes[:-1]) > 0 else None
+                            score = (vol_r or 0) + chg * 10 + (abs(stock.get("change_pct", 0)) * 0.5)
                             if score > best_score:
                                 best_score = score
                                 best_strategy = name

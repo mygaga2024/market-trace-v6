@@ -81,10 +81,10 @@ def _calc_ma(closes: np.ndarray, period: int) -> Optional[float]:
     return float(np.mean(closes[-period:]))
 
 
-def _calc_atr(highs: np.ndarray, lows: np.ndarray, closes: np.ndarray, period: int = 14) -> float:
-    """计算 ATR (Average True Range)，供诊股/风控/回测共用"""
-    if len(closes) < period + 1:
-        return float(np.mean(highs - lows)) if len(highs) > 0 else 0.0
+def _calc_atr(highs: np.ndarray, lows: np.ndarray, closes: np.ndarray, period: int = 14) -> Optional[float]:
+    """计算 ATR (Average True Range)，供诊股/风控/回测共用；数据不足返回 None"""
+    if len(closes) < period + 1 or len(highs) < period + 1 or len(lows) < period + 1:
+        return None
     prev_close = closes[:-1]
     tr = np.maximum.reduce([
         highs[1:] - lows[1:],
@@ -150,8 +150,11 @@ def check_breakout(closes: np.ndarray, highs: np.ndarray, volumes: np.ndarray,
                    lookback: int = 20, vol_mult: float = 1.1) -> bool:
     if len(closes) < lookback + 2:
         return False
+    avg_vol = np.mean(volumes[-lookback - 1:-1])
+    if avg_vol <= 0:
+        return False
     return bool(closes[-1] > max(highs[-lookback - 1:-1])
-                and volumes[-1] > np.mean(volumes[-lookback - 1:-1]) * vol_mult
+                and volumes[-1] > avg_vol * vol_mult
                 and closes[-1] > closes[-2])
 
 
@@ -172,7 +175,10 @@ def check_strength(closes: np.ndarray, highs: np.ndarray, volumes: np.ndarray,
                    lookback: int = 20) -> bool:
     if len(closes) < max(lookback + 1, 6):
         return False
-    return bool(volumes[-1] > np.mean(volumes[-lookback - 1:-1]) * vol_mult
+    avg_vol = np.mean(volumes[-lookback - 1:-1])
+    if avg_vol <= 0:
+        return False
+    return bool(volumes[-1] > avg_vol * vol_mult
                 and (closes[-1] - closes[-5]) / closes[-5] > rise_pct)
 
 
@@ -184,9 +190,12 @@ def check_risk(closes: np.ndarray, highs: np.ndarray, volumes: np.ndarray,
     rsi = _calc_rsi(closes, rsi_period)
     if rsi is None:
         return False
+    avg_vol = np.mean(volumes[-lookback:-1])
+    if avg_vol <= 0:
+        return False
     return bool(rsi > rsi_threshold
                 and closes[-1] < closes[-2]
-                and volumes[-1] > np.mean(volumes[-lookback:-1]) * 1.1)
+                and volumes[-1] > avg_vol * 1.1)
 
 
 def check_ma_golden_cross(closes: np.ndarray, highs: np.ndarray, volumes: np.ndarray,
@@ -198,15 +207,21 @@ def check_ma_golden_cross(closes: np.ndarray, highs: np.ndarray, volumes: np.nda
     slow_now = np.mean(closes[-ma_slow:])
     fast_prev = np.mean(closes[-ma_fast - 1:-1])
     slow_prev = np.mean(closes[-ma_slow - 1:-1])
+    avg_vol = np.mean(volumes[-ma_slow - 1:-1])
+    if avg_vol <= 0:
+        return False
     return bool(fast_prev <= slow_prev and fast_now > slow_now
-                and volumes[-1] > np.mean(volumes[-ma_slow - 1:-1]) * vol_mult)
+                and volumes[-1] > avg_vol * vol_mult)
 
 
 def check_volume_breakout(closes: np.ndarray, highs: np.ndarray, volumes: np.ndarray,
                           vol_mult: float = 1.5, rise_pct: float = 0.02) -> bool:
     if len(closes) < 21:
         return False
-    return bool(volumes[-1] > np.mean(volumes[-21:-1]) * vol_mult
+    avg_vol = np.mean(volumes[-21:-1])
+    if avg_vol <= 0:
+        return False
+    return bool(volumes[-1] > avg_vol * vol_mult
                 and (closes[-1] - closes[-5]) / closes[-5] > rise_pct)
 
 

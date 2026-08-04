@@ -79,6 +79,8 @@ class MacroAgent(BaseAgent):
         rai = self._compute_rai_score(rai_components)
         macro_data["risk_appetite_index"] = rai
         macro_data["components"] = rai_components
+        # 全因子缺失时标记数据不完整, 避免 0.5 中性值被当作真实结论发布
+        macro_data["data_complete"] = bool(rai_components)
 
         position = rai_components.get("position")
         interpretation = self._interpret_rai(rai, position)
@@ -87,10 +89,13 @@ class MacroAgent(BaseAgent):
         report = AgentReport(
             agent=AgentName.MACRO,
             timestamp=datetime.now(timezone.utc),
-            summary=f"RAI={rai:.2f} ({interpretation['regime']})",
-            status=ReportStatus.OK,
+            summary=(
+                f"RAI={rai:.2f} ({interpretation['regime']})" if rai_components
+                else "宏观数据不可用(未获取到指数/板块数据)"
+            ),
+            status=ReportStatus.OK if rai_components else ReportStatus.DEGRADED,
             data=macro_data,
-            confidence=abs(rai - 0.5) * 2,
+            confidence=abs(rai - 0.5) * 2 if rai_components else 0.0,
         )
 
         self._last_report = report
@@ -206,7 +211,9 @@ class MacroAgent(BaseAgent):
             close = closes[-1]
             hi = max(closes[-250:])
             lo = min(closes[-250:])
-            pct = 0.5 if hi == lo else (close - lo) / (hi - lo)
+            if hi == lo:
+                continue  # 一年无波动, 位置分位无意义, 跳过该指数
+            pct = (close - lo) / (hi - lo)
             ma20 = sum(closes[-20:]) / 20
             ma_pos = min(1.0, max(0.0, 0.5 + (close / ma20 - 1) * 2))
             positions.append(0.7 * pct + 0.3 * ma_pos)
