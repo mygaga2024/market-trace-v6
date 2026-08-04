@@ -1,6 +1,6 @@
 version: 2
 created: '2026-07-20T10:14:18.528063'
-updated: '2026-08-04T17:22:34.366167'
+updated: '2026-08-04T17:22:50.599922'
 self_evolution_enabled: true
 fixes:
 - error: 涨跌家数数据严重失真（只覆盖3984只，73%）
@@ -187,6 +187,15 @@ fixes:
   - core/risk_manager.py
   session: session-2026-08-04-silent-errors-all
   timestamp: '2026-08-04T17:22:34.366153'
+- error: 写死常量冒充真实数据
+  fix: scanner 降级路径 volume/10000000 当 vol_ratio 参与排序, 凯利 win_prob/avg_win 写死输出精确仓位
+    → 无真实数据时置 None/data_insufficient 并标注, 排序(None or 0)安全
+  files:
+  - services/scanner.py
+  - api/risk.py
+  - core/risk_manager.py
+  session: session-2026-08-04-silent-errors-all
+  timestamp: '2026-08-04T17:22:50.361092'
 anti_patterns:
 - name: 静默吞异常
   description: '不要用 except Exception: pass 静默丢弃数据，必须至少记录 warning 日志'
@@ -248,6 +257,15 @@ anti_patterns:
     None 防护, 尤其 elif 链
   session: session-2026-08-04-silent-errors-fix
   timestamp: '2026-08-04T17:14:04.093247'
+- name: 删除后下游引用残留
+  description: 改 risk_parity 时删了 inv_vol 定义但下方还在用 → NameError; 修改函数体后必须 grep 确认无悬空引用
+  session: session-2026-08-04-silent-errors-all
+  timestamp: '2026-08-04T17:22:50.440959'
+- name: add_anti_pattern 误传 files
+  description: 本工具签名是 (name, description, session), 不要习惯性把 files 列表作为第 3 参传入(已连续 3
+    次犯此错)
+  session: session-2026-08-04-silent-errors-all
+  timestamp: '2026-08-04T17:22:50.520231'
 style:
 - category: imports
   description: 使用 from __future__ import annotations 在文件顶部
@@ -354,6 +372,14 @@ style:
   - services/
   session: session-2026-08-04-silent-errors-fix
   timestamp: '2026-08-04T17:14:04.165554'
+- category: Optional 传播全链路
+  description: '指标/统计字段改 Optional[float]=None 后: score 用 (x or 0)、to_dict round 前判
+    None、前端 != null 显示 —、async 测试加 @pytest.mark.asyncio; 样本门槛(2倍周期/5笔/5窗口)统一'
+  files:
+  - backtest/runner.py
+  - core/strategies.py
+  session: session-2026-08-04-silent-errors-all
+  timestamp: '2026-08-04T17:22:50.599914'
 architecture:
 - decision: 统一策略注册
   rationale: core/strategies.py 的 STRATEGIES 字典被诊股/选股/回测三方共用，消除重复维护
