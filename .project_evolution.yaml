@@ -1,6 +1,6 @@
 version: 2
 created: '2026-07-20T10:14:18.528063'
-updated: '2026-08-04T17:14:04.165562'
+updated: '2026-08-04T17:22:34.366167'
 self_evolution_enabled: true
 fixes:
 - error: 涨跌家数数据严重失真（只覆盖3984只，73%）
@@ -178,6 +178,15 @@ fixes:
   - services/analyzer.py
   session: session-2026-08-04-silent-errors-fix
   timestamp: '2026-08-04T17:14:03.949869'
+- error: 写死常量冒充真实数据
+  fix: scanner 降级路径 volume/10000000 当 vol_ratio 参与排序, 凯利 win_prob/avg_win 写死输出精确仓位
+    → 无真实数据时置 None/data_insufficient 并标注, 排序(None or 0)安全
+  files:
+  - services/scanner.py
+  - api/risk.py
+  - core/risk_manager.py
+  session: session-2026-08-04-silent-errors-all
+  timestamp: '2026-08-04T17:22:34.366153'
 anti_patterns:
 - name: 静默吞异常
   description: '不要用 except Exception: pass 静默丢弃数据，必须至少记录 warning 日志'

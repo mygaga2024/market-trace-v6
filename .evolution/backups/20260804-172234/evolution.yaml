@@ -1,6 +1,6 @@
 version: 2
 created: '2026-07-20T10:14:18.528063'
-updated: '2026-08-04T17:04:18.287230'
+updated: '2026-08-04T17:14:04.165562'
 self_evolution_enabled: true
 fixes:
 - error: 涨跌家数数据严重失真（只覆盖3984只，73%）
@@ -162,6 +162,22 @@ fixes:
   - agents/macro_agent.py
   session: session-2026-08-04-rai-algorithm
   timestamp: '2026-08-04T17:04:18.148304'
+- error: 计算层兜底值污染输出
+  fix: 'RSI/MA/RAI 等指标数据不足时返回 50/0.5/现价, 调用层无法区分真实值与默认值 → 静默失真; 修复: 返 None + 调用层显式处理
+    + 输出层标注"数据不足"; 改前先 grep 全部调用点确认 None 传播安全'
+  files:
+  - core/strategies.py
+  - services/analyzer.py
+  session: session-2026-08-04-silent-errors-fix
+  timestamp: '2026-08-04T17:13:51.183303'
+- error: 计算层兜底值污染输出
+  fix: 'RSI/MA/RAI 等指标数据不足时返回 50/0.5/现价, 调用层无法区分真实值与默认值 → 静默失真; 修复: 返 None + 调用层显式处理
+    + 输出层标注"数据不足"; 改前先 grep 全部调用点确认 None 传播安全'
+  files:
+  - core/strategies.py
+  - services/analyzer.py
+  session: session-2026-08-04-silent-errors-fix
+  timestamp: '2026-08-04T17:14:03.949869'
 anti_patterns:
 - name: 静默吞异常
   description: '不要用 except Exception: pass 静默丢弃数据，必须至少记录 warning 日志'
@@ -213,6 +229,16 @@ anti_patterns:
   description: '风险偏好类指数只数涨跌方向比例会误判: 低位普涨被读成追高风险; 必须结合位置/量能维度, 判读标签(regime)比数值更重要'
   session: session-2026-08-04-rai-algorithm
   timestamp: '2026-08-04T17:04:18.217699'
+- name: 信号强度硬编码与消费方阈值脱节
+  description: signal_agent 生成 strength=0.7 硬编码, risk/chief 判断 >0.8 → 规则永不触发且无日志;
+    阈值必须共享常量且生成方计算真实强度
+  session: session-2026-08-04-silent-errors-fix
+  timestamp: '2026-08-04T17:14:04.021086'
+- name: None 参与数值比较
+  description: elif 分支 rai>0.65 在 rai=None 时抛 TypeError(None>0.65); 所有数值比较前必须 is not
+    None 防护, 尤其 elif 链
+  session: session-2026-08-04-silent-errors-fix
+  timestamp: '2026-08-04T17:14:04.093247'
 style:
 - category: imports
   description: 使用 from __future__ import annotations 在文件顶部
@@ -310,6 +336,15 @@ style:
   - agents/macro_agent.py
   session: session-2026-08-04-rai-algorithm
   timestamp: '2026-08-04T17:04:18.287218'
+- category: 静默错误专项排查法
+  description: explore 子代理按模式扫描(兜底值参与加权/吞异常返默认/分母0/方向不含量度/阈值语义脱节) → 验证关键发现 → 按严重度分级给用户选修复范围;
+    同类问题常共享同一根因
+  files:
+  - agents/
+  - core/
+  - services/
+  session: session-2026-08-04-silent-errors-fix
+  timestamp: '2026-08-04T17:14:04.165554'
 architecture:
 - decision: 统一策略注册
   rationale: core/strategies.py 的 STRATEGIES 字典被诊股/选股/回测三方共用，消除重复维护
