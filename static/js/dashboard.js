@@ -405,6 +405,11 @@
     btDetail: window.TAB_BACKTEST.showBacktestDetail,
     runBT: window.TAB_BACKTEST.runManualBacktest,
     enableStrat: window.TAB_BACKTEST.enableStrategy,
+    logout: function() {
+      fetch('/logout', { method: 'POST', credentials: 'same-origin' })
+        .then(function(r) { if (r.ok) { window.location.href = '/'; } })
+        .catch(function() { S.showToast('登出失败，请重试', 'error'); });
+    },
   };
 
   // Expose functions used directly in HTML onclick attributes

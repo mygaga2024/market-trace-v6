@@ -67,7 +67,11 @@ document.getElementById('f').addEventListener('submit', function(e){
 """
 
 
-def _get_dashboard_html() -> str:
+_AUTH_BTN_LOGIN = '<a id="auth-btn" class="auth-btn" href="/login" title="登录后访问受保护数据">\U0001F510 登录</a>'
+_AUTH_BTN_LOGOUT = '<button id="auth-btn" class="auth-btn" onclick="window._DS.logout()" title="退出登录">\U0001F512 登出</button>'
+
+
+def _get_dashboard_html(authed: bool = False, auth_enabled: bool = False) -> str:
     global _DASHBOARD_TEMPLATE, _DASHBOARD_MTIME
     template_path = Path("templates/dashboard.html")
     if not template_path.exists():
@@ -78,7 +82,11 @@ def _get_dashboard_html() -> str:
     if dev_mode or _DASHBOARD_TEMPLATE is None or mtime != _DASHBOARD_MTIME:
         _DASHBOARD_TEMPLATE = template_path.read_text(encoding="utf-8")
         _DASHBOARD_MTIME = mtime
-    return _DASHBOARD_TEMPLATE.replace("{{API_TOKEN}}", "")
+    # 登录态由服务端注入：认证未启用时不显示入口，启用后按 cookie 状态渲染登录/登出
+    auth_state = ""
+    if auth_enabled:
+        auth_state = _AUTH_BTN_LOGOUT if authed else _AUTH_BTN_LOGIN
+    return _DASHBOARD_TEMPLATE.replace("{{API_TOKEN}}", "").replace("{{AUTH_STATE}}", auth_state)
 
 
 @router.get("/api/kline/{symbol}", dependencies=[Depends(verify_token)])
@@ -105,24 +113,30 @@ async def kline_svg(request: Request, symbol: str):
 @router.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
     """仪表盘首页（公开页面；仅对已认证请求发放 session cookie）"""
-    html = _get_dashboard_html()
+    authed = (
+        request.cookies.get(SESSION_COOKIE_NAME, "") == SESSION_TOKEN
+        or request.headers.get("authorization", "") == f"Bearer {_API_TOKEN}"
+    )
+    html = _get_dashboard_html(authed=authed, auth_enabled=bool(_API_TOKEN))
     response = HTMLResponse(content=html)
-    if _API_TOKEN:
-        # 仅对已通过认证的请求发放/刷新 cookie，防止公开页面自动授予认证（S2 修复）
-        authed = (
-            request.cookies.get(SESSION_COOKIE_NAME, "") == SESSION_TOKEN
-            or request.headers.get("authorization", "") == f"Bearer {_API_TOKEN}"
+    if _API_TOKEN and authed:
+        response.set_cookie(
+            key=SESSION_COOKIE_NAME,
+            value=SESSION_TOKEN,
+            httponly=True,
+            samesite="strict",
+            secure=os.environ.get("MT6_HTTPS", "").lower() in ("1", "true", "yes"),
+            max_age=86400,
+            path="/",
         )
-        if authed:
-            response.set_cookie(
-                key=SESSION_COOKIE_NAME,
-                value=SESSION_TOKEN,
-                httponly=True,
-                samesite="strict",
-                secure=os.environ.get("MT6_HTTPS", "").lower() in ("1", "true", "yes"),
-                max_age=86400,
-                path="/",
-            )
+    return response
+
+
+@router.post("/logout")
+async def logout():
+    """退出登录：清除 session cookie，前端随后刷新页面回到未登录状态"""
+    response = JSONResponse({"ok": True})
+    response.delete_cookie(key=SESSION_COOKIE_NAME, path="/")
     return response
 
 

@@ -190,3 +190,54 @@ async def test_verify_token_skipped_when_placeholder(monkeypatch):
     monkeypatch.setattr(api.deps, "_API_TOKEN", "")
     result = await verify_token(None, authorization=None)
     assert result is None
+
+
+# ─────────────────────────────────────────────
+# 登录/登出入口（1.3.2 新增）
+# ─────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_dashboard_renders_login_link_when_anonymous(client):
+    """认证启用 + 未登录 → 页面渲染「登录」入口"""
+    resp = await client.get("/")
+    assert resp.status_code == 200
+    assert "auth-btn" in resp.text
+    assert "登录" in resp.text
+    assert "href=\"/login\"" in resp.text
+    assert "登出" not in resp.text
+
+
+@pytest.mark.asyncio
+async def test_dashboard_renders_logout_button_when_authed(client):
+    """认证启用 + 已登录(cookie) → 页面渲染「登出」按钮"""
+    login_resp = await client.post("/login", json={"token": API_TOKEN})
+    cookie = login_resp.headers.get("set-cookie", "").split(";")[0]
+    resp = await client.get("/", headers={"Cookie": cookie})
+    assert resp.status_code == 200
+    assert "登出" in resp.text
+    assert "window._DS.logout()" in resp.text
+    assert 'href="/login"' not in resp.text
+
+
+@pytest.mark.asyncio
+async def test_logout_clears_session_cookie(client):
+    """POST /logout → 清除 session cookie"""
+    login_resp = await client.post("/login", json={"token": API_TOKEN})
+    cookie = login_resp.headers.get("set-cookie", "").split(";")[0]
+    resp = await client.post("/logout", headers={"Cookie": cookie})
+    assert resp.status_code == 200
+    assert resp.json().get("ok") is True
+    set_cookie = resp.headers.get("set-cookie", "")
+    assert SESSION_COOKIE_NAME in set_cookie
+    assert "max-age=0" in set_cookie.lower() or "deleted" in set_cookie.lower() or "expires" in set_cookie.lower()
+
+
+@pytest.mark.asyncio
+async def test_dashboard_hides_auth_btn_when_auth_disabled(client, monkeypatch):
+    """认证未启用（占位符归一化后为空）→ 页面不渲染登录/登出入口"""
+    monkeypatch.setattr(api.kline, "_API_TOKEN", "")
+    monkeypatch.setattr(api.kline, "SESSION_TOKEN", "")
+    resp = await client.get("/")
+    assert resp.status_code == 200
+    assert "auth-btn" not in resp.text
+    assert "{{AUTH_STATE}}" not in resp.text

@@ -54,14 +54,14 @@ def make_route(path: str, method: str = "GET") -> str:
 def handle_health():
     uptime = (datetime.now(timezone.utc) - START_TIME).total_seconds()
     return json_response({
-        "status": "ok", "version": "1.3.1", "uptime_seconds": round(uptime, 1),
+        "status": "ok", "version": "1.3.2", "uptime_seconds": round(uptime, 1),
     })
 
 
 def handle_health_detail():
     uptime = (datetime.now(timezone.utc) - START_TIME).total_seconds()
     return json_response({
-        "status": "ok", "version": "1.3.1", "uptime_seconds": round(uptime, 1),
+        "status": "ok", "version": "1.3.2", "uptime_seconds": round(uptime, 1),
         "redis": "connected", "database": "connected",
         "agents": {"macro": True, "signal": True, "trace": True, "risk": True, "chief": True},
         "llm_chain": {
@@ -80,7 +80,7 @@ def handle_health_detail():
 def handle_status():
     uptime = (datetime.now(timezone.utc) - START_TIME).total_seconds()
     return json_response({
-        "version": "1.3.1", "uptime_seconds": round(uptime, 1),
+        "version": "1.3.2", "uptime_seconds": round(uptime, 1),
         "decision_stats": {"total": 42, "buy": 15, "sell": 8, "hold": 19},
         "case_stats": {"total": 128, "avg_outcome": 0.023, "win_rate": 0.62},
         "latest_decision": {
@@ -552,7 +552,7 @@ class DevHandler(SimpleHTTPRequestHandler):
             if not TEMPLATE_PATH.exists():
                 self.send_error(500, "template not found")
                 return
-            html = TEMPLATE_PATH.read_text(encoding="utf-8")
+            html = TEMPLATE_PATH.read_text(encoding="utf-8").replace("{{AUTH_STATE}}", "")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.end_headers()

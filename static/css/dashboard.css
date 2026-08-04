@@ -79,6 +79,18 @@ body {
 .badge-warn { background: var(--bg-yellow-subtle); color: var(--color-yellow); }
 .badge-err  { background: var(--bg-red-subtle); color: var(--color-red); }
 
+/* ── 登录 / 登出入口 ── */
+.auth-btn {
+  padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 600;
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  text-decoration: none; cursor: pointer; border: 1px solid var(--border-color);
+  transition: background .3s, color .3s, border-color .3s;
+}
+a.auth-btn { color: var(--accent-blue); background: transparent; }
+a.auth-btn:hover { background: var(--bg-tag); border-color: var(--accent-blue); }
+button.auth-btn { color: var(--text-secondary); background: transparent; }
+button.auth-btn:hover { color: var(--color-red); background: var(--bg-red-subtle); border-color: var(--color-red); }
+
 /* ── Grid ── */
 .grid {
   display: grid;
