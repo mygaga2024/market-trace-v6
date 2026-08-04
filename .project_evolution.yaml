@@ -1,6 +1,6 @@
 version: 2
 created: '2026-07-20T10:14:18.528063'
-updated: '2026-08-04T17:04:18.287230'
+updated: '2026-08-04T17:13:51.183312'
 self_evolution_enabled: true
 fixes:
 - error: 涨跌家数数据严重失真（只覆盖3984只，73%）
@@ -162,6 +162,14 @@ fixes:
   - agents/macro_agent.py
   session: session-2026-08-04-rai-algorithm
   timestamp: '2026-08-04T17:04:18.148304'
+- error: 计算层兜底值污染输出
+  fix: 'RSI/MA/RAI 等指标数据不足时返回 50/0.5/现价, 调用层无法区分真实值与默认值 → 静默失真; 修复: 返 None + 调用层显式处理
+    + 输出层标注"数据不足"; 改前先 grep 全部调用点确认 None 传播安全'
+  files:
+  - core/strategies.py
+  - services/analyzer.py
+  session: session-2026-08-04-silent-errors-fix
+  timestamp: '2026-08-04T17:13:51.183303'
 anti_patterns:
 - name: 静默吞异常
   description: '不要用 except Exception: pass 静默丢弃数据，必须至少记录 warning 日志'
