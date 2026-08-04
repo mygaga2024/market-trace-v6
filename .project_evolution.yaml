@@ -1,6 +1,6 @@
 version: 2
 created: '2026-07-20T10:14:18.528063'
-updated: '2026-08-04T17:03:57.803979'
+updated: '2026-08-04T17:04:18.287230'
 self_evolution_enabled: true
 fixes:
 - error: 涨跌家数数据严重失真（只覆盖3984只，73%）
@@ -155,6 +155,13 @@ fixes:
   - agents/macro_agent.py
   session: session-2026-08-04-rai-algorithm
   timestamp: '2026-08-04T17:03:57.803969'
+- error: RAI 兜底值稀释合成
+  fix: '因子数据缺失时塞 0.5 兜底并参与固定权重 → 真实信号被稀释(全红 1.0→0.8); 修复: 缺失因子不写入, 合成按可用因子动态重分配权重;
+    NAS 实测 components 确认'
+  files:
+  - agents/macro_agent.py
+  session: session-2026-08-04-rai-algorithm
+  timestamp: '2026-08-04T17:04:18.148304'
 anti_patterns:
 - name: 静默吞异常
   description: '不要用 except Exception: pass 静默丢弃数据，必须至少记录 warning 日志'
@@ -202,6 +209,10 @@ anti_patterns:
   description: 用户说界面丑时, 纯 CSS 换肤可能不被认可; 需先区分"视觉"与"结构"诉求, 结构性改版=重组布局(DOM 位置)而非只改样式
   session: session-2026-08-04-layout-redesign
   timestamp: '2026-08-04T16:50:53.291054'
+- name: 只有方向没有位置
+  description: '风险偏好类指数只数涨跌方向比例会误判: 低位普涨被读成追高风险; 必须结合位置/量能维度, 判读标签(regime)比数值更重要'
+  session: session-2026-08-04-rai-algorithm
+  timestamp: '2026-08-04T17:04:18.217699'
 style:
 - category: imports
   description: 使用 from __future__ import annotations 在文件顶部
@@ -293,6 +304,12 @@ style:
   - static/css/dashboard.css
   session: session-2026-08-04-layout-redesign
   timestamp: '2026-08-04T16:50:53.417164'
+- category: 判读升级向后兼容
+  description: interpret 加可选 position 参数, 无参数走旧逻辑 → 旧测试/调用方不受影响; 新阈值(低位<0.45)需结合实测数据校准
+  files:
+  - agents/macro_agent.py
+  session: session-2026-08-04-rai-algorithm
+  timestamp: '2026-08-04T17:04:18.287218'
 architecture:
 - decision: 统一策略注册
   rationale: core/strategies.py 的 STRATEGIES 字典被诊股/选股/回测三方共用，消除重复维护

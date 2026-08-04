@@ -1,6 +1,6 @@
 version: 2
 created: '2026-07-20T10:14:18.528063'
-updated: '2026-08-04T16:50:53.417172'
+updated: '2026-08-04T17:03:57.803979'
 self_evolution_enabled: true
 fixes:
 - error: 涨跌家数数据严重失真（只覆盖3984只，73%）
@@ -140,6 +140,21 @@ fixes:
   - main.py
   session: session-2026-08-04-ui-redesign
   timestamp: '2026-08-04T14:24:06.086550'
+- error: CSS grid span2 与单格卡混排空洞
+  fix: 'grid 中 grid-column:span 2 的卡独占整行, 其前单格卡右侧留空洞; 解法: 重排 DOM 顺序让单格卡两两并排、span 卡单独成行;
+    grid-auto-flow:dense 是兜底(会乱视觉顺序)'
+  files:
+  - templates/dashboard.html
+  - static/css/dashboard.css
+  session: session-2026-08-04-rai-align
+  timestamp: '2026-08-04T16:55:56.357992'
+- error: RAI 兜底值稀释合成
+  fix: '因子数据缺失时塞 0.5 兜底并参与固定权重 → 真实信号被稀释(全红 1.0→0.8); 修复: 缺失因子不写入, 合成按可用因子动态重分配权重;
+    NAS 实测 components 确认'
+  files:
+  - agents/macro_agent.py
+  session: session-2026-08-04-rai-algorithm
+  timestamp: '2026-08-04T17:03:57.803969'
 anti_patterns:
 - name: 静默吞异常
   description: '不要用 except Exception: pass 静默丢弃数据，必须至少记录 warning 日志'
