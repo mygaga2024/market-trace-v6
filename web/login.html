@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>登录 · Market Trace</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/app.css?v=2.0.0">
+</head>
+<body class="login-body">
+  <main class="login-card">
+    <div class="login-brand">
+      <span class="login-mark">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="2"></rect><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M8 12h8M3 12h18"></path></svg>
+      </span>
+      <div><strong>Market Trace</strong><span>量化控制中心</span></div>
+    </div>
+    <div class="login-copy">
+      <span class="eyebrow">SECURE ACCESS</span>
+      <h1>登录工作台</h1>
+      <p>输入服务端配置的 API 访问令牌，继续查看内网行情与决策记录。</p>
+    </div>
+    <form id="login-form">
+      <input name="username" type="text" value="operator" autocomplete="username" hidden>
+      <label class="field">
+        <span>访问令牌</span>
+        <input id="token" type="password" autocomplete="current-password" placeholder="API_TOKEN" required>
+      </label>
+      <p class="form-error" id="login-error" hidden>访问令牌无效，请重新输入。</p>
+      <button class="button button-primary login-submit" type="submit">进入控制中心</button>
+    </form>
+    <p class="login-foot">仅限已授权设备 · Session 有效期 24 小时</p>
+  </main>
+  <script src="/assets/login.js?v=2.0.0" defer></script>
+</body>
+</html>
+

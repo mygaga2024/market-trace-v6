@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0d302a">
+  <meta name="description" content="Market Trace Go — 实时行情、量化分析与风险控制">
+  <title>Market Trace · 量化控制中心</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/app.css?v=2.0.0">
+</head>
+<body>
+  <svg class="svg-sprite" aria-hidden="true">
+    <symbol id="i-briefcase" viewBox="0 0 24 24">
+      <rect x="3" y="7" width="18" height="13" rx="2"></rect>
+      <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M8 12h8M3 12h18"></path>
+    </symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24">
+      <path d="M12 3 4.5 6v5.4c0 4.6 3.1 7.9 7.5 9.6 4.4-1.7 7.5-5 7.5-9.6V6L12 3Z"></path>
+    </symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24">
+      <rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect>
+      <rect x="3" y="14" width="7" height="7" rx="1"></rect><rect x="14" y="14" width="7" height="7" rx="1"></rect>
+    </symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24">
+      <path d="M4 19V5M4 19h16M7 15l4-4 3 2 5-6"></path>
+    </symbol>
+    <symbol id="i-pulse" viewBox="0 0 24 24">
+      <path d="M3 12h4l2.2-5 4 10 2.2-5H21"></path>
+    </symbol>
+    <symbol id="i-audit" viewBox="0 0 24 24">
+      <ellipse cx="12" cy="5.5" rx="7.5" ry="3"></ellipse>
+      <path d="M4.5 5.5v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-6M4.5 11.5v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-6"></path>
+    </symbol>
+    <symbol id="i-search" viewBox="0 0 24 24">
+      <circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m15.5 15.5 5 5"></path>
+    </symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24">
+      <path d="M4 7h10M18 7h2M4 17h2M10 17h10"></path><circle cx="16" cy="7" r="2"></circle><circle cx="8" cy="17" r="2"></circle>
+    </symbol>
+    <symbol id="i-wallet" viewBox="0 0 24 24">
+      <path d="M4 6.5h15a1 1 0 0 1 1 1v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-12a2 2 0 0 1 2-2h12"></path>
+      <path d="M16 12h4M16 12a2 2 0 0 0 0 4h4"></path>
+    </symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24">
+      <rect x="4" y="10" width="16" height="11" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path>
+    </symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24">
+      <path d="m13 2-8 12h7l-1 8 8-12h-7l1-8Z"></path>
+    </symbol>
+    <symbol id="i-robot" viewBox="0 0 24 24">
+      <rect x="5" y="6" width="14" height="13" rx="3"></rect><path d="M9 2v4M15 2v4M9 11h.01M15 11h.01M9 15h6M2 11v4M22 11v4"></path>
+    </symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="3"></circle>
+      <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.86 2.86-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21H9.56v-.1a1.7 1.7 0 0 0-1.1-1.55 1.7 1.7 0 0 0-1.88.34l-.06.06L3.66 16.9l.06-.06A1.7 1.7 0 0 0 4.06 15a1.7 1.7 0 0 0-1.55-1.1H2.4V9.86h.1A1.7 1.7 0 0 0 4.06 8.7a1.7 1.7 0 0 0-.34-1.88L3.66 6.76 6.52 3.9l.06.06A1.7 1.7 0 0 0 8.46 4a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1v-.1h4.04v.1a1.7 1.7 0 0 0 1.1 1.55 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.86 2.86-.06.06A1.7 1.7 0 0 0 19.4 8.3c.23.4.6.75 1.1.94.34.14.72.2 1.1.2h.1v4.04h-.1A1.7 1.7 0 0 0 19.4 15Z"></path>
+    </symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24">
+      <path d="M20 6v5h-5M4 18v-5h5"></path><path d="M18.4 9A7 7 0 0 0 6.1 6.6L4 11M5.6 15A7 7 0 0 0 17.9 17.4L20 13"></path>
+    </symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"></path></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24">
+      <path d="M4 7h16M9 7V4h6v3M7 7l1 14h8l1-14M10 11v6M14 11v6"></path>
+    </symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M14 7l5 5-5 5"></path></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"></path></symbol>
+    <symbol id="i-logout" viewBox="0 0 24 24"><path d="M10 5H5v14h5M14 8l4 4-4 4M8 12h10"></path></symbol>
+  </svg>
+
+  <div class="app-shell">
+    <div class="rail-backdrop" id="rail-backdrop"></div>
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <div class="brand-mark">
+          <svg><use href="#i-briefcase"></use></svg>
+        </div>
+        <div class="brand-copy">
+          <strong>量化控制中心</strong>
+          <span>统一市场决策管理</span>
+        </div>
+      </div>
+
+      <nav class="side-nav" aria-label="主导航">
+        <p class="nav-section">市场运营</p>
+        <a class="nav-item" href="#" data-view="overview">
+          <svg><use href="#i-shield"></use></svg><span>控制总览</span>
+        </a>
+        <a class="nav-item active" href="#" data-view="stocks" aria-current="page">
+          <svg><use href="#i-grid"></use></svg><span>股票管理</span>
+        </a>
+        <a class="nav-item" href="#" data-view="signals">
+          <svg><use href="#i-pulse"></use></svg><span>实时决策</span>
+        </a>
+        <a class="nav-item" href="#" data-view="audit">
+          <svg><use href="#i-audit"></use></svg><span>审计日志</span>
+        </a>
+
+        <p class="nav-section">分析工具</p>
+        <a class="nav-item" href="#" data-view="analyze">
+          <svg><use href="#i-search"></use></svg><span>智能诊股</span>
+        </a>
+        <a class="nav-item" href="#" data-view="strategies">
+          <svg><use href="#i-sliders"></use></svg><span>策略配置</span>
+        </a>
+
+        <p class="nav-section">资产管理</p>
+        <a class="nav-item" href="#" data-view="portfolio">
+          <svg><use href="#i-wallet"></use></svg><span>持仓管理</span>
+        </a>
+        <a class="nav-item" href="#" data-view="risk">
+          <svg><use href="#i-lock"></use></svg><span>风控配置</span>
+        </a>
+        <a class="nav-item" href="#" data-view="history">
+          <svg><use href="#i-chart"></use></svg><span>决策历史</span>
+        </a>
+
+        <p class="nav-section">系统管理</p>
+        <a class="nav-item" href="#" data-view="agents">
+          <svg><use href="#i-robot"></use></svg><span>Agent 设置</span>
+        </a>
+        <a class="nav-item" href="#" data-view="system">
+          <svg><use href="#i-settings"></use></svg><span>系统管理</span>
+        </a>
+      </nav>
+
+      <div class="side-footer">
+        <span class="status-dot"></span>
+        <span>Go Engine</span>
+        <span class="side-version">v2.0.0</span>
+      </div>
+    </aside>
+
+    <main class="workspace">
+      <div class="mobile-bar">
+        <button class="icon-button" id="menu-button" type="button" aria-label="打开导航">
+          <svg><use href="#i-menu"></use></svg>
+        </button>
+        <span>量化控制中心</span>
+        <span class="mobile-live"><i></i> Live</span>
+      </div>
+
+      <header class="page-header">
+        <div class="header-copy">
+          <div class="eyebrow" id="page-eyebrow">资产身份</div>
+          <div class="title-row">
+            <h1 id="page-title">股票管理</h1>
+            <span class="live-pill" id="market-pill"><i></i><span>实时行情</span></span>
+          </div>
+          <p id="page-description">维护自选股票、信号状态、风险偏好和一次性决策记录。</p>
+        </div>
+        <div class="header-actions">
+          <label class="global-search" for="global-search">
+            <svg><use href="#i-search"></use></svg>
+            <input id="global-search" type="search" placeholder="搜索股票 / 代码" autocomplete="off">
+          </label>
+          <button class="button button-secondary" id="refresh-button" type="button" aria-label="刷新行情">
+            <svg><use href="#i-refresh"></use></svg><span>刷新</span>
+          </button>
+          <button class="button button-primary" id="add-stock-button" type="button" aria-label="添加股票">
+            <svg><use href="#i-plus"></use></svg><span>添加股票</span>
+          </button>
+        </div>
+      </header>
+
+      <div class="data-strip" id="data-strip" hidden>
+        <span class="warning-dot"></span>
+        <span id="data-strip-text"></span>
+      </div>
+
+      <div class="content-grid">
+        <section class="primary-panel" id="view-root" aria-live="polite">
+          <div class="loading-state">
+            <span class="loading-ring"></span>
+            <strong>正在读取市场数据</strong>
+            <small>连接行情源与本地决策记录…</small>
+          </div>
+        </section>
+
+        <aside class="watch-rail" aria-label="自选股票">
+          <div class="rail-head">
+            <div>
+              <span class="rail-kicker">WATCHLIST</span>
+              <h2>自选名单</h2>
+            </div>
+            <span class="rail-count" id="rail-count">0</span>
+          </div>
+          <div class="rail-search">
+            <svg><use href="#i-search"></use></svg>
+            <input id="rail-search" type="search" placeholder="筛选名单" aria-label="筛选自选名单">
+          </div>
+          <div class="watch-list" id="watch-list">
+            <div class="rail-loading">正在加载…</div>
+          </div>
+          <button class="rail-add" id="rail-add-button" type="button">
+            <svg><use href="#i-plus"></use></svg>
+            <span>添加自选股票</span>
+          </button>
+          <div class="rail-foot">
+            <span id="rail-updated">等待同步</span>
+            <span>Go · 2.0.0</span>
+          </div>
+        </aside>
+      </div>
+    </main>
+  </div>
+
+  <dialog class="dialog" id="stock-dialog">
+    <form method="dialog" class="dialog-card" id="stock-form">
+      <div class="dialog-head">
+        <div>
+          <span class="dialog-kicker">WATCHLIST</span>
+          <h2>添加自选股票</h2>
+        </div>
+        <button class="icon-button" value="cancel" type="button" data-close-dialog aria-label="关闭">
+          <svg><use href="#i-close"></use></svg>
+        </button>
+      </div>
+      <label class="field">
+        <span>股票代码</span>
+        <input id="stock-symbol" name="symbol" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="例如 600519" required>
+        <small>支持 6 位 A 股代码，添加后会同步实时行情。</small>
+      </label>
+      <label class="field">
+        <span>股票名称 <em>可选</em></span>
+        <input id="stock-name" name="name" maxlength="32" placeholder="例如 贵州茅台">
+      </label>
+      <label class="field">
+        <span>备注 <em>可选</em></span>
+        <input id="stock-notes" name="notes" maxlength="60" placeholder="例如 核心消费 / 观察仓">
+      </label>
+      <p class="form-error" id="stock-form-error" hidden></p>
+      <div class="dialog-actions">
+        <button class="button button-secondary" type="button" data-close-dialog>取消</button>
+        <button class="button button-primary" type="submit">确认添加</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="/assets/app.js?v=2.0.0" defer></script>
+</body>
+</html>
+

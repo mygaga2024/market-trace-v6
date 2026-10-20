@@ -1,32 +1,33 @@
-FROM python:3.11-slim
+FROM golang:1.24-alpine AS builder
 
-ENV PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+WORKDIR /src
+COPY go.mod ./
+COPY cmd ./cmd
+COPY internal ./internal
+COPY web ./web
 
-# 系统依赖（最少变更的层 → 放最前面以利用缓存）
-RUN apt-get update && apt-get install -y --no-install-recommends curl tzdata \
-    && ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
-    && echo "Asia/Shanghai" > /etc/timezone \
-    && rm -rf /var/lib/apt/lists/*
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/mt6 ./cmd/mt6
 
-RUN groupadd -r -g 1000 appuser && useradd -r -u 1000 -g appuser appuser
+FROM alpine:3.21
+
+RUN apk add --no-cache ca-certificates tzdata \
+    && addgroup -S -g 1000 appuser \
+    && adduser -S -D -H -u 1000 -G appuser appuser \
+    && mkdir -p /app/data \
+    && chown -R appuser:appuser /app
 
 WORKDIR /app
+COPY --from=builder /out/mt6 /usr/local/bin/mt6
 
-# Python 依赖（仅 requirements.txt 变更时重建此层）
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# 源代码（最频繁变更的层 → 放最后）
-COPY . .
-
-RUN mkdir -p /app/logs /app/data \
-    && chown -R appuser:appuser /app/logs /app/data
+ENV PORT=19377 \
+    MT6_DATA_DIR=/app/data \
+    TZ=Asia/Shanghai
 
 EXPOSE 19377
 
 USER appuser
 
-HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=15s \
-    CMD curl -sf http://localhost:19377/health || exit 1
+HEALTHCHECK --interval=30s --timeout=8s --retries=3 --start-period=10s \
+    CMD wget -qO- http://127.0.0.1:19377/health >/dev/null || exit 1
 
-CMD ["python", "main.py"]
+CMD ["mt6"]

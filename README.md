@@ -1,92 +1,88 @@
-# Market Trace V6.0
+# Market Trace V6 · Go Edition
 
-A/B 股量化分析系统 — 多 Agent 协作 + AI 多级回退链
+A/B 股实时行情、技术分析、风险控制与决策记录的 Go Web 控制台。界面采用深松绿色侧栏与浅灰工作面，按新版授权中心面板重新设计。
 
-**测试**: 146 passed ✅ | **Python**: 3.11+ | **部署**: Docker Compose | **端口**: 19377
+**版本**: 2.0.0 · **Go**: 1.23+ · **端口**: 19377 · **部署**: 单二进制 / Docker
 
----
+## 快速启动
 
-## 仪表盘
+```bash
+go run ./cmd/mt6
+```
 
-打开浏览器访问 `http://<your-nas-ip>:19377`
+打开 `http://localhost:19377`。首次启动会在 `data/go/state.json` 写入默认自选股、策略开关和风控参数。
 
-暗色交易面板风格，实时显示 RAI 风险偏好指数、5 个 Agent 运行状态、LLM 三级链、最新决策。每 30 秒自动刷新。
+常用环境变量：
 
----
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `PORT` | `19377` | HTTP 监听端口 |
+| `MT6_ADDRESS` | `0.0.0.0:19377` | 完整监听地址，设置后覆盖 `PORT` |
+| `MT6_DATA_DIR` | `data/go` | 持久化目录 |
+| `API_TOKEN` | 空 | 设置后保护 API；占位符 `your-*` 视为未配置 |
+| `MT6_HTTPS` | `false` | 登录 Cookie 是否使用 Secure |
+| `MT6_REQUEST_TIMEOUT` | `12s` | 行情与诊股请求超时 |
+
+## 功能
+
+- 真实 A 股行情：东方财富指数与自选股报价
+- 智能诊股：MA、RSI、MACD、KDJ、ATR、布林带、量比和支撑阻力
+- 可解释决策：多空信号、评分、动作、置信度和风险等级
+- 风控配置：单票上限、止损、单日亏损、最低置信度
+- 自选与审计：JSON 原子持久化，增删、策略和风控操作可追溯
+- 响应式界面：桌面双栏、移动端侧栏抽屉、自选名单和诊股走势图
+- 可选登录：Bearer Token 或 HttpOnly 会话 Cookie
 
 ## 架构
 
-```
-[数据适配器 (多源备选)]
-           ↓
-      Redis 消息总线
-           ↓
-┌──────────┬───────────┬──────────┬──────────┐
-│ Macro    │ Signal    │ Trace    │ Risk     │
-│ (RAI)    │ (MA/MACD) │ (量价异动) │ (否决权)  │
-└────┬─────┴─────┬─────┴────┬─────┴────┬─────┘
-     └───────────┴──────────┴──────────┘
-                    ↓
-           Chief Analyst AI
-       三级回退 → 纯规则加权
-                    ↓
-          Redis + SQLite 持久化
-                    ↓
-       FastAPI (仪表盘 + REST 端点)
+```text
+cmd/mt6                 Go 服务入口
+internal/config         环境配置
+internal/market         Eastmoney 行情、指标计算、决策与缓存
+internal/store          自选/决策/审计/风控 JSON 持久化
+internal/server         net/http 路由、鉴权和 API
+web                     内嵌 HTML/CSS/JS 前端资源
 ```
 
-## 核心链路
+行情与 K 线来自东方财富公开接口。数据不可用时返回显式降级状态，不用模拟价格或兜底指标参与评分。
 
-| 层级 | 说明 |
-|------|------|
-| **Macro** | 拉取 5 大指数（上证/深证/创业板/科创50/沪深300）→ 计算 RAI |
-| **Signal** | 监听 K 线 → MA/MACD/RSI/背离检测 |
-| **Trace** | 成交量突增 + 价量背离 + 突破检测（替代被 WAF 拦截的资金流向） |
-| **Risk** | 硬编码风控，一票否决权 |
-| **Chief** | 汇总 → LLM 三级回退链 → 证据链输出 |
-
----
-
-## 快速启动 (NAS)
-
-```bash
-cd <your-project-path>
-git clone <your-repo-url> .
-cp env.example env
-vi env   # 填入各 AI 模型的 API Key
-```
-
-在 NAS Docker UI → 项目 → 新建 → 选择此目录 → 启动。
-
----
-
-## API 端点
+## API
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/` | 可视化仪表盘 |
-| GET | `/health` | 系统健康 (Redis+DB+Agent+LLM) |
-| GET | `/status` | 状态概览 (决策统计+案例统计) |
-| GET | `/reports/{agent}` | 指定 Agent 报告 (分页) |
-| GET | `/reports/{agent}/latest` | 最新报告 |
-| GET | `/decisions` | 决策历史 (分页+统计) |
-| GET | `/decisions/{id}` | 决策详情 (含证据链) |
+| `GET` | `/health` | 服务与行情健康状态 |
+| `GET` | `/api/v1/dashboard` | 控制台聚合数据 |
+| `GET` | `/api/v1/stocks` | 自选股与实时行情 |
+| `POST` | `/api/v1/stocks` | 添加自选股 |
+| `DELETE` | `/api/v1/stocks/{symbol}` | 移除自选股 |
+| `POST` | `/api/v1/analyze` | 按股票代码生成量化决策 |
+| `GET` | `/api/v1/decisions` | 决策历史 |
+| `GET` | `/api/v1/audit` | 审计事件 |
+| `GET/PUT` | `/api/v1/settings` | 读取/更新风控参数 |
+| `POST` | `/api/v1/strategies/{key}/toggle` | 启用/停用策略 |
 
----
+## 测试与部署
 
-## 部署架构
-
+```bash
+go test ./...
+go test -race ./...
+python3 -m pytest tests/ -v
 ```
-NAS 宿主机
-├── host 网络模式 (共享 NAS 网卡)
-├── 复用 NAS 自带 Redis
-├── 代理管理规则
-└── 单容器, 内存 ≤ 1GB
+
+```bash
+docker compose up -d --build app
+curl -s localhost:19377/health
 ```
 
-## 环境变量 (env)
+Docker 镜像使用多阶段构建，最终运行层只包含静态 Go 二进制、CA 证书和时区数据。Web 资源通过 `go:embed` 打入二进制。
 
-| 变量 | 说明 |
-|------|------|
-| `*_API_KEY` | 多级回退链 AI 模型 Key (详见 env.example) |
-| `TUSHARE_TOKEN` | (可选) 备用数据源 Token |
+## Python 版本
+
+原有 FastAPI + Agent 实现继续保留在仓库中，方便回滚和结果对照：
+
+```bash
+python3 main.py
+docker build -f Dockerfile.python -t market-trace-v6-python .
+```
+
+默认 `Dockerfile` 和生产 Compose 已切换到 Go 版本。

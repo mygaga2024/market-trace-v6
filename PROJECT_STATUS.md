@@ -2,17 +2,21 @@
 
 ## 版本
 
-**1.3.8**
+**2.0.0**
 
 ## 已知问题
 
 <!-- 暂无已知严重 bug -->
 <!-- 发现新问题时在此追加，格式: YYYY-MM-DD | 问题描述 | 临时方案 -->
+| 日期 | 问题 | 临时方案 |
+|------|------|----------|
+| 2026-10-20 | 本地环境无 Docker daemon，NAS 主机名当前不可解析 | Go 二进制与 API/浏览器已本地实测；部署验证需在可访问 NAS 的环境执行 |
 
 ## 最近修复
 
 | 日期 | Commit | 修复内容 |
 |------|--------|---------|
+| 2026-10-20 | — | **Go Edition 2.0.0**: 新增 `cmd/mt6` + `internal/*` 标准库 HTTP 服务；东方财富实时指数/自选行情与 140 日 K 线；MA/RSI/MACD/KDJ/ATR/布林带/量比/支撑阻力；可解释评分、动作、置信度、风险；JSON 原子持久化自选/决策/审计/风控/策略；Bearer + HttpOnly Session 鉴权；`go:embed` 内嵌响应式前端。UI 按参考授权中心重做为深松绿侧栏、浅灰工作面、白色名单栏和移动端抽屉。Dockerfile 改为多阶段 Go 构建，原 Python Dockerfile 保留为 `Dockerfile.python`；Go 测试 16 项、Python 回归 328 项全部通过 |
 | 2026-08-04 | — | 静默错误专项修复续(19项中/低危): ATR不足返None/量能均值0不恒真/凯利无真实统计→data_insufficient/parity波动率≤0→None/trace方向强度加权/paper缺价跳过估值+无confidence不自动买/RSI小样本(2倍周期)/回测vol_up不足为False/sharpe等样本不足保持None+score安全/rolling加sample_ok/扫描vol_ratio分母0→None+降级不排序/macro全因子缺失→DEGRADED+data_complete/布林position None/KDJ伪中性→None/position横盘跳过; 版本 1.3.7→1.3.8; 新增 test_silent_fixes.py 19项 (328 total) |
 | 2026-08-04 | — | 同类静默错误专项修复(5项高危): ① strategies._calc_rsi/_calc_ma 数据不足不再返回伪中性 50/现价冒充均线, 改返 None + analyzer 长度防护(前端已兼容显示"—") ② 顶背离 strength 由幅度计算(0.7 硬编码→真实值), 阈值统一 DIVERGENCE_MIN_STRENGTH=0.5 供 risk/chief 共用(critical 强制平仓规则重新可触发) ③ 回测结果 MIN_TRADES_FOR_RESULT=5 笔才收录排名(1 笔 0%/100% 胜率不再污染) ④ analyzer 宏观缓存缺失 RAI=None 不再兜底 0.5 进 LLM, prompt 标注「宏观数据缺失」 ⑤ risk_agent/chief_decision RAI None 传播防护(修 None>0.65 TypeError); 版本 1.3.6→1.3.7; 新增测试 7项 (309 total) |
 | 2026-08-04 | — | RAI 算法修复: (1) bug-板块数据缺失时 0.5 兜底不再参与 40% 权重(全红被稀释成 0.8 的问题), 缺失因子自动重分配权重; (2) 新增位置因子 position(指数近一年高低分位 0.7+MA20 偏离 0.3), 低位反弹时抑制 RAI 虚高; (3) 判读升级: 低位+高RAI→「低位强势反弹-右侧机会」, 高位+低RAI→「高位走弱-警惕回落」; 版本 1.3.5→1.3.6; 新增测试 11项 (302 total) |
@@ -55,6 +59,8 @@
 
 ## LLM Fallback Chain
 
+Go 2.0.0 的诊股与风控为确定性规则引擎，不调用 LLM；以下链条仅保留给 Python 回滚版本。
+
 ```
 primary    → deepseek-chat        (DeepSeek)
 secondary  → deepseek-reasoner    (DeepSeek 推理)
@@ -72,10 +78,15 @@ fallback   → RuleBasedAnalyzer    (纯规则)
 
 - 端口: `19377`
 - 容器名: `mt6-app` (docker-compose)
-- 数据源: AkShare + Tushare (开发默认)
+- 主运行版本: Go 2.0.0
+- 数据源: 东方财富实时行情 + 前复权日 K
+- 数据目录: `data/go/state.json`
+- Python 回滚镜像: `Dockerfile.python`
 
 ## 测试
 
 ```bash
-pytest tests/ -v
+go test ./...
+go test -race ./...
+python3 -m pytest tests/ -v
 ```
