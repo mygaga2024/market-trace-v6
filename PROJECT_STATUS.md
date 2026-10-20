@@ -2,7 +2,7 @@
 
 ## 版本
 
-**2.1.0**
+**2.2.0**
 
 ## 已知问题
 
@@ -10,7 +10,7 @@
 <!-- 发现新问题时在此追加，格式: YYYY-MM-DD | 问题描述 | 临时方案 -->
 | 日期 | 问题 | 临时方案 |
 |------|------|----------|
-| 2026-10-20 | 同花顺等扫码登录尚未配置官方 OAuth/OIDC 凭据 | 扫码入口保持禁用，不使用非官方登录接口；配置 `QR_LOGIN_*` 后自动启用 |
+| 2026-10-20 | 应用内扫码登录要求手机端先登录同一 NAS 服务 | 二维码 3 分钟有效、单次使用；未登录时先完成手机账号登录 |
 | 2026-10-20 | 生产已部署但当前为模拟盘，未配置官方券商网关 | 交易终端可完整模拟成交；配置 `BROKER_GATEWAY_*`、`ALLOW_LIVE_TRADING=true` 后启用实盘 |
 | 2026-10-20 | 实盘托管需要价格、券商和合规二次授权 | 托管默认关闭；需 `ALLOW_LIVE_CUSTODY=true` 且界面输入 `ENABLE CUSTODY` |
 
@@ -18,6 +18,7 @@
 
 | 日期 | Commit | 修复内容 |
 |------|--------|---------|
+| 2026-10-20 | — | **Go Edition 2.2.0**: 扫码登录从官方 OAuth 通道改为应用内设备授权。桌面生成一次性二维码，手机登录后确认，桌面通过随机轮询凭证取得同一账户会话；二维码 3 分钟过期、单次消费、审计留痕。扫码会话继承账户交易权限；实盘仍受券商网关与托管开关约束。Go 测试 36 项、Python 回归 328 项通过；已部署 NAS `GGUG`，`/health` 返回 `ok / 2.2.0` |
 | 2026-10-20 | — | **Go Edition 2.1.0**: 新增本地账户注册/登录、Argon2id 密码哈希、HttpOnly 会话、登录限流、管理员用户管理与改密；新增官方 OAuth/OIDC 扫码登录通道（未配置时禁用）；新增模拟券商账户、买卖/限价/撤单/持仓估值；新增签名 HMAC 的官方券商网关客户端、实盘与托管双重开关；托管引擎支持评分阈值、置信度、单笔金额、每日去重和竞价时段限制；新增交易终端、托管交易、用户管理 UI；K 线增加腾讯前复权备用源。Go 测试 32 项、Python 回归 328 项通过；已部署 NAS `GGUG` Docker，`/health` 返回 `ok / 2.1.0` |
 | 2026-10-20 | `567621b` | **Go Edition 2.0.0**: 新增 `cmd/mt6` + `internal/*` 标准库 HTTP 服务；东方财富实时指数/自选行情与 140 日 K 线；MA/RSI/MACD/KDJ/ATR/布林带/量比/支撑阻力；可解释评分、动作、置信度、风险；JSON 原子持久化自选/决策/审计/风控/策略；Bearer + HttpOnly Session 鉴权；`go:embed` 内嵌响应式前端。UI 按参考授权中心重做为深松绿侧栏、浅灰工作面、白色名单栏和移动端抽屉。Dockerfile 改为多阶段 Go 构建，原 Python Dockerfile 保留为 `Dockerfile.python`；Go 测试 16 项、Python 回归 328 项全部通过 |
 | 2026-08-04 | — | 静默错误专项修复续(19项中/低危): ATR不足返None/量能均值0不恒真/凯利无真实统计→data_insufficient/parity波动率≤0→None/trace方向强度加权/paper缺价跳过估值+无confidence不自动买/RSI小样本(2倍周期)/回测vol_up不足为False/sharpe等样本不足保持None+score安全/rolling加sample_ok/扫描vol_ratio分母0→None+降级不排序/macro全因子缺失→DEGRADED+data_complete/布林position None/KDJ伪中性→None/position横盘跳过; 版本 1.3.7→1.3.8; 新增 test_silent_fixes.py 19项 (328 total) |
@@ -81,7 +82,7 @@ fallback   → RuleBasedAnalyzer    (纯规则)
 
 - 端口: `19377`
 - 容器名: `mt6-app` (docker-compose)
-- 主运行版本: Go 2.1.0
+- 主运行版本: Go 2.2.0
 - 数据源: 东方财富实时行情 + 前复权日 K
 - 数据目录: `data/go/state.json`
 - Python 回滚镜像: `Dockerfile.python`

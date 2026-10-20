@@ -251,7 +251,7 @@ func (s *Service) Health(ctx context.Context) map[string]any {
 	return map[string]any{
 		"status":            status,
 		"service":           "market-trace-go",
-		"version":           "2.1.0",
+		"version":           "2.2.0",
 		"time":              time.Now(),
 		"market_source":     s.provider.Name(),
 		"market_latency_ms": time.Since(start).Milliseconds(),

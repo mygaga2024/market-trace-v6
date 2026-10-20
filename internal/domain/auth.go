@@ -24,6 +24,7 @@ type AuthStatus struct {
 
 type QRLoginInfo struct {
 	Configured bool   `json:"configured"`
+	Mode       string `json:"mode"`
 	Name       string `json:"name"`
 	Reason     string `json:"reason,omitempty"`
 }

@@ -7,14 +7,12 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
 	authpkg "github.com/mygaga2024/market-trace-v6/internal/auth"
 	"github.com/mygaga2024/market-trace-v6/internal/config"
 	"github.com/mygaga2024/market-trace-v6/internal/domain"
-	"github.com/mygaga2024/market-trace-v6/internal/id"
 	"github.com/mygaga2024/market-trace-v6/internal/market"
 	"github.com/mygaga2024/market-trace-v6/internal/store"
 	"github.com/mygaga2024/market-trace-v6/internal/trading"
@@ -67,7 +65,9 @@ func (s *Server) routes() error {
 	mux.HandleFunc("POST /api/v1/auth/password", s.apiChangePassword)
 	mux.HandleFunc("GET /api/v1/auth/status", s.authStatus)
 	mux.HandleFunc("GET /api/v1/auth/qr/start", s.qrStart)
-	mux.HandleFunc("GET /auth/qr/callback", s.qrCallback)
+	mux.HandleFunc("GET /api/v1/auth/qr/status", s.qrStatus)
+	mux.HandleFunc("POST /api/v1/auth/qr/approve", s.qrApprove)
+	mux.HandleFunc("GET /qr/approve", s.qrApprovePage)
 	mux.HandleFunc("GET /health", s.health)
 	mux.HandleFunc("GET /favicon.svg", s.favicon)
 
@@ -127,7 +127,7 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) loginPage(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.auth.currentUser(r); ok {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
+		http.Redirect(w, r, safeNextPath(r.URL.Query().Get("next")), http.StatusSeeOther)
 		return
 	}
 	if s.store.UserCount() == 0 {
@@ -146,7 +146,7 @@ func (s *Server) loginPage(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) registerPage(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.auth.currentUser(r); ok {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
+		http.Redirect(w, r, safeNextPath(r.URL.Query().Get("next")), http.StatusSeeOther)
 		return
 	}
 	if s.store.UserCount() > 0 && !s.auth.allowRegistration {
@@ -288,68 +288,6 @@ func (s *Server) apiChangePassword(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) authStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.auth.status(r))
-}
-
-func (s *Server) qrStart(w http.ResponseWriter, r *http.Request) {
-	if !s.auth.oauth.Configured() {
-		writeError(w, http.StatusServiceUnavailable, s.auth.oauth.MissingReason())
-		return
-	}
-	key := "qr:" + clientIP(r)
-	if !s.auth.loginLimiter.Allow(key) {
-		writeError(w, http.StatusTooManyRequests, "扫码登录请求过于频繁")
-		return
-	}
-	authURL, err := s.auth.oauth.StartURL()
-	if err != nil {
-		writeError(w, http.StatusServiceUnavailable, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"url": authURL, "provider": s.auth.oauth.Name()})
-}
-
-func (s *Server) qrCallback(w http.ResponseWriter, r *http.Request) {
-	identity, err := s.auth.oauth.Exchange(r.URL.Query().Get("code"), r.URL.Query().Get("state"))
-	if err != nil {
-		http.Redirect(w, r, "/login?qr_error="+url.QueryEscape(err.Error()), http.StatusSeeOther)
-		return
-	}
-	record, ok := s.store.UserByProviderSubject(identity.Provider, identity.Subject)
-	if !ok {
-		username, _ := authpkg.NormalizeUsername(identity.Username)
-		if username == "" {
-			username = authpkg.SafeExternalUsername(identity.Provider, identity.Subject)
-		}
-		var user domain.User
-		var createErr error
-		for attempt := 0; attempt < 4; attempt++ {
-			user, createErr = s.store.CreateUser(username, identity.DisplayName, "", identity.Provider, identity.Subject)
-			if !errors.Is(createErr, store.ErrExists) {
-				break
-			}
-			suffix := strings.TrimPrefix(id.New("x"), "x-")
-			username = strings.TrimSuffix(username, "_"+suffix)
-			if len(username) > 48 {
-				username = username[:48]
-			}
-			username += "_" + suffix
-		}
-		if createErr != nil {
-			http.Redirect(w, r, "/login?qr_error="+url.QueryEscape("创建扫码账户失败"), http.StatusSeeOther)
-			return
-		}
-		record, _ = s.store.UserByID(user.ID)
-	}
-	if record.Disabled {
-		http.Redirect(w, r, "/login?qr_error="+url.QueryEscape("账户已停用"), http.StatusSeeOther)
-		return
-	}
-	_ = s.store.MarkUserLogin(record.ID)
-	if err := s.auth.startSession(w, record.ID); err != nil {
-		http.Redirect(w, r, "/login?qr_error="+url.QueryEscape("创建会话失败"), http.StatusSeeOther)
-		return
-	}
-	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
@@ -702,10 +640,18 @@ func (s *Server) securityHeaders(next http.Handler) http.Handler {
 
 func publicPath(path string) bool {
 	return path == "/login" || path == "/register" || path == "/logout" || path == "/health" ||
-		path == "/favicon.svg" || path == "/auth/qr/callback" ||
+		path == "/favicon.svg" || path == "/qr/approve" ||
 		path == "/api/v1/auth/status" || path == "/api/v1/auth/login" ||
 		path == "/api/v1/auth/register" || path == "/api/v1/auth/qr/start" ||
+		path == "/api/v1/auth/qr/status" ||
 		strings.HasPrefix(path, "/assets/")
+}
+
+func safeNextPath(value string) string {
+	if value == "" || value[0] != '/' || strings.HasPrefix(value, "//") {
+		return "/"
+	}
+	return value
 }
 
 func decodeJSON(r *http.Request, target any) error {

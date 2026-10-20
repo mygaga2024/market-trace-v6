@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -327,7 +328,7 @@ func TestAPITokenStillSupportsAutomation(t *testing.T) {
 	}
 }
 
-func TestQRLoginFailsClosedWithoutOfficialConfig(t *testing.T) {
+func TestDeviceQRLoginFlow(t *testing.T) {
 	server := newTestServer(t, testConfig())
 	defer server.Close()
 	status, payload := requestJSON(t, server.Client(), http.MethodGet, server.URL+"/api/v1/auth/status", nil)
@@ -335,11 +336,83 @@ func TestQRLoginFailsClosedWithoutOfficialConfig(t *testing.T) {
 		t.Fatalf("auth status = %d", status)
 	}
 	qr, ok := payload["qr_login"].(map[string]any)
-	if !ok || qr["configured"] != false {
+	if !ok || qr["configured"] != true || qr["mode"] != "device" {
 		t.Fatalf("qr status = %#v", payload["qr_login"])
 	}
-	status, payload = requestJSON(t, server.Client(), http.MethodGet, server.URL+"/api/v1/auth/qr/start", nil)
-	if status != http.StatusServiceUnavailable {
+
+	authenticated := registerTestUser(t, server, "owner_test", "strong-pass-123")
+	jar, _ := cookiejar.New(nil)
+	desktop := &http.Client{Jar: jar}
+	status, payload = requestJSON(t, desktop, http.MethodGet, server.URL+"/api/v1/auth/qr/start", nil)
+	if status != http.StatusOK || payload["mode"] != "device" {
 		t.Fatalf("qr start status = %d, payload = %v", status, payload)
+	}
+	requestID := payload["request_id"].(string)
+	approveURL, err := url.Parse(payload["approve_url"].(string))
+	if err != nil {
+		t.Fatalf("parse approve URL: %v", err)
+	}
+	token := approveURL.Query().Get("t")
+	status, payload = requestJSON(t, authenticated, http.MethodPost, server.URL+"/api/v1/auth/qr/approve", map[string]any{"token": token})
+	if status != http.StatusOK || payload["ok"] != true {
+		t.Fatalf("qr approve status = %d, payload = %v", status, payload)
+	}
+	status, payload = requestJSON(t, desktop, http.MethodGet,
+		server.URL+"/api/v1/auth/qr/status?request_id="+url.QueryEscape(requestID)+"&poll_token=wrong",
+		nil,
+	)
+	if status != http.StatusUnauthorized {
+		t.Fatalf("wrong poll token status = %d, payload = %v", status, payload)
+	}
+}
+
+func TestDeviceQRStatusCreatesSession(t *testing.T) {
+	server := newTestServer(t, testConfig())
+	defer server.Close()
+	authenticated := registerTestUser(t, server, "owner_test", "strong-pass-123")
+	jar, _ := cookiejar.New(nil)
+	desktop := &http.Client{Jar: jar}
+
+	status, payload := requestJSON(t, desktop, http.MethodGet, server.URL+"/api/v1/auth/qr/start", nil)
+	if status != http.StatusOK {
+		t.Fatalf("qr start status = %d", status)
+	}
+	requestID := payload["request_id"].(string)
+	pollToken := payload["poll_token"].(string)
+	approveURL, _ := url.Parse(payload["approve_url"].(string))
+	status, payload = requestJSON(t, authenticated, http.MethodPost, server.URL+"/api/v1/auth/qr/approve", map[string]any{
+		"token": approveURL.Query().Get("t"),
+	})
+	if status != http.StatusOK {
+		t.Fatalf("qr approve status = %d, payload = %v", status, payload)
+	}
+	status, payload = requestJSON(t, desktop, http.MethodGet, server.URL+"/api/v1/auth/qr/status?request_id="+
+		url.QueryEscape(requestID)+"&poll_token="+url.QueryEscape(pollToken), nil)
+	if status != http.StatusOK || payload["status"] != "approved" {
+		t.Fatalf("qr status = %d, payload = %v", status, payload)
+	}
+	status, _ = requestJSON(t, desktop, http.MethodGet, server.URL+"/api/v1/dashboard", nil)
+	if status != http.StatusOK {
+		t.Fatalf("desktop dashboard after QR login = %d", status)
+	}
+}
+
+func TestAuthenticatedLoginPageHonorsSafeNext(t *testing.T) {
+	server := newTestServer(t, testConfig())
+	defer server.Close()
+	registered := registerTestUser(t, server, "owner_test", "strong-pass-123")
+	client := &http.Client{
+		Jar: registered.Jar,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	resp, err := client.Get(server.URL + "/login?next=" + url.QueryEscape("/qr/approve?t=abc"))
+	if err != nil {
+		t.Fatalf("GET login next: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != "/qr/approve?t=abc" {
+		t.Fatalf("login next status = %d location = %q", resp.StatusCode, resp.Header.Get("Location"))
 	}
 }

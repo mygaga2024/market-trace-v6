@@ -66,13 +66,3 @@ func TestAttemptLimiter(t *testing.T) {
 		t.Fatal("attempt should be allowed after window reset")
 	}
 }
-
-func TestOAuthFailsClosedWithoutConfig(t *testing.T) {
-	provider := NewOAuthProvider(OAuthConfig{Name: "同花顺开放平台"})
-	if provider.Configured() {
-		t.Fatal("empty OAuth config should not be configured")
-	}
-	if _, err := provider.StartURL(); err == nil {
-		t.Fatal("StartURL() should fail without official config")
-	}
-}

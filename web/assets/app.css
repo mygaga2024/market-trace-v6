@@ -2552,6 +2552,27 @@ svg {
   height: 28px;
 }
 
+.qr-mark.approved {
+  color: #247157;
+  border-color: #bde0d4;
+  background: #e7f5ef;
+}
+
+.qr-image-wrap {
+  display: inline-flex;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(18, 44, 37, 0.06);
+}
+
+.qr-image-wrap img {
+  display: block;
+  width: 210px;
+  height: 210px;
+}
+
 .qr-panel h2 {
   margin: 14px 0 0;
   font-size: 16px;

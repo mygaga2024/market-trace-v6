@@ -1,6 +1,6 @@
 version: 2
 created: '2026-07-20T10:14:18.528063'
-updated: '2026-10-20T11:07:18.816374'
+updated: '2026-10-20T11:52:03.479796'
 self_evolution_enabled: true
 fixes:
 - error: 涨跌家数数据严重失真（只覆盖3984只，73%）
@@ -213,6 +213,15 @@ fixes:
   - internal/market/eastmoney_test.go
   session: session-2026-10-20-auth-trading-nas
   timestamp: '2026-10-20T11:07:18.639087'
+- error: 官方 OAuth 扫码缺少 Client ID/Secret，入口不可用
+  fix: 改为应用内设备授权：桌面生成 3 分钟一次性二维码，手机已登录会话确认，桌面用独立轮询凭证换取同一用户会话；二维码单次消费并写审计
+  files:
+  - internal/auth/deviceqr.go
+  - internal/server/deviceqr.go
+  - web/assets/login.js
+  - web/assets/qr-approve.js
+  session: session-2026-10-20-device-qr-login
+  timestamp: '2026-10-20T11:52:03.300533'
 anti_patterns:
 - name: 静默吞异常
   description: '不要用 except Exception: pass 静默丢弃数据，必须至少记录 warning 日志'
@@ -293,6 +302,10 @@ anti_patterns:
     paper，不得返回假二维码或把模拟成交标成实盘
   session: session-2026-10-20-auth-trading-nas
   timestamp: '2026-10-20T11:07:18.728354'
+- name: 扫码登录权限被误认为独立授权
+  description: 应用内扫码登录只是认证会话复用，权限与发起确认的用户完全一致；若该用户有交易权限，扫码会话也可交易。实盘仍必须另受券商网关和托管开关约束
+  session: session-2026-10-20-device-qr-login
+  timestamp: '2026-10-20T11:52:03.389917'
 style:
 - category: imports
   description: 使用 from __future__ import annotations 在文件顶部
@@ -452,3 +465,8 @@ architecture:
     ALLOW_LIVE_CUSTODY=true 与界面 ENABLE CUSTODY 二次确认；请求使用 HMAC-SHA256 签名
   session: session-2026-10-20-auth-trading-nas
   timestamp: '2026-10-20T11:07:18.816367'
+- decision: 一次性设备扫码登录
+  rationale: QR 请求同时持有 request_id、桌面 poll_token、手机 approve_token；approve 需要有效用户会话，poll
+    仅凭随机 poll_token 换取一次桌面 session cookie；二维码 3 分钟过期，授权写入审计
+  session: session-2026-10-20-device-qr-login
+  timestamp: '2026-10-20T11:52:03.479793'

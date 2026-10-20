@@ -22,7 +22,7 @@ type userContextKey struct{}
 type authService struct {
 	store             *store.Store
 	sessions          *auth.SessionManager
-	oauth             *auth.OAuthProvider
+	deviceQR          *auth.DeviceQRManager
 	loginLimiter      *auth.AttemptLimiter
 	registerLimiter   *auth.AttemptLimiter
 	apiToken          string
@@ -34,7 +34,7 @@ func newAuthService(state *store.Store, cfg config.Config) *authService {
 	return &authService{
 		store:             state,
 		sessions:          auth.NewSessionManager(cfg.SessionTTL),
-		oauth:             auth.NewOAuthProvider(auth.OAuthConfigFromEnv()),
+		deviceQR:          auth.NewDeviceQRManager(3 * time.Minute),
 		loginLimiter:      auth.NewAttemptLimiter(8, 10*time.Minute),
 		registerLimiter:   auth.NewAttemptLimiter(5, 30*time.Minute),
 		apiToken:          cfg.APIToken,
@@ -115,9 +115,9 @@ func (a *authService) status(r *http.Request) domain.AuthStatus {
 		Authenticated: authenticated,
 		Registration:  a.allowRegistration || a.store.UserCount() == 0,
 		QRLogin: domain.QRLoginInfo{
-			Configured: a.oauth.Configured(),
-			Name:       a.oauth.Name(),
-			Reason:     a.oauth.MissingReason(),
+			Configured: true,
+			Mode:       "device",
+			Name:       "应用内扫码登录",
 		},
 	}
 	if authenticated {

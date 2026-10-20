@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>登录 · Market Trace</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/assets/app.css?v=2.1.0">
+  <link rel="stylesheet" href="/assets/app.css?v=2.2.0">
 </head>
 <body class="login-body">
   <main class="login-card">
@@ -18,7 +18,7 @@
     <div class="login-copy">
       <span class="eyebrow">SECURE ACCESS</span>
       <h1>登录工作台</h1>
-      <p>账户会话与管理权限由 NAS 本地保存。实盘交易仍需单独配置官方券商网关。</p>
+      <p>账户会话与管理权限由 NAS 本地保存。手机登录后也可扫码授权桌面登录。</p>
     </div>
 
     <div class="auth-tabs" role="tablist" aria-label="登录方式">
@@ -45,20 +45,21 @@
 
     <section class="auth-pane" data-auth-pane="qr">
       <div class="qr-panel">
-        <span class="qr-mark">
+        <span class="qr-mark" id="qr-mark">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h3v3h-3zM19 19h1v1h-1zM14 19h2M19 14h1"></path></svg>
         </span>
-        <h2 id="qr-title">官方 App 扫码登录</h2>
-        <p id="qr-status">正在检查扫码登录配置…</p>
-        <button class="button button-primary" id="qr-login-button" type="button" disabled>发起扫码登录</button>
-        <small>仅支持已授权的官方开放平台 OAuth/OIDC。不会调用非官方接口，也不会收集券商密码。</small>
+        <div class="qr-image-wrap" id="qr-image-wrap" hidden><img id="qr-image" alt="应用内扫码登录二维码"></div>
+        <h2 id="qr-title">应用内扫码登录</h2>
+        <p id="qr-status">点击生成二维码，再用已登录 Market Trace 的手机扫描确认。</p>
+        <button class="button button-primary" id="qr-login-button" type="button">生成二维码</button>
+        <small>二维码 3 分钟有效且只能使用一次。扫码登录继承该账户的权限，包括已开启的交易权限。</small>
       </div>
-      <p class="auth-switch">扫码账户首次登录会自动创建本地账户。</p>
+      <p class="auth-switch">手机端需要先登录同一套 Market Trace 服务。</p>
     </section>
 
     <p class="login-foot">登录会话默认 7 天 · 密码使用 Argon2id 加盐存储</p>
   </main>
-  <script src="/assets/login.js?v=2.1.0" defer></script>
+  <script src="/assets/login.js?v=2.2.0" defer></script>
 </body>
 </html>
 

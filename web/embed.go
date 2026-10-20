@@ -5,7 +5,7 @@ import (
 	"io/fs"
 )
 
-//go:embed index.html login.html register.html assets/*
+//go:embed index.html login.html register.html qr_approve.html assets/*
 var files embed.FS
 
 func Index() ([]byte, error) {
@@ -18,6 +18,10 @@ func Login() ([]byte, error) {
 
 func Register() ([]byte, error) {
 	return files.ReadFile("register.html")
+}
+
+func QRApprove() ([]byte, error) {
+	return files.ReadFile("qr_approve.html")
 }
 
 func Assets() (fs.FS, error) {

@@ -2,7 +2,7 @@
 
 A/B 股实时行情、量化分析、用户权限、交易执行与托管交易的 Go Web 控制台。界面采用深松绿色侧栏与浅灰工作面，按新版授权中心面板重新设计。
 
-**版本**: 2.1.0 · **Go**: 1.23+ · **端口**: 19377 · **部署**: 单二进制 / Docker
+**版本**: 2.2.0 · **Go**: 1.23+ · **端口**: 19377 · **部署**: 单二进制 / Docker
 
 ## 快速启动
 
@@ -32,10 +32,9 @@ go run ./cmd/mt6
 - 本地账户密码使用 Argon2id 加盐哈希，正文与日志中不保存明文。
 - 登录成功后使用 `HttpOnly`、`SameSite=Strict` 会话 Cookie。
 - 管理员可在“用户管理”中开关其他账户的交易权限。
-- 系统设置页支持修改密码；扫码创建的账户可设置本地备用密码。
-- 可选扫码登录只接官方 OAuth/OIDC。未配置同花顺等平台的官方凭据时，扫码入口会明确禁用，不调用非官方接口。
-
-扫码登录所需变量见 `env.example` 的 `QR_LOGIN_*` 段。
+- 系统设置页支持修改密码。
+- 应用内扫码登录：桌面生成一次性二维码，手机在已登录 Market Trace 后扫码确认，桌面获得同一账户的新会话。
+- 扫码授权二维码 3 分钟有效、只能使用一次；桌面只拿到随机轮询凭证，不需要传输密码。
 
 ## 交易与托管
 
@@ -76,7 +75,7 @@ Broker / Account
 
 ```text
 cmd/mt6                 Go 服务入口
-internal/auth           Argon2id、会话、限流、官方 OAuth/OIDC
+internal/auth           Argon2id、会话、限流、一次性设备扫码
 internal/config         环境配置
 internal/market         行情、K 线降级、指标计算与决策
 internal/store          用户、自选、决策、审计、交易 JSON 持久化
@@ -96,8 +95,10 @@ web                     内嵌 HTML/CSS/JS 前端资源
 | `POST` | `/api/v1/auth/login` | 登录 |
 | `POST` | `/api/v1/auth/logout` | 退出登录 |
 | `POST` | `/api/v1/auth/password` | 修改密码 |
-| `GET` | `/api/v1/auth/status` | 登录/注册/扫码配置状态 |
-| `GET` | `/api/v1/auth/qr/start` | 生成官方扫码授权地址 |
+| `GET` | `/api/v1/auth/status` | 登录/注册/扫码状态 |
+| `GET` | `/api/v1/auth/qr/start` | 生成应用内扫码请求与二维码 |
+| `GET` | `/api/v1/auth/qr/status` | 桌面轮询扫码授权状态 |
+| `POST` | `/api/v1/auth/qr/approve` | 手机确认授权桌面临时登录 |
 | `GET` | `/api/v1/dashboard` | 控制台聚合数据 |
 | `GET/POST` | `/api/v1/trading/orders` | 查询/提交委托 |
 | `POST` | `/api/v1/trading/orders/{id}/cancel` | 撤单 |
@@ -108,6 +109,8 @@ web                     内嵌 HTML/CSS/JS 前端资源
 | `POST` | `/api/v1/users/{id}/trading` | 设置交易权限（管理员） |
 
 完整行情、自选、审计和风控端点参见 `internal/server/server.go`。
+
+扫码授权后的桌面临时会话继承授权账户的权限。若该账户已开启交易权限，桌面端可以提交委托；实盘仍受 `TRADING_MODE`、官方券商网关和托管双重开关约束。
 
 ## 测试与 Docker
 

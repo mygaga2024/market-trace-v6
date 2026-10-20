@@ -2,6 +2,12 @@
   "use strict";
 
   var error = document.getElementById("register-error");
+  var params = new URLSearchParams(location.search);
+  var nextTarget = safeNext(params.get("next"));
+  var loginLink = document.querySelector('.auth-switch a[href="/login"]');
+  if (loginLink && nextTarget) {
+    loginLink.href = "/login?next=" + encodeURIComponent(nextTarget);
+  }
   document.getElementById("register-form").addEventListener("submit", function (event) {
     event.preventDefault();
     error.hidden = true;
@@ -28,7 +34,7 @@
         if (!response.ok) {
           throw new Error(payload.error || "注册失败");
         }
-        location.replace(payload.redirect || "/");
+        location.replace(nextTarget || payload.redirect || "/");
       });
     }).catch(function (reason) {
       error.textContent = reason.message;
@@ -36,4 +42,11 @@
       submit.disabled = false;
     });
   });
+
+  function safeNext(value) {
+    if (!value || value.charAt(0) !== "/" || value.charAt(1) === "/") {
+      return "";
+    }
+    return value;
+  }
 })();

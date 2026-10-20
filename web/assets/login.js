@@ -4,8 +4,20 @@
   var error = document.getElementById("login-error");
   var qrButton = document.getElementById("qr-login-button");
   var qrStatus = document.getElementById("qr-status");
-  var qrTitle = document.getElementById("qr-title");
+  var qrImage = document.getElementById("qr-image");
+  var qrImageWrap = document.getElementById("qr-image-wrap");
+  var qrMark = document.getElementById("qr-mark");
   var params = new URLSearchParams(location.search);
+  var nextTarget = safeNext(params.get("next"));
+  var qrTimer = null;
+  var qrPollToken = "";
+  var qrRequestID = "";
+  var qrStarted = false;
+
+  var registerLink = document.querySelector('.auth-switch a[href="/register"]');
+  if (registerLink && nextTarget) {
+    registerLink.href = "/register?next=" + encodeURIComponent(nextTarget);
+  }
   if (params.get("qr_error")) {
     error.textContent = params.get("qr_error");
     error.hidden = false;
@@ -22,24 +34,11 @@
       document.querySelectorAll("[data-auth-pane]").forEach(function (pane) {
         pane.classList.toggle("active", pane.getAttribute("data-auth-pane") === name);
       });
+      if (name === "qr" && !qrStarted) {
+        startQR();
+      }
     });
   });
-
-  fetch("/api/v1/auth/status", {credentials: "same-origin"})
-    .then(function (response) { return response.json(); })
-    .then(function (status) {
-      var qr = status.qr_login || {};
-      if (qr.configured) {
-        qrTitle.textContent = qr.name + " 扫码登录";
-        qrStatus.textContent = "点击后将跳转到官方授权页完成扫码。";
-        qrButton.disabled = false;
-      } else {
-        qrStatus.textContent = qr.reason || "官方扫码登录尚未配置。";
-      }
-    })
-    .catch(function () {
-      qrStatus.textContent = "无法读取扫码登录配置。";
-    });
 
   document.getElementById("login-form").addEventListener("submit", function (event) {
     event.preventDefault();
@@ -59,7 +58,7 @@
         if (!response.ok) {
           throw new Error(payload.error || "登录失败");
         }
-        location.replace(payload.redirect || "/");
+        location.replace(nextTarget || payload.redirect || "/");
       });
     }).catch(function (reason) {
       error.textContent = reason.message;
@@ -68,21 +67,74 @@
     });
   });
 
-  qrButton.addEventListener("click", function () {
+  qrButton.addEventListener("click", startQR);
+
+  function startQR() {
+    clearTimeout(qrTimer);
     qrButton.disabled = true;
-    qrStatus.textContent = "正在创建授权请求…";
+    qrButton.textContent = "正在生成…";
+    qrStatus.textContent = "正在创建一次性登录请求…";
     fetch("/api/v1/auth/qr/start", {credentials: "same-origin"})
       .then(function (response) {
         return response.json().catch(function () { return {}; }).then(function (payload) {
           if (!response.ok) {
-            throw new Error(payload.error || "扫码登录不可用");
+            throw new Error(payload.error || "无法生成二维码");
           }
-          location.assign(payload.url);
+          qrStarted = true;
+          qrRequestID = payload.request_id;
+          qrPollToken = payload.poll_token;
+          qrImage.src = payload.image_data_url;
+          qrImageWrap.hidden = false;
+          qrMark.hidden = true;
+          qrButton.textContent = "刷新二维码";
+          qrButton.disabled = false;
+          qrStatus.textContent = "等待手机确认。请使用已登录的 Market Trace 手机扫描。";
+          pollQR();
+        });
+      })
+      .catch(function (reason) {
+        qrButton.textContent = "重新生成";
+        qrButton.disabled = false;
+        qrStatus.textContent = reason.message;
+      });
+  }
+
+  function pollQR() {
+    if (!qrRequestID || !qrPollToken) {
+      return;
+    }
+    var query = "?request_id=" + encodeURIComponent(qrRequestID) +
+      "&poll_token=" + encodeURIComponent(qrPollToken);
+    fetch("/api/v1/auth/qr/status" + query, {credentials: "same-origin"})
+      .then(function (response) {
+        return response.json().catch(function () { return {}; }).then(function (payload) {
+          if (!response.ok) {
+            throw new Error(payload.error || "扫码状态读取失败");
+          }
+          if (payload.status === "approved") {
+            qrStatus.textContent = "已确认，正在登录…";
+            location.replace(nextTarget || payload.redirect || "/");
+            return;
+          }
+          if (payload.status === "expired" || payload.status === "consumed") {
+            qrStatus.textContent = payload.status === "expired"
+              ? "二维码已过期，请刷新。"
+              : "二维码已使用，请刷新。";
+            qrStarted = false;
+            return;
+          }
+          qrTimer = setTimeout(pollQR, 2000);
         });
       })
       .catch(function (reason) {
         qrStatus.textContent = reason.message;
-        qrButton.disabled = false;
       });
-  });
+  }
+
+  function safeNext(value) {
+    if (!value || value.charAt(0) !== "/" || value.charAt(1) === "/") {
+      return "";
+    }
+    return value;
+  }
 })();

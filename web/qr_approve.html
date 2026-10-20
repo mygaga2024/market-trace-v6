@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>确认扫码登录 · Market Trace</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/app.css?v=2.2.0">
+</head>
+<body class="login-body">
+  <main class="login-card">
+    <div class="login-brand">
+      <span class="login-mark">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="2"></rect><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M8 12h8M3 12h18"></path></svg>
+      </span>
+      <div><strong>Market Trace</strong><span>量化控制中心</span></div>
+    </div>
+    <div class="login-copy">
+      <span class="eyebrow">DEVICE AUTHORIZATION</span>
+      <h1>确认扫码登录</h1>
+      <p>另一个浏览器正在请求使用你的账户登录。确认后，该浏览器会获得与当前账户相同的权限。</p>
+    </div>
+    <div class="qr-panel">
+      <span class="qr-mark" id="approve-mark">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4.5 6v5.4c0 4.6 3.1 7.9 7.5 9.6 4.4-1.7 7.5-5 7.5-9.6V6L12 3Z"></path><path d="m8.5 12 2.3 2.3 4.7-5"></path></svg>
+      </span>
+      <h2 id="approve-title">授权桌面浏览器</h2>
+      <p id="approve-status">正在读取当前账户…</p>
+      <button class="button button-primary" id="approve-button" type="button" disabled>确认登录</button>
+      <small>登录会话会继承当前账户的交易权限。若当前账户已开启交易权限，桌面端也可以提交委托。</small>
+    </div>
+    <p class="form-error" id="approve-error" hidden></p>
+    <p class="auth-switch"><a href="/">返回控制中心</a></p>
+    <p class="login-foot">一次性授权 · 3 分钟有效 · 不包含任何密码</p>
+  </main>
+  <script src="/assets/qr-approve.js?v=2.2.0" defer></script>
+</body>
+</html>
+
