@@ -2594,6 +2594,88 @@ svg {
   line-height: 1.6;
 }
 
+.wechat-login-panel {
+  padding: 24px 18px;
+  text-align: center;
+  border: 1px solid #cfe9da;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #f3fbf6 0%, #ffffff 100%);
+}
+
+.wechat-mark {
+  display: grid;
+  width: 54px;
+  height: 54px;
+  margin: 0 auto;
+  place-items: center;
+  color: #fff;
+  border-radius: 16px;
+  background: #07c160;
+  box-shadow: 0 8px 22px rgba(7, 193, 96, 0.18);
+}
+
+.wechat-mark svg {
+  width: 31px;
+  height: 31px;
+  stroke-width: 1.2;
+}
+
+.wechat-login-panel h2 {
+  margin: 14px 0 0;
+  font-size: 16px;
+}
+
+.wechat-login-panel p {
+  min-height: 36px;
+  margin: 8px 0 15px;
+  color: #7d8985;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.wechat-login-panel small {
+  display: block;
+  margin-top: 14px;
+  color: #9ba4a1;
+  font-size: 9px;
+  line-height: 1.6;
+}
+
+.wechat-button {
+  color: #fff;
+  background: #07c160;
+  box-shadow: 0 6px 16px rgba(7, 193, 96, 0.18);
+}
+
+.wechat-button:hover:not(:disabled) {
+  background: #06ad56;
+}
+
+.wechat-button:disabled {
+  color: #9ca5a2;
+  background: #edf1ef;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 17px 0;
+  color: #9aa4a1;
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  flex: 1;
+  height: 1px;
+  content: "";
+  background: var(--line);
+}
+
 .trading-banner {
   display: flex;
   align-items: flex-start;

@@ -2,7 +2,7 @@
 
 A/B 股实时行情、量化分析、用户权限、交易执行与托管交易的 Go Web 控制台。界面采用深松绿色侧栏与浅灰工作面，按新版授权中心面板重新设计。
 
-**版本**: 2.2.0 · **Go**: 1.23+ · **端口**: 19377 · **部署**: 单二进制 / Docker
+**版本**: 2.3.0 · **Go**: 1.23+ · **端口**: 19377 · **部署**: 单二进制 / Docker
 
 ## 快速启动
 
@@ -32,9 +32,21 @@ go run ./cmd/mt6
 - 本地账户密码使用 Argon2id 加盐哈希，正文与日志中不保存明文。
 - 登录成功后使用 `HttpOnly`、`SameSite=Strict` 会话 Cookie。
 - 管理员可在“用户管理”中开关其他账户的交易权限。
+- 自助注册、微信首次登录和应用内扫码创建的非管理员账户默认**不带交易权限**；管理员确认后才能交易。
 - 系统设置页支持修改密码。
+- 微信扫码登录：支持微信开放平台网站应用 OAuth（`snsapi_login`），配置 AppID、AppSecret 和回调域名后启用。
 - 应用内扫码登录：桌面生成一次性二维码，手机在已登录 Market Trace 后扫码确认，桌面获得同一账户的新会话。
 - 扫码授权二维码 3 分钟有效、只能使用一次；桌面只拿到随机轮询凭证，不需要传输密码。
+
+微信扫码登录环境变量：
+
+```dotenv
+WECHAT_APP_ID=
+WECHAT_APP_SECRET=
+WECHAT_REDIRECT_URL=https://your-domain.example/auth/wechat/callback
+```
+
+微信开放平台要求网站应用通过主体审核、配置授权回调域名，回调地址必须与平台后台登记值一致。未配置时微信按钮保持禁用，应用内设备扫码仍可备用。
 
 ## 交易与托管
 
@@ -99,6 +111,8 @@ web                     内嵌 HTML/CSS/JS 前端资源
 | `GET` | `/api/v1/auth/qr/start` | 生成应用内扫码请求与二维码 |
 | `GET` | `/api/v1/auth/qr/status` | 桌面轮询扫码授权状态 |
 | `POST` | `/api/v1/auth/qr/approve` | 手机确认授权桌面临时登录 |
+| `GET` | `/api/v1/auth/wechat/start` | 发起微信开放平台扫码授权 |
+| `GET` | `/auth/wechat/callback` | 微信授权回调并创建/登录本地账户 |
 | `GET` | `/api/v1/dashboard` | 控制台聚合数据 |
 | `GET/POST` | `/api/v1/trading/orders` | 查询/提交委托 |
 | `POST` | `/api/v1/trading/orders/{id}/cancel` | 撤单 |

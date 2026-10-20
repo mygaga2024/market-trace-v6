@@ -7,12 +7,13 @@
   var qrImage = document.getElementById("qr-image");
   var qrImageWrap = document.getElementById("qr-image-wrap");
   var qrMark = document.getElementById("qr-mark");
+  var wechatButton = document.getElementById("wechat-login-button");
+  var wechatStatus = document.getElementById("wechat-status");
   var params = new URLSearchParams(location.search);
   var nextTarget = safeNext(params.get("next"));
   var qrTimer = null;
   var qrPollToken = "";
   var qrRequestID = "";
-  var qrStarted = false;
 
   var registerLink = document.querySelector('.auth-switch a[href="/register"]');
   if (registerLink && nextTarget) {
@@ -22,6 +23,25 @@
     error.textContent = params.get("qr_error");
     error.hidden = false;
   }
+  if (params.get("wechat_error")) {
+    error.textContent = params.get("wechat_error");
+    error.hidden = false;
+  }
+
+  fetch("/api/v1/auth/status", {credentials: "same-origin"})
+    .then(function (response) { return response.json(); })
+    .then(function (payload) {
+      var wechat = payload.wechat_login || {};
+      if (wechat.configured) {
+        wechatStatus.textContent = "点击后将跳转到微信官方扫码授权页面。";
+        wechatButton.disabled = false;
+      } else {
+        wechatStatus.textContent = wechat.reason || "微信扫码登录尚未配置。";
+      }
+    })
+    .catch(function () {
+      wechatStatus.textContent = "无法读取微信登录配置。";
+    });
 
   document.querySelectorAll("[data-auth-tab]").forEach(function (tab) {
     tab.addEventListener("click", function () {
@@ -34,9 +54,6 @@
       document.querySelectorAll("[data-auth-pane]").forEach(function (pane) {
         pane.classList.toggle("active", pane.getAttribute("data-auth-pane") === name);
       });
-      if (name === "qr" && !qrStarted) {
-        startQR();
-      }
     });
   });
 
@@ -68,6 +85,23 @@
   });
 
   qrButton.addEventListener("click", startQR);
+  wechatButton.addEventListener("click", function () {
+    wechatButton.disabled = true;
+    wechatStatus.textContent = "正在跳转微信授权…";
+    fetch("/api/v1/auth/wechat/start", {credentials: "same-origin"})
+      .then(function (response) {
+        return response.json().catch(function () { return {}; }).then(function (payload) {
+          if (!response.ok) {
+            throw new Error(payload.error || "微信登录不可用");
+          }
+          location.assign(payload.url);
+        });
+      })
+      .catch(function (reason) {
+        wechatStatus.textContent = reason.message;
+        wechatButton.disabled = false;
+      });
+  });
 
   function startQR() {
     clearTimeout(qrTimer);
@@ -80,7 +114,6 @@
           if (!response.ok) {
             throw new Error(payload.error || "无法生成二维码");
           }
-          qrStarted = true;
           qrRequestID = payload.request_id;
           qrPollToken = payload.poll_token;
           qrImage.src = payload.image_data_url;
@@ -120,7 +153,6 @@
             qrStatus.textContent = payload.status === "expired"
               ? "二维码已过期，请刷新。"
               : "二维码已使用，请刷新。";
-            qrStarted = false;
             return;
           }
           qrTimer = setTimeout(pollQR, 2000);

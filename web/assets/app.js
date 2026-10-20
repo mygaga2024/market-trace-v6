@@ -607,7 +607,7 @@
     var data = state.data;
     return '<div class="view-stack">' +
       '<section class="panel">' +
-        '<div class="panel-head"><div class="panel-title"><h2>服务信息</h2><p>单二进制部署 · Web 资源已内嵌</p></div><span class="tag low">Go ' + escape(data.version || "2.2.0") + '</span></div>' +
+        '<div class="panel-head"><div class="panel-title"><h2>服务信息</h2><p>单二进制部署 · Web 资源已内嵌</p></div><span class="tag low">Go ' + escape(data.version || "2.3.0") + '</span></div>' +
         '<div class="system-grid">' +
           '<div class="system-block"><h3>运行参数</h3>' +
             kv("服务语言", "Go") +

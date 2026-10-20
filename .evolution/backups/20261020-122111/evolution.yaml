@@ -1,0 +1,472 @@
+version: 2
+created: '2026-07-20T10:14:18.528063'
+updated: '2026-10-20T11:52:03.479796'
+self_evolution_enabled: true
+fixes:
+- error: 涨跌家数数据严重失真（只覆盖3984只，73%）
+  fix: Sina fallback：ak.stock_zh_a_spot_em 被 NAS WAF 拦截时回退到 Sina 批量查询（含重试+补全代码段301xxx/bj83xxx/bj87xxx/bj92xxx）
+  files:
+  - data_provider/akshare_impl.py
+  session: session-2026-07-13-fix-breadth-data
+  timestamp: '2026-07-20T10:14:18.529424'
+- error: _calc_macd 在 analyzer.py / signal_agent.py / backtest.py 三处重复实现
+  fix: 统一定义在 core/strategies.py，三处改为 import 复用
+  files:
+  - core/strategies.py
+  - services/analyzer.py
+  - agents/signal_agent.py
+  - backtest/strategy_backtest.py
+  session: session-2026-07-14-epic-market-trace-v6
+  timestamp: '2026-07-20T10:14:18.531908'
+- error: Scanner 全市场扫描对 5000+ 股票串行太慢
+  fix: 分批并发处理（200 只/批），引入 rough_threshold 粗筛提前过滤
+  files:
+  - services/scanner.py
+  - core/strategies.py
+  session: session-2026-07-14-epic-market-trace-v6
+  timestamp: '2026-07-20T10:14:18.535115'
+- error: 前端JS变量泄露到全局 + JSX风格代码泄露到生产JS
+  fix: 提取 window.MT6 到 shared.js，确保在 tab-*.js 之前初始化
+  files:
+  - static/js/shared.js
+  - static/js/dashboard.js
+  - static/js/tab-*.js
+  session: session-2026-07-14-epic-market-trace-v6
+  timestamp: '2026-07-20T10:14:18.540346'
+- error: YAML 文件中含冒号的值未加引号导致解析崩溃
+  fix: 描述性字段(如 error/description)含:时必须用引号包裹，或用 Python 程序写入代替手写 YAML
+  files:
+  - .project_evolution.yaml
+  session: session-2026-07-20-project-evolve
+  timestamp: '2026-07-20T10:15:15.790502'
+- error: 进化模块绑定到单一项目，无法复用
+  fix: 抽成通用 evolution.py 脚本（位于 skill 目录），任何项目 cwd 下运行即可读写 .project_evolution.yaml
+  files:
+  - ~/.config/opencode/skills/project-evolve/evolution.py
+  - core/self_evolution.py
+  session: session-2026-07-20-project-evolve
+  timestamp: '2026-07-20T10:28:38.429464'
+- error: evolution.py 和 core/self_evolution.py 功能重复、API 不一致
+  fix: '统一 v2 API: record_dream/record_evolution/backup/toggle_enabled/get_dreams/get_evolution_logs，两处实现功能对齐'
+  files:
+  - core/self_evolution.py
+  - ~/.config/opencode/skills/project-evolve/evolution.py
+  session: session-2026-07-20-project-evolve
+  timestamp: '2026-07-20T11:21:03.653004'
+- error: '认证形同虚设: / 无条件发 session cookie'
+  fix: 新增 /login 登录页(API_TOKEN 换取 cookie), / 仅对已认证请求发 cookie; verify_token 与 login
+    用 secrets.compare_digest
+  files:
+  - api/kline.py
+  - api/deps.py
+  - static/js/shared.js
+  - tests/test_auth.py
+  session: session-2026-08-03-security-fix
+  timestamp: '2026-08-03T20:53:45.038296'
+- error: dev_server 静态文件路径遍历可读任意文件
+  fix: resolve + relative_to 校验, 越界返回 403; 新增运行时测试
+  files:
+  - dev_server.py
+  - tests/test_webui.py
+  session: session-2026-08-03-security-fix
+  timestamp: '2026-08-03T20:53:45.067849'
+- error: 无 Redis 模式数据链路 AttributeError 静默失败
+  fix: cache_and_publish*/各 provider 裸 bus 调用统一判空; main.py 降级日志改诚实(API 直连模式)
+  files:
+  - data_provider/base.py
+  - data_provider/akshare_impl.py
+  - data_provider/tushare_impl.py
+  - data_provider/fallback_handler.py
+  session: session-2026-08-03-security-fix
+  timestamp: '2026-08-03T20:53:45.098345'
+- error: Chief 微信通知永不生效
+  fix: main.py _start_agents 传 notifier; payload 从 signal 报告提取 symbol + 缓存取最新价
+  files:
+  - agents/chief_analyst.py
+  - main.py
+  session: session-2026-08-03-security-fix
+  timestamp: '2026-08-03T20:53:45.130402'
+- error: MACD 值 None 时 LLM prompt 构建 TypeError 全链退化
+  fix: format 前整体判空 dif/dea/histogram
+  files:
+  - core/llm_factory.py
+  - tests/test_chief.py
+  session: session-2026-08-03-security-fix
+  timestamp: '2026-08-03T20:53:45.163899'
+- error: 凯利公式 avg_win=0 除零
+  fix: 提前返回 0.0 条件补 avg_win<=0
+  files:
+  - core/position_sizing.py
+  - tests/test_risk_manager.py
+  session: session-2026-08-03-security-fix
+  timestamp: '2026-08-03T20:53:45.198345'
+- error: API_TOKEN 占位符认证假死
+  fix: 'env 默认 your-random-api-token 被当真实 token 启用认证 → 浏览器未登录全部 API 401 被静默渲染成空数据;
+    修复: deps._normalize_api_token() 占位符视为未配置 + shared.js 401 自动跳 /login'
+  files:
+  - api/deps.py
+  - static/js/shared.js
+  - tests/test_auth.py
+  session: session-2026-08-04-tab-fix
+  timestamp: '2026-08-04T13:55:56.535149'
+- error: API_TOKEN 占位符认证假死
+  fix: 'env 默认 your-random-api-token 被当真实 token 启用认证 → 浏览器未登录全部 API 401 被静默渲染成空数据;
+    修复: deps._normalize_api_token() 占位符视为未配置 + shared.js 401 自动跳 /login'
+  files:
+  - api/deps.py
+  - static/js/shared.js
+  - tests/test_auth.py
+  session: session-2026-08-04-tab-fix
+  timestamp: '2026-08-04T13:56:03.179427'
+- error: Python 字符串 emoji 代理对编码崩溃
+  fix: Python 3 字符串写 \uD83D\uDD10 是 unpaired surrogate, HTMLResponse.encode 抛 UnicodeEncodeError;
+    必须用完整码点 \U0001F510 (JS 可写代理对, Python 不行)
+  files:
+  - api/kline.py
+  session: session-2026-08-04-auth-entry
+  timestamp: '2026-08-04T14:11:33.952596'
+- error: Python 字符串 emoji 代理对编码崩溃
+  fix: Python 3 字符串写 \uD83D\uDD10 是 unpaired surrogate, HTMLResponse.encode 抛 UnicodeEncodeError;
+    必须用完整码点 \U0001F510 (JS 可写代理对, Python 不行)
+  files:
+  - api/kline.py
+  session: session-2026-08-04-auth-entry
+  timestamp: '2026-08-04T14:11:38.980538'
+- error: CSS 改版后忘记 cache-busting
+  fix: '改 CSS/JS 后必须同步 templates/dashboard.html 的 ?v= 版本号, 否则浏览器缓存旧样式导致用户看不到新界面; 版本号清单:
+    main.py/health.py/dev_server.py/dashboard.html/tab-reports.js/test_web.py/PROJECT_STATUS.md'
+  files:
+  - templates/dashboard.html
+  - main.py
+  session: session-2026-08-04-ui-redesign
+  timestamp: '2026-08-04T14:24:06.086550'
+- error: CSS grid span2 与单格卡混排空洞
+  fix: 'grid 中 grid-column:span 2 的卡独占整行, 其前单格卡右侧留空洞; 解法: 重排 DOM 顺序让单格卡两两并排、span 卡单独成行;
+    grid-auto-flow:dense 是兜底(会乱视觉顺序)'
+  files:
+  - templates/dashboard.html
+  - static/css/dashboard.css
+  session: session-2026-08-04-rai-align
+  timestamp: '2026-08-04T16:55:56.357992'
+- error: RAI 兜底值稀释合成
+  fix: '因子数据缺失时塞 0.5 兜底并参与固定权重 → 真实信号被稀释(全红 1.0→0.8); 修复: 缺失因子不写入, 合成按可用因子动态重分配权重;
+    NAS 实测 components 确认'
+  files:
+  - agents/macro_agent.py
+  session: session-2026-08-04-rai-algorithm
+  timestamp: '2026-08-04T17:03:57.803969'
+- error: RAI 兜底值稀释合成
+  fix: '因子数据缺失时塞 0.5 兜底并参与固定权重 → 真实信号被稀释(全红 1.0→0.8); 修复: 缺失因子不写入, 合成按可用因子动态重分配权重;
+    NAS 实测 components 确认'
+  files:
+  - agents/macro_agent.py
+  session: session-2026-08-04-rai-algorithm
+  timestamp: '2026-08-04T17:04:18.148304'
+- error: 计算层兜底值污染输出
+  fix: 'RSI/MA/RAI 等指标数据不足时返回 50/0.5/现价, 调用层无法区分真实值与默认值 → 静默失真; 修复: 返 None + 调用层显式处理
+    + 输出层标注"数据不足"; 改前先 grep 全部调用点确认 None 传播安全'
+  files:
+  - core/strategies.py
+  - services/analyzer.py
+  session: session-2026-08-04-silent-errors-fix
+  timestamp: '2026-08-04T17:13:51.183303'
+- error: 计算层兜底值污染输出
+  fix: 'RSI/MA/RAI 等指标数据不足时返回 50/0.5/现价, 调用层无法区分真实值与默认值 → 静默失真; 修复: 返 None + 调用层显式处理
+    + 输出层标注"数据不足"; 改前先 grep 全部调用点确认 None 传播安全'
+  files:
+  - core/strategies.py
+  - services/analyzer.py
+  session: session-2026-08-04-silent-errors-fix
+  timestamp: '2026-08-04T17:14:03.949869'
+- error: 写死常量冒充真实数据
+  fix: scanner 降级路径 volume/10000000 当 vol_ratio 参与排序, 凯利 win_prob/avg_win 写死输出精确仓位
+    → 无真实数据时置 None/data_insufficient 并标注, 排序(None or 0)安全
+  files:
+  - services/scanner.py
+  - api/risk.py
+  - core/risk_manager.py
+  session: session-2026-08-04-silent-errors-all
+  timestamp: '2026-08-04T17:22:34.366153'
+- error: 写死常量冒充真实数据
+  fix: scanner 降级路径 volume/10000000 当 vol_ratio 参与排序, 凯利 win_prob/avg_win 写死输出精确仓位
+    → 无真实数据时置 None/data_insufficient 并标注, 排序(None or 0)安全
+  files:
+  - services/scanner.py
+  - api/risk.py
+  - core/risk_manager.py
+  session: session-2026-08-04-silent-errors-all
+  timestamp: '2026-08-04T17:22:50.361092'
+- error: Go struct 内嵌 WatchItem 与 Quote 后同名字段冲突，编译报 ambiguous selector，JSON 也会丢 symbol/name
+  fix: StockView 改用显式 Symbol/Name/Price 等字段，Service 手工组装；新增 dashboard 身份字段测试，避免出现接口
+    200 但前端拿不到股票代码
+  files:
+  - internal/domain/models.go
+  - internal/market/service.go
+  - internal/market/service_test.go
+  session: session-2026-10-20-go-ui-rewrite
+  timestamp: '2026-10-20T10:43:24.441777'
+- error: NAS 上东方财富 push2his K 线域名偶发 EOF/Network unreachable，诊股接口 502
+  fix: market.Kline 增加数据源降级：东方财富前复权 K 线失败后自动切换腾讯 web.ifzq.gtimg.cn 前复权日线；添加腾讯行解析单测，NAS
+    实测 600519 返回 80 根图表数据
+  files:
+  - internal/market/eastmoney.go
+  - internal/market/eastmoney_test.go
+  session: session-2026-10-20-auth-trading-nas
+  timestamp: '2026-10-20T11:07:18.639087'
+- error: 官方 OAuth 扫码缺少 Client ID/Secret，入口不可用
+  fix: 改为应用内设备授权：桌面生成 3 分钟一次性二维码，手机已登录会话确认，桌面用独立轮询凭证换取同一用户会话；二维码单次消费并写审计
+  files:
+  - internal/auth/deviceqr.go
+  - internal/server/deviceqr.go
+  - web/assets/login.js
+  - web/assets/qr-approve.js
+  session: session-2026-10-20-device-qr-login
+  timestamp: '2026-10-20T11:52:03.300533'
+anti_patterns:
+- name: 静默吞异常
+  description: '不要用 except Exception: pass 静默丢弃数据，必须至少记录 warning 日志'
+  session: session-2026-07-13-fix-breadth-data
+  timestamp: '2026-07-20T10:14:18.547898'
+- name: 硬编码指标计算
+  description: 不要在多处实现相同的技术指标计算（MACD/RSI/ATR），必须在 core/strategies.py 统一定义
+  session: session-2026-07-14-epic-market-trace-v6
+  timestamp: '2026-07-20T10:14:18.555295'
+- name: 无备份的进化写入
+  description: 进化数据写入前必须先 backup() 创建快照，否则无法回滚错误变更
+  session: session-2026-07-20-project-evolve
+  timestamp: '2026-07-20T11:21:03.678664'
+- name: from api.deps import _API_TOKEN 拿值副本
+  description: monkeypatch api.deps 不影响已 import 方; 测试需分别 patch api.deps 与 api.kline
+    模块属性; 产品代码优先模块引用
+  session: session-2026-08-03-security-fix
+  timestamp: '2026-08-03T20:53:45.234045'
+- name: 测试环境被 load_dotenv 污染
+  description: main.py 加载 env 文件会注入 API_TOKEN 使全量受保护端点 401; conftest.py 预置 API_TOKEN=""
+    利用 override=False 不覆盖语义屏蔽
+  session: session-2026-08-03-security-fix
+  timestamp: '2026-08-03T20:53:45.270903'
+- name: dict 字面量 {**kw} 同名键陷阱
+  description: make_signal_report(data=...) 不会覆盖默认 data, 而是挂成 data["data"] 子键; 覆盖应传具体字段名(indicators=...)
+  session: session-2026-08-03-security-fix
+  timestamp: '2026-08-03T20:53:45.308774'
+- name: 占位符值被当真实配置
+  description: env/env.example 的 your-* 占位符必须与「未配置」等价处理, 否则默认部署进入认证假死; 校验逻辑必须与启动预检语义一致
+  session: session-2026-08-04-tab-fix
+  timestamp: '2026-08-04T13:56:03.223350'
+- name: 前端静默吞 401
+  description: fetch 把 401/非 OK 响应当成功数据传给 renderer 会渲染成「暂无数据」假象; 未认证时应明确引导登录而非静默空数据
+  session: session-2026-08-04-tab-fix
+  timestamp: '2026-08-04T13:56:03.268043'
+- name: 服务端渲染占位符残留
+  description: 模板 {{XXX}} 占位符若只被真机替换而 dev_server 直接 read_text 返回, 页面会残留字面量; 所有渲染路径(真机+dev_server)都必须处理占位符
+  session: session-2026-08-04-auth-entry
+  timestamp: '2026-08-04T14:11:39.032414'
+- name: 前端猜 httpOnly cookie 登录态
+  description: cookie 是 httpOnly 前端 JS 读不到; 登录态必须由服务端注入模板或提供状态端点
+  session: session-2026-08-04-auth-entry
+  timestamp: '2026-08-04T14:11:39.085474'
+- name: 只换皮不改结构
+  description: 用户说界面丑时, 纯 CSS 换肤可能不被认可; 需先区分"视觉"与"结构"诉求, 结构性改版=重组布局(DOM 位置)而非只改样式
+  session: session-2026-08-04-layout-redesign
+  timestamp: '2026-08-04T16:50:53.291054'
+- name: 只有方向没有位置
+  description: '风险偏好类指数只数涨跌方向比例会误判: 低位普涨被读成追高风险; 必须结合位置/量能维度, 判读标签(regime)比数值更重要'
+  session: session-2026-08-04-rai-algorithm
+  timestamp: '2026-08-04T17:04:18.217699'
+- name: 信号强度硬编码与消费方阈值脱节
+  description: signal_agent 生成 strength=0.7 硬编码, risk/chief 判断 >0.8 → 规则永不触发且无日志;
+    阈值必须共享常量且生成方计算真实强度
+  session: session-2026-08-04-silent-errors-fix
+  timestamp: '2026-08-04T17:14:04.021086'
+- name: None 参与数值比较
+  description: elif 分支 rai>0.65 在 rai=None 时抛 TypeError(None>0.65); 所有数值比较前必须 is not
+    None 防护, 尤其 elif 链
+  session: session-2026-08-04-silent-errors-fix
+  timestamp: '2026-08-04T17:14:04.093247'
+- name: 删除后下游引用残留
+  description: 改 risk_parity 时删了 inv_vol 定义但下方还在用 → NameError; 修改函数体后必须 grep 确认无悬空引用
+  session: session-2026-08-04-silent-errors-all
+  timestamp: '2026-08-04T17:22:50.440959'
+- name: add_anti_pattern 误传 files
+  description: 本工具签名是 (name, description, session), 不要习惯性把 files 列表作为第 3 参传入(已连续 3
+    次犯此错)
+  session: session-2026-08-04-silent-errors-all
+  timestamp: '2026-08-04T17:22:50.520231'
+- name: Go 多结构体内嵌同名字段
+  description: 不要在 API DTO 同时内嵌两个都含 Symbol/Name 的结构体；会造成 selector 歧义和 encoding/json
+    同层字段冲突，必须显式建模响应字段
+  session: session-2026-10-20-go-ui-rewrite
+  timestamp: '2026-10-20T10:43:24.524673'
+- name: 无官方凭据伪造扫码或实盘成交
+  description: 同花顺等扫码登录必须有官方 OAuth/OIDC 参数；实盘与托管必须接券商官方网关、账户授权和双重服务端开关。缺配置时应明确禁用并降级
+    paper，不得返回假二维码或把模拟成交标成实盘
+  session: session-2026-10-20-auth-trading-nas
+  timestamp: '2026-10-20T11:07:18.728354'
+- name: 扫码登录权限被误认为独立授权
+  description: 应用内扫码登录只是认证会话复用，权限与发起确认的用户完全一致；若该用户有交易权限，扫码会话也可交易。实盘仍必须另受券商网关和托管开关约束
+  session: session-2026-10-20-device-qr-login
+  timestamp: '2026-10-20T11:52:03.389917'
+style:
+- category: imports
+  description: 使用 from __future__ import annotations 在文件顶部
+  files:
+  - core/strategies.py
+  - services/analyzer.py
+  - core/chief_decision.py
+  session: session-2026-07-14-epic-market-trace-v6
+  timestamp: '2026-07-20T10:14:18.563125'
+- category: frontend
+  description: 前端 JS 应按功能模块拆分为 tab-*.js，避免单文件过大
+  files:
+  - static/js/dashboard.js
+  - static/js/tab-*.js
+  session: session-2026-07-14-epic-market-trace-v6
+  timestamp: '2026-07-20T10:14:18.571444'
+- category: error_handling
+  description: 异步函数统一使用 httpx 替代 requests，避免阻塞事件循环
+  files:
+  - services/prefetch.py
+  session: session-2026-07-14-epic-market-trace-v6
+  timestamp: '2026-07-20T10:14:18.583625'
+- category: evolution
+  description: 进化数据应通过 Python 程序播种而非手写 YAML，避免格式错误
+  files:
+  - core/self_evolution.py
+  session: session-2026-07-20-project-evolve
+  timestamp: '2026-07-20T10:15:15.808487'
+- category: evolution
+  description: skill 中附带独立脚本（evolution.py）供 AI 调用，项目内 core/self_evolution.py 作为本地副本/Docker
+    回退
+  files: []
+  session: session-2026-07-20-project-evolve
+  timestamp: '2026-07-20T10:28:38.445518'
+- category: test_isolation
+  description: 进化模块测试必须用独立 temp_dir（而非 temp_file），确保 .evolution/ 子目录不会跨测试污染
+  files:
+  - tests/test_self_evolution.py
+  session: session-2026-07-20-project-evolve
+  timestamp: '2026-07-20T11:21:03.704532'
+- category: 安全修复配套
+  description: 每个安全修复带回归测试(test_auth.py 认证全流程/dev_server 运行时遍历测试)+ 运行时 curl 实测验证
+  files:
+  - tests/test_auth.py
+  - tests/test_webui.py
+  session: session-2026-08-03-security-fix
+  timestamp: '2026-08-03T20:53:45.347463'
+- category: Web 故障定位流程
+  description: 先用 playwright 无头浏览器 + 控制台错误 + 逐个 tab 点击实测复现, 再对照 dev_server mock 与真实后端差异定位;
+    认证类问题直接 curl 无认证/Bearer 对比状态码
+  files:
+  - api/deps.py
+  - static/js/shared.js
+  session: session-2026-08-04-tab-fix
+  timestamp: '2026-08-04T13:56:03.314018'
+- category: 认证 UI 入口设计
+  description: 登录态由服务端注入模板({{AUTH_STATE}})而非前端 JS 猜测; 认证未启用时隐藏入口避免无意义点击; 登出后回登录页是自然闭环
+  files:
+  - api/kline.py
+  - templates/dashboard.html
+  session: session-2026-08-04-auth-entry
+  timestamp: '2026-08-04T14:11:39.140224'
+- category: UI 视觉对比验证法
+  description: playwright 截图 + PIL/numpy 像素统计对比新旧版本 (品牌光带强度/色调分布/std); 移动端用 390px
+    viewport 检查 scrollWidth 溢出; 必须 0 JS 错误 + 全 tab 回归
+  files:
+  - static/css/dashboard.css
+  session: session-2026-08-04-ui-redesign
+  timestamp: '2026-08-04T14:24:06.141794'
+- category: 深色金融终端设计规范
+  description: 背景多层径向渐变光晕+顶部品牌光带; 卡片内高光 inset 高光+hover 光晕+标题竖条; 边框用 rgba 而非纯色; 数字统一
+    tabular-nums; 按钮三级层次; 过渡 160ms cubic-bezier
+  files:
+  - static/css/dashboard.css
+  session: session-2026-08-04-ui-redesign
+  timestamp: '2026-08-04T14:24:06.197333'
+- category: 原生 JS 结构安全改版法
+  description: 只移动 DOM 位置、不改 id/class/onclick/aria → 双栏重组 JS 零改动; querySelectorAll
+    对删除的元素无害; 大屏双栏 grid(固定宽+minmax(0,1fr))+sticky 导航+移动端单列/横向滚动
+  files:
+  - templates/dashboard.html
+  - static/css/dashboard.css
+  session: session-2026-08-04-layout-redesign
+  timestamp: '2026-08-04T16:50:53.354051'
+- category: 双栏仪表盘布局
+  description: 左栏固定宽(400px)监控卡片 2 列+信息密集卡跨双列(grid-column:span 2); 右栏 minmax(0,1fr)
+    防溢出; tab 导航 sticky+毛玻璃; tab-sep 渐变竖线分组; 移动端 tab 横向滚动
+  files:
+  - static/css/dashboard.css
+  session: session-2026-08-04-layout-redesign
+  timestamp: '2026-08-04T16:50:53.417164'
+- category: 判读升级向后兼容
+  description: interpret 加可选 position 参数, 无参数走旧逻辑 → 旧测试/调用方不受影响; 新阈值(低位<0.45)需结合实测数据校准
+  files:
+  - agents/macro_agent.py
+  session: session-2026-08-04-rai-algorithm
+  timestamp: '2026-08-04T17:04:18.287218'
+- category: 静默错误专项排查法
+  description: explore 子代理按模式扫描(兜底值参与加权/吞异常返默认/分母0/方向不含量度/阈值语义脱节) → 验证关键发现 → 按严重度分级给用户选修复范围;
+    同类问题常共享同一根因
+  files:
+  - agents/
+  - core/
+  - services/
+  session: session-2026-08-04-silent-errors-fix
+  timestamp: '2026-08-04T17:14:04.165554'
+- category: Optional 传播全链路
+  description: '指标/统计字段改 Optional[float]=None 后: score 用 (x or 0)、to_dict round 前判
+    None、前端 != null 显示 —、async 测试加 @pytest.mark.asyncio; 样本门槛(2倍周期/5笔/5窗口)统一'
+  files:
+  - backtest/runner.py
+  - core/strategies.py
+  session: session-2026-08-04-silent-errors-all
+  timestamp: '2026-08-04T17:22:50.599914'
+- category: 深松绿授权中心控制台
+  description: 深松绿侧栏+浅灰工作面+白色名单栏；品牌图标青绿底；导航按 4 组分组，选中态低饱和绿灰；右侧自选名单使用 48px 色块身份图标；移动端侧栏抽屉+表格横向滚动，页面本身不得横向溢出
+  files:
+  - web/index.html
+  - web/assets/app.css
+  - web/assets/app.js
+  session: session-2026-10-20-go-ui-rewrite
+  timestamp: '2026-10-20T10:43:24.607696'
+architecture:
+- decision: 统一策略注册
+  rationale: core/strategies.py 的 STRATEGIES 字典被诊股/选股/回测三方共用，消除重复维护
+  session: session-2026-07-14-epic-market-trace-v6
+  timestamp: '2026-07-20T10:14:18.596483'
+- decision: 共享 ChiefDecision 引擎
+  rationale: core/chief_decision.py 被 Agent 事件路径和 Web API 路径双路径调用，确保决策逻辑一致
+  session: session-2026-07-14-epic-market-trace-v6
+  timestamp: '2026-07-20T10:14:18.609252'
+- decision: 数据源三层降级
+  rationale: 诊股数据获取顺序 Tushare -> AkShare -> 腾讯实时价修正，任一失败自动降级
+  session: session-2026-07-13-fix-breadth-data
+  timestamp: '2026-07-20T10:14:18.622131'
+- decision: 项目自我进化系统
+  rationale: core/self_evolution.py 管理 .project_evolution.yaml，跨会话积累修复模式/反模式/风格/架构四类知识，每次会话启动和结束自动读写
+  session: session-2026-07-20-project-evolve
+  timestamp: '2026-07-20T10:15:15.826501'
+- decision: 通用进化脚本
+  rationale: evolution.py 通过 cwd 发现 .project_evolution.yaml，支持 CLI(--init/--summary/--add-*)
+    和 Python import 两种用法，零项目依赖
+  session: session-2026-07-20-project-evolve
+  timestamp: '2026-07-20T10:28:38.467239'
+- decision: 梦境蒸馏(Dream Distillation)
+  rationale: '借鉴 cow 项目: 每次会话结束生成每日元反思(dreams/YYYY-MM-DD.md)，总结记忆如何变化、什么被精简、什么仍需关注；进化日志(logs/)记录
+    AI 自我改进'
+  session: session-2026-07-20-project-evolve
+  timestamp: '2026-07-20T11:21:03.732791'
+- decision: Go 单二进制主运行版本
+  rationale: cmd/mt6 + internal/config|market|store|server，前端 go:embed；Docker 多阶段构建为静态二进制；原
+    Python FastAPI 版本保留 Dockerfile.python 作为回滚与对照
+  session: session-2026-10-20-go-ui-rewrite
+  timestamp: '2026-10-20T10:43:24.690701'
+- decision: 官方券商网关实盘架构
+  rationale: 交易层拆为 PaperBroker / RemoteBroker / Manager；实盘需要 TRADING_MODE=live、ALLOW_LIVE_TRADING=true、BROKER_GATEWAY_URL/KEY_ID/SECRET/ACCOUNT_ID；托管额外要求
+    ALLOW_LIVE_CUSTODY=true 与界面 ENABLE CUSTODY 二次确认；请求使用 HMAC-SHA256 签名
+  session: session-2026-10-20-auth-trading-nas
+  timestamp: '2026-10-20T11:07:18.816367'
+- decision: 一次性设备扫码登录
+  rationale: QR 请求同时持有 request_id、桌面 poll_token、手机 approve_token；approve 需要有效用户会话，poll
+    仅凭随机 poll_token 换取一次桌面 session cookie；二维码 3 分钟过期，授权写入审计
+  session: session-2026-10-20-device-qr-login
+  timestamp: '2026-10-20T11:52:03.479793'

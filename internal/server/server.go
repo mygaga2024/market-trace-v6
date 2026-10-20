@@ -68,6 +68,8 @@ func (s *Server) routes() error {
 	mux.HandleFunc("GET /api/v1/auth/qr/status", s.qrStatus)
 	mux.HandleFunc("POST /api/v1/auth/qr/approve", s.qrApprove)
 	mux.HandleFunc("GET /qr/approve", s.qrApprovePage)
+	mux.HandleFunc("GET /api/v1/auth/wechat/start", s.wechatStart)
+	mux.HandleFunc("GET /auth/wechat/callback", s.wechatCallback)
 	mux.HandleFunc("GET /health", s.health)
 	mux.HandleFunc("GET /favicon.svg", s.favicon)
 
@@ -640,10 +642,10 @@ func (s *Server) securityHeaders(next http.Handler) http.Handler {
 
 func publicPath(path string) bool {
 	return path == "/login" || path == "/register" || path == "/logout" || path == "/health" ||
-		path == "/favicon.svg" || path == "/qr/approve" ||
+		path == "/favicon.svg" || path == "/qr/approve" || path == "/auth/wechat/callback" ||
 		path == "/api/v1/auth/status" || path == "/api/v1/auth/login" ||
 		path == "/api/v1/auth/register" || path == "/api/v1/auth/qr/start" ||
-		path == "/api/v1/auth/qr/status" ||
+		path == "/api/v1/auth/qr/status" || path == "/api/v1/auth/wechat/start" ||
 		strings.HasPrefix(path, "/assets/")
 }
 

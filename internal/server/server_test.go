@@ -339,6 +339,14 @@ func TestDeviceQRLoginFlow(t *testing.T) {
 	if !ok || qr["configured"] != true || qr["mode"] != "device" {
 		t.Fatalf("qr status = %#v", payload["qr_login"])
 	}
+	wechat, ok := payload["wechat_login"].(map[string]any)
+	if !ok || wechat["configured"] != false {
+		t.Fatalf("wechat status = %#v", payload["wechat_login"])
+	}
+	status, payload = requestJSON(t, server.Client(), http.MethodGet, server.URL+"/api/v1/auth/wechat/start", nil)
+	if status != http.StatusServiceUnavailable {
+		t.Fatalf("wechat start without config status = %d, payload = %v", status, payload)
+	}
 
 	authenticated := registerTestUser(t, server, "owner_test", "strong-pass-123")
 	jar, _ := cookiejar.New(nil)

@@ -529,7 +529,7 @@ func (s *Store) CreateUser(username, displayName, passwordHash, provider, subjec
 		Role:            role,
 		AuthProvider:    provider,
 		ProviderSubject: subject,
-		TradingEnabled:  true,
+		TradingEnabled:  role == "owner",
 		CreatedAt:       now,
 	}
 	s.state.Users = append(s.state.Users, record)

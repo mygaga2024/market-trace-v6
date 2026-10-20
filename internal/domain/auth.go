@@ -15,16 +15,23 @@ type User struct {
 }
 
 type AuthStatus struct {
-	Initialized   bool        `json:"initialized"`
-	Authenticated bool        `json:"authenticated"`
-	User          *User       `json:"user,omitempty"`
-	Registration  bool        `json:"registration_enabled"`
-	QRLogin       QRLoginInfo `json:"qr_login"`
+	Initialized   bool            `json:"initialized"`
+	Authenticated bool            `json:"authenticated"`
+	User          *User           `json:"user,omitempty"`
+	Registration  bool            `json:"registration_enabled"`
+	QRLogin       QRLoginInfo     `json:"qr_login"`
+	WeChatLogin   WeChatLoginInfo `json:"wechat_login"`
 }
 
 type QRLoginInfo struct {
 	Configured bool   `json:"configured"`
 	Mode       string `json:"mode"`
+	Name       string `json:"name"`
+	Reason     string `json:"reason,omitempty"`
+}
+
+type WeChatLoginInfo struct {
+	Configured bool   `json:"configured"`
 	Name       string `json:"name"`
 	Reason     string `json:"reason,omitempty"`
 }

@@ -23,6 +23,7 @@ type authService struct {
 	store             *store.Store
 	sessions          *auth.SessionManager
 	deviceQR          *auth.DeviceQRManager
+	wechat            *auth.WeChatOAuth
 	loginLimiter      *auth.AttemptLimiter
 	registerLimiter   *auth.AttemptLimiter
 	apiToken          string
@@ -35,6 +36,7 @@ func newAuthService(state *store.Store, cfg config.Config) *authService {
 		store:             state,
 		sessions:          auth.NewSessionManager(cfg.SessionTTL),
 		deviceQR:          auth.NewDeviceQRManager(3 * time.Minute),
+		wechat:            auth.NewWeChatOAuth(auth.WeChatConfigFromEnv()),
 		loginLimiter:      auth.NewAttemptLimiter(8, 10*time.Minute),
 		registerLimiter:   auth.NewAttemptLimiter(5, 30*time.Minute),
 		apiToken:          cfg.APIToken,
@@ -118,6 +120,11 @@ func (a *authService) status(r *http.Request) domain.AuthStatus {
 			Configured: true,
 			Mode:       "device",
 			Name:       "应用内扫码登录",
+		},
+		WeChatLogin: domain.WeChatLoginInfo{
+			Configured: a.wechat.Configured(),
+			Name:       a.wechat.Name(),
+			Reason:     a.wechat.MissingReason(),
 		},
 	}
 	if authenticated {

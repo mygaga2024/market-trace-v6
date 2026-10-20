@@ -88,6 +88,13 @@ func TestUserAndTradingPersistence(t *testing.T) {
 	if _, err := state.CreateUser("owner", "重复", "hash", "local", ""); !errors.Is(err, ErrExists) {
 		t.Fatalf("duplicate user error = %v", err)
 	}
+	trader, err := state.CreateUser("trader", "交易员", "hash", "local", "")
+	if err != nil {
+		t.Fatalf("CreateUser(trader) error = %v", err)
+	}
+	if trader.TradingEnabled {
+		t.Fatal("non-owner user should not receive trading permission automatically")
+	}
 	if err := state.SetUserTradingEnabled(user.ID, false); err != nil {
 		t.Fatalf("SetUserTradingEnabled() error = %v", err)
 	}
@@ -103,7 +110,7 @@ func TestUserAndTradingPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reopen: %v", err)
 	}
-	if reopened.UserCount() != 1 {
+	if reopened.UserCount() != 2 {
 		t.Fatalf("user count = %d", reopened.UserCount())
 	}
 	record, ok := reopened.UserByUsername("owner")

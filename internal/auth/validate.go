@@ -33,3 +33,8 @@ func SafeExternalUsername(provider, subject string) string {
 	sum := sha256.Sum256([]byte(provider + "\x00" + subject))
 	return "qr_" + hex.EncodeToString(sum[:8])
 }
+
+func WeChatUsername(subject string) string {
+	sum := sha256.Sum256([]byte(subject))
+	return "wx_" + hex.EncodeToString(sum[:8])
+}

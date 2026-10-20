@@ -1,6 +1,6 @@
 version: 2
 created: '2026-07-20T10:14:18.528063'
-updated: '2026-10-20T11:52:03.479796'
+updated: '2026-10-20T12:21:11.365077'
 self_evolution_enabled: true
 fixes:
 - error: 涨跌家数数据严重失真（只覆盖3984只，73%）
@@ -306,6 +306,11 @@ anti_patterns:
   description: 应用内扫码登录只是认证会话复用，权限与发起确认的用户完全一致；若该用户有交易权限，扫码会话也可交易。实盘仍必须另受券商网关和托管开关约束
   session: session-2026-10-20-device-qr-login
   timestamp: '2026-10-20T11:52:03.389917'
+- name: 把应用内扫码伪装成第三方身份登录
+  description: 应用内设备扫码复用本应用账户会话，不等同于微信/同花顺身份认证；第三方身份登录必须走官方 OAuth/OIDC 并校验 state、回调域名和
+    AppSecret
+  session: session-2026-10-20-wechat-login
+  timestamp: '2026-10-20T12:21:11.271455'
 style:
 - category: imports
   description: 使用 from __future__ import annotations 在文件顶部
@@ -470,3 +475,9 @@ architecture:
     仅凭随机 poll_token 换取一次桌面 session cookie；二维码 3 分钟过期，授权写入审计
   session: session-2026-10-20-device-qr-login
   timestamp: '2026-10-20T11:52:03.479793'
+- decision: 微信开放平台扫码登录
+  rationale: 使用 snsapi_login 标准流程：qrconnect 授权 -> 回调 code/state -> 服务端 code 换 access_token/openid
+    -> userinfo 获取 nickname/unionid -> 以 unionid 或 openid 作为 provider subject 创建/查找本地用户
+    -> 建立 HttpOnly 会话；非管理员新用户默认无交易权限
+  session: session-2026-10-20-wechat-login
+  timestamp: '2026-10-20T12:21:11.365072'
