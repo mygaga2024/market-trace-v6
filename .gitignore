@@ -1,5 +1,6 @@
 # 敏感文件（无 . 前缀，兼容 NAS）
 env
+.admin-initial-password
 
 # Python
 __pycache__/

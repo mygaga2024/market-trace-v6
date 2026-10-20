@@ -7,7 +7,7 @@
   <meta name="description" content="Market Trace Go — 实时行情、量化分析与风险控制">
   <title>Market Trace · 量化控制中心</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/assets/app.css?v=2.0.0">
+  <link rel="stylesheet" href="/assets/app.css?v=2.1.0">
 </head>
 <body>
   <svg class="svg-sprite" aria-hidden="true">
@@ -51,6 +51,9 @@
     <symbol id="i-robot" viewBox="0 0 24 24">
       <rect x="5" y="6" width="14" height="13" rx="3"></rect><path d="M9 2v4M15 2v4M9 11h.01M15 11h.01M9 15h6M2 11v4M22 11v4"></path>
     </symbol>
+    <symbol id="i-users" viewBox="0 0 24 24">
+      <circle cx="9" cy="8" r="3"></circle><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 4a3 3 0 0 1 0 6M17 14c2.8.3 5 2.7 5 5.5"></path>
+    </symbol>
     <symbol id="i-settings" viewBox="0 0 24 24">
       <circle cx="12" cy="12" r="3"></circle>
       <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.86 2.86-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21H9.56v-.1a1.7 1.7 0 0 0-1.1-1.55 1.7 1.7 0 0 0-1.88.34l-.06.06L3.66 16.9l.06-.06A1.7 1.7 0 0 0 4.06 15a1.7 1.7 0 0 0-1.55-1.1H2.4V9.86h.1A1.7 1.7 0 0 0 4.06 8.7a1.7 1.7 0 0 0-.34-1.88L3.66 6.76 6.52 3.9l.06.06A1.7 1.7 0 0 0 8.46 4a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1v-.1h4.04v.1a1.7 1.7 0 0 0 1.1 1.55 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.86 2.86-.06.06A1.7 1.7 0 0 0 19.4 8.3c.23.4.6.75 1.1.94.34.14.72.2 1.1.2h.1v4.04h-.1A1.7 1.7 0 0 0 19.4 15Z"></path>
@@ -89,6 +92,9 @@
         <a class="nav-item active" href="#" data-view="stocks" aria-current="page">
           <svg><use href="#i-grid"></use></svg><span>股票管理</span>
         </a>
+        <a class="nav-item" href="#" data-view="trade">
+          <svg><use href="#i-bolt"></use></svg><span>交易终端</span>
+        </a>
         <a class="nav-item" href="#" data-view="signals">
           <svg><use href="#i-pulse"></use></svg><span>实时决策</span>
         </a>
@@ -108,6 +114,9 @@
         <a class="nav-item" href="#" data-view="portfolio">
           <svg><use href="#i-wallet"></use></svg><span>持仓管理</span>
         </a>
+        <a class="nav-item" href="#" data-view="custody">
+          <svg><use href="#i-robot"></use></svg><span>托管交易</span>
+        </a>
         <a class="nav-item" href="#" data-view="risk">
           <svg><use href="#i-lock"></use></svg><span>风控配置</span>
         </a>
@@ -116,6 +125,9 @@
         </a>
 
         <p class="nav-section">系统管理</p>
+        <a class="nav-item" href="#" data-view="users">
+          <svg><use href="#i-users"></use></svg><span>用户管理</span>
+        </a>
         <a class="nav-item" href="#" data-view="agents">
           <svg><use href="#i-robot"></use></svg><span>Agent 设置</span>
         </a>
@@ -127,7 +139,7 @@
       <div class="side-footer">
         <span class="status-dot"></span>
         <span>Go Engine</span>
-        <span class="side-version">v2.0.0</span>
+        <span class="side-version">v2.1.0</span>
       </div>
     </aside>
 
@@ -150,6 +162,13 @@
           <p id="page-description">维护自选股票、信号状态、风险偏好和一次性决策记录。</p>
         </div>
         <div class="header-actions">
+          <div class="user-chip" id="user-chip">
+            <span class="user-avatar" id="user-avatar">M</span>
+            <span class="user-copy"><strong id="user-name">当前用户</strong><small id="user-role">已登录</small></span>
+            <button class="icon-button user-logout" id="header-logout" type="button" aria-label="退出登录" title="退出登录">
+              <svg><use href="#i-logout"></use></svg>
+            </button>
+          </div>
           <label class="global-search" for="global-search">
             <svg><use href="#i-search"></use></svg>
             <input id="global-search" type="search" placeholder="搜索股票 / 代码" autocomplete="off">
@@ -198,7 +217,7 @@
           </button>
           <div class="rail-foot">
             <span id="rail-updated">等待同步</span>
-            <span>Go · 2.0.0</span>
+            <span>Go · 2.1.0</span>
           </div>
         </aside>
       </div>
@@ -239,7 +258,7 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-  <script src="/assets/app.js?v=2.0.0" defer></script>
+  <script src="/assets/app.js?v=2.1.0" defer></script>
 </body>
 </html>
 

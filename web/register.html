@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>注册 · Market Trace</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/app.css?v=2.1.0">
+</head>
+<body class="login-body">
+  <main class="login-card">
+    <div class="login-brand">
+      <span class="login-mark">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="2"></rect><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M8 12h8M3 12h18"></path></svg>
+      </span>
+      <div><strong>Market Trace</strong><span>量化控制中心</span></div>
+    </div>
+    <div class="login-copy">
+      <span class="eyebrow">CREATE ACCOUNT</span>
+      <h1>创建本地账户</h1>
+      <p>第一个账户自动成为管理员。密码只在 NAS 本地保存，不经过第三方行情服务。</p>
+    </div>
+
+    <form id="register-form">
+      <label class="field">
+        <span>用户名</span>
+        <input id="register-username" name="username" type="text" autocomplete="username" minlength="3" maxlength="64" placeholder="字母、数字或邮箱" required>
+      </label>
+      <label class="field auth-field-gap">
+        <span>显示名称 <em>可选</em></span>
+        <input id="register-display-name" name="display_name" type="text" autocomplete="name" maxlength="40" placeholder="例如 交易员小王">
+      </label>
+      <label class="field auth-field-gap">
+        <span>密码</span>
+        <input id="register-password" name="password" type="password" autocomplete="new-password" minlength="10" maxlength="128" placeholder="至少 10 位，包含字母和数字" required>
+      </label>
+      <label class="field auth-field-gap">
+        <span>确认密码</span>
+        <input id="register-confirm" name="confirm_password" type="password" autocomplete="new-password" required>
+      </label>
+      <p class="form-error" id="register-error" hidden></p>
+      <button class="button button-primary login-submit" type="submit">创建账户</button>
+    </form>
+    <p class="auth-switch">已有账户？<a href="/login">返回登录</a></p>
+    <p class="login-foot">注册成功后将自动登录 · 管理员可分配后续账户交易权限</p>
+  </main>
+  <script src="/assets/register.js?v=2.1.0" defer></script>
+</body>
+</html>

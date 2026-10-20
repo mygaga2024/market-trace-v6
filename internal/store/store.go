@@ -15,7 +15,7 @@ import (
 	"github.com/mygaga2024/market-trace-v6/internal/domain"
 )
 
-const stateVersion = 1
+const stateVersion = 2
 
 var (
 	ErrNotFound = errors.New("not found")
@@ -24,12 +24,49 @@ var (
 
 type State struct {
 	Version    int                 `json:"version"`
+	Users      []UserRecord        `json:"users"`
 	Watchlist  []domain.WatchItem  `json:"watchlist"`
 	Decisions  []domain.Decision   `json:"decisions"`
 	Audits     []domain.AuditEvent `json:"audits"`
 	Settings   domain.RiskSettings `json:"settings"`
 	Strategies map[string]bool     `json:"strategies"`
+	Trading    TradingState        `json:"trading"`
 	UpdatedAt  time.Time           `json:"updated_at"`
+}
+
+type UserRecord struct {
+	ID              string     `json:"id"`
+	Username        string     `json:"username"`
+	DisplayName     string     `json:"display_name"`
+	PasswordHash    string     `json:"password_hash,omitempty"`
+	Role            string     `json:"role"`
+	AuthProvider    string     `json:"auth_provider"`
+	ProviderSubject string     `json:"provider_subject,omitempty"`
+	Disabled        bool       `json:"disabled"`
+	TradingEnabled  bool       `json:"trading_enabled"`
+	CreatedAt       time.Time  `json:"created_at"`
+	LastLoginAt     *time.Time `json:"last_login_at,omitempty"`
+}
+
+func (u UserRecord) Public() domain.User {
+	return domain.User{
+		ID:             u.ID,
+		Username:       u.Username,
+		DisplayName:    u.DisplayName,
+		Role:           u.Role,
+		AuthProvider:   u.AuthProvider,
+		Disabled:       u.Disabled,
+		TradingEnabled: u.TradingEnabled,
+		CreatedAt:      u.CreatedAt,
+		LastLoginAt:    u.LastLoginAt,
+	}
+}
+
+type TradingState struct {
+	PaperCash      float64                    `json:"paper_cash"`
+	PaperPositions map[string]domain.Position `json:"paper_positions"`
+	Orders         []domain.Order             `json:"orders"`
+	Custody        domain.CustodySettings     `json:"custody"`
 }
 
 type Store struct {
@@ -92,6 +129,7 @@ func seedState() State {
 
 	return State{
 		Version:   stateVersion,
+		Users:     []UserRecord{},
 		Watchlist: watchlist,
 		Settings: domain.RiskSettings{
 			MaxPositionPct: 25,
@@ -106,6 +144,22 @@ func seedState() State {
 			"volume_breakout":  true,
 			"channel_breakout": true,
 		},
+		Trading: TradingState{
+			PaperCash:      1_000_000,
+			PaperPositions: map[string]domain.Position{},
+			Orders:         []domain.Order{},
+			Custody: domain.CustodySettings{
+				Enabled:         false,
+				Symbols:         []string{},
+				BuyScore:        78,
+				SellScore:       30,
+				MinConfidence:   0.72,
+				MaxOrderValue:   5000,
+				IntervalSeconds: 300,
+				AllowBuy:        true,
+				AllowSell:       true,
+			},
+		},
 		Audits: []domain.AuditEvent{
 			newAudit("system", "初始化", "system", "Market Trace Go", "完成种子自选股与风控配置初始化", now.Add(-3*time.Minute)),
 		},
@@ -114,6 +168,7 @@ func seedState() State {
 }
 
 func (s *Store) normalize() {
+	legacyVersion := s.state.Version
 	if s.state.Version == 0 {
 		s.state.Version = stateVersion
 	}
@@ -143,6 +198,37 @@ func (s *Store) normalize() {
 	if s.state.Audits == nil {
 		s.state.Audits = []domain.AuditEvent{}
 	}
+	if s.state.Users == nil {
+		s.state.Users = []UserRecord{}
+	}
+	if legacyVersion < 2 && s.state.Trading.PaperCash == 0 {
+		s.state.Trading.PaperCash = 1_000_000
+	}
+	if s.state.Trading.PaperPositions == nil {
+		s.state.Trading.PaperPositions = map[string]domain.Position{}
+	}
+	if s.state.Trading.Orders == nil {
+		s.state.Trading.Orders = []domain.Order{}
+	}
+	if s.state.Trading.Custody.IntervalSeconds == 0 {
+		s.state.Trading.Custody.IntervalSeconds = 300
+	}
+	if s.state.Trading.Custody.BuyScore == 0 {
+		s.state.Trading.Custody.BuyScore = 78
+	}
+	if s.state.Trading.Custody.SellScore == 0 {
+		s.state.Trading.Custody.SellScore = 30
+	}
+	if s.state.Trading.Custody.MaxOrderValue == 0 {
+		s.state.Trading.Custody.MaxOrderValue = 5000
+	}
+	if s.state.Trading.Custody.MinConfidence == 0 {
+		s.state.Trading.Custody.MinConfidence = 0.72
+	}
+	if s.state.Trading.Custody.Symbols == nil {
+		s.state.Trading.Custody.Symbols = []string{}
+	}
+	s.state.Version = stateVersion
 }
 
 func (s *Store) persistLocked() error {
@@ -397,6 +483,215 @@ func (s *Store) ToggleStrategy(key string, enabled bool) error {
 	}
 	s.state.Audits = prependAudit(s.state.Audits, newAudit("strategy", "切换策略", "operator", key, status+" "+name, time.Now()))
 	return s.persistLocked()
+}
+
+func (s *Store) UserCount() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.state.Users)
+}
+
+func (s *Store) CreateUser(username, displayName, passwordHash, provider, subject string) (domain.User, error) {
+	username = strings.TrimSpace(username)
+	displayName = strings.TrimSpace(displayName)
+	provider = strings.TrimSpace(provider)
+	subject = strings.TrimSpace(subject)
+	if username == "" {
+		return domain.User{}, errors.New("用户名不能为空")
+	}
+	if displayName == "" {
+		displayName = username
+	}
+	if provider == "" {
+		provider = "local"
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, user := range s.state.Users {
+		if user.Username == username {
+			return domain.User{}, ErrExists
+		}
+		if subject != "" && user.ProviderSubject == subject && user.AuthProvider == provider {
+			return domain.User{}, ErrExists
+		}
+	}
+	role := "trader"
+	if len(s.state.Users) == 0 {
+		role = "owner"
+	}
+	now := time.Now()
+	record := UserRecord{
+		ID:              newID("usr"),
+		Username:        username,
+		DisplayName:     displayName,
+		PasswordHash:    passwordHash,
+		Role:            role,
+		AuthProvider:    provider,
+		ProviderSubject: subject,
+		TradingEnabled:  true,
+		CreatedAt:       now,
+	}
+	s.state.Users = append(s.state.Users, record)
+	s.state.Audits = prependAudit(s.state.Audits, newAudit(
+		"auth", "注册账户", username, record.ID, "创建本地账户，角色 "+role, now,
+	))
+	if err := s.persistLocked(); err != nil {
+		return domain.User{}, err
+	}
+	return record.Public(), nil
+}
+
+func (s *Store) UserByUsername(username string) (UserRecord, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, user := range s.state.Users {
+		if user.Username == username {
+			return user, true
+		}
+	}
+	return UserRecord{}, false
+}
+
+func (s *Store) UserByID(id string) (UserRecord, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, user := range s.state.Users {
+		if user.ID == id {
+			return user, true
+		}
+	}
+	return UserRecord{}, false
+}
+
+func (s *Store) UserByProviderSubject(provider, subject string) (UserRecord, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, user := range s.state.Users {
+		if user.AuthProvider == provider && user.ProviderSubject == subject {
+			return user, true
+		}
+	}
+	return UserRecord{}, false
+}
+
+func (s *Store) Users() []domain.User {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]domain.User, 0, len(s.state.Users))
+	for _, user := range s.state.Users {
+		out = append(out, user.Public())
+	}
+	return out
+}
+
+func (s *Store) MarkUserLogin(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now()
+	for i := range s.state.Users {
+		if s.state.Users[i].ID == id {
+			s.state.Users[i].LastLoginAt = &now
+			return s.persistLocked()
+		}
+	}
+	return ErrNotFound
+}
+
+func (s *Store) SetUserTradingEnabled(id string, enabled bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.state.Users {
+		if s.state.Users[i].ID != id {
+			continue
+		}
+		s.state.Users[i].TradingEnabled = enabled
+		action := "关闭交易权限"
+		if enabled {
+			action = "开启交易权限"
+		}
+		s.state.Audits = prependAudit(s.state.Audits, newAudit(
+			"auth", action, "owner", id, "更新用户 "+s.state.Users[i].Username+" 的交易权限", time.Now(),
+		))
+		return s.persistLocked()
+	}
+	return ErrNotFound
+}
+
+func (s *Store) UpdatePassword(id, passwordHash string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.state.Users {
+		if s.state.Users[i].ID != id {
+			continue
+		}
+		s.state.Users[i].PasswordHash = passwordHash
+		s.state.Audits = prependAudit(s.state.Audits, newAudit(
+			"auth", "修改密码", s.state.Users[i].Username, id, "更新本地密码凭据", time.Now(),
+		))
+		return s.persistLocked()
+	}
+	return ErrNotFound
+}
+
+func (s *Store) TradingSnapshot() TradingState {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return cloneTradingState(s.state.Trading)
+}
+
+func (s *Store) UpdateTrading(fn func(*TradingState) error) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := fn(&s.state.Trading); err != nil {
+		return err
+	}
+	return s.persistLocked()
+}
+
+func (s *Store) Orders(limit int) []domain.Order {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if limit <= 0 || limit > len(s.state.Trading.Orders) {
+		limit = len(s.state.Trading.Orders)
+	}
+	out := make([]domain.Order, limit)
+	copy(out, s.state.Trading.Orders[:limit])
+	return out
+}
+
+func (s *Store) OrderByClientID(clientOrderID string) (domain.Order, bool) {
+	if clientOrderID == "" {
+		return domain.Order{}, false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, order := range s.state.Trading.Orders {
+		if order.ClientOrderID == clientOrderID {
+			return order, true
+		}
+	}
+	return domain.Order{}, false
+}
+
+func (s *Store) RecordAudit(category, action, actor, target, detail string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.state.Audits = prependAudit(s.state.Audits, newAudit(category, action, actor, target, detail, time.Now()))
+	_ = s.persistLocked()
+}
+
+func cloneTradingState(state TradingState) TradingState {
+	out := state
+	out.Orders = make([]domain.Order, len(state.Orders))
+	copy(out.Orders, state.Orders)
+	out.PaperPositions = make(map[string]domain.Position, len(state.PaperPositions))
+	for key, position := range state.PaperPositions {
+		out.PaperPositions[key] = position
+	}
+	out.Custody.Symbols = make([]string, len(state.Custody.Symbols))
+	copy(out.Custody.Symbols, state.Custody.Symbols)
+	return out
 }
 
 func (s *Store) SeedAudit(category, action, target, detail string) {

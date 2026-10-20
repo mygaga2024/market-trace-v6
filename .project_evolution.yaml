@@ -1,6 +1,6 @@
 version: 2
 created: '2026-07-20T10:14:18.528063'
-updated: '2026-10-20T10:43:24.690709'
+updated: '2026-10-20T11:07:18.816374'
 self_evolution_enabled: true
 fixes:
 - error: 涨跌家数数据严重失真（只覆盖3984只，73%）
@@ -205,6 +205,14 @@ fixes:
   - internal/market/service_test.go
   session: session-2026-10-20-go-ui-rewrite
   timestamp: '2026-10-20T10:43:24.441777'
+- error: NAS 上东方财富 push2his K 线域名偶发 EOF/Network unreachable，诊股接口 502
+  fix: market.Kline 增加数据源降级：东方财富前复权 K 线失败后自动切换腾讯 web.ifzq.gtimg.cn 前复权日线；添加腾讯行解析单测，NAS
+    实测 600519 返回 80 根图表数据
+  files:
+  - internal/market/eastmoney.go
+  - internal/market/eastmoney_test.go
+  session: session-2026-10-20-auth-trading-nas
+  timestamp: '2026-10-20T11:07:18.639087'
 anti_patterns:
 - name: 静默吞异常
   description: '不要用 except Exception: pass 静默丢弃数据，必须至少记录 warning 日志'
@@ -280,6 +288,11 @@ anti_patterns:
     同层字段冲突，必须显式建模响应字段
   session: session-2026-10-20-go-ui-rewrite
   timestamp: '2026-10-20T10:43:24.524673'
+- name: 无官方凭据伪造扫码或实盘成交
+  description: 同花顺等扫码登录必须有官方 OAuth/OIDC 参数；实盘与托管必须接券商官方网关、账户授权和双重服务端开关。缺配置时应明确禁用并降级
+    paper，不得返回假二维码或把模拟成交标成实盘
+  session: session-2026-10-20-auth-trading-nas
+  timestamp: '2026-10-20T11:07:18.728354'
 style:
 - category: imports
   description: 使用 from __future__ import annotations 在文件顶部
@@ -434,3 +447,8 @@ architecture:
     Python FastAPI 版本保留 Dockerfile.python 作为回滚与对照
   session: session-2026-10-20-go-ui-rewrite
   timestamp: '2026-10-20T10:43:24.690701'
+- decision: 官方券商网关实盘架构
+  rationale: 交易层拆为 PaperBroker / RemoteBroker / Manager；实盘需要 TRADING_MODE=live、ALLOW_LIVE_TRADING=true、BROKER_GATEWAY_URL/KEY_ID/SECRET/ACCOUNT_ID；托管额外要求
+    ALLOW_LIVE_CUSTODY=true 与界面 ENABLE CUSTODY 二次确认；请求使用 HMAC-SHA256 签名
+  session: session-2026-10-20-auth-trading-nas
+  timestamp: '2026-10-20T11:07:18.816367'

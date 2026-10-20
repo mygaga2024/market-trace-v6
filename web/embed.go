@@ -5,7 +5,7 @@ import (
 	"io/fs"
 )
 
-//go:embed index.html login.html assets/*
+//go:embed index.html login.html register.html assets/*
 var files embed.FS
 
 func Index() ([]byte, error) {
@@ -14,6 +14,10 @@ func Index() ([]byte, error) {
 
 func Login() ([]byte, error) {
 	return files.ReadFile("login.html")
+}
+
+func Register() ([]byte, error) {
+	return files.ReadFile("register.html")
 }
 
 func Assets() (fs.FS, error) {

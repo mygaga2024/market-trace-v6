@@ -8,12 +8,14 @@ import (
 )
 
 type Config struct {
-	Address      string
-	DataFile     string
-	APIToken     string
-	SecureCookie bool
-	Version      string
-	Timeout      time.Duration
+	Address           string
+	DataFile          string
+	APIToken          string
+	SecureCookie      bool
+	AllowRegistration bool
+	SessionTTL        time.Duration
+	Version           string
+	Timeout           time.Duration
 }
 
 func Load() Config {
@@ -43,12 +45,26 @@ func Load() Config {
 			timeout = parsed
 		}
 	}
+	allowRegistration := true
+	if raw := strings.TrimSpace(os.Getenv("ALLOW_REGISTRATION")); raw != "" {
+		if parsed, err := strconv.ParseBool(raw); err == nil {
+			allowRegistration = parsed
+		}
+	}
+	sessionTTL := 7 * 24 * time.Hour
+	if raw := strings.TrimSpace(os.Getenv("SESSION_TTL")); raw != "" {
+		if parsed, err := time.ParseDuration(raw); err == nil && parsed >= time.Hour {
+			sessionTTL = parsed
+		}
+	}
 	return Config{
-		Address:      address,
-		DataFile:     strings.TrimRight(dataDir, "/") + "/state.json",
-		APIToken:     apiToken,
-		SecureCookie: secure,
-		Version:      "2.0.0",
-		Timeout:      timeout,
+		Address:           address,
+		DataFile:          strings.TrimRight(dataDir, "/") + "/state.json",
+		APIToken:          apiToken,
+		SecureCookie:      secure,
+		AllowRegistration: allowRegistration,
+		SessionTTL:        sessionTTL,
+		Version:           "2.1.0",
+		Timeout:           timeout,
 	}
 }

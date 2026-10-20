@@ -192,5 +192,11 @@ type Dashboard struct {
 	Agents      []AgentStatus    `json:"agents"`
 	Settings    RiskSettings     `json:"settings"`
 	Strategies  []StrategyToggle `json:"strategies"`
+	Account     Account          `json:"account"`
+	Orders      []Order          `json:"orders"`
+	Custody     CustodySettings  `json:"custody"`
+	Trading     TradingStatus    `json:"trading"`
+	CurrentUser *User            `json:"current_user,omitempty"`
 	GeneratedAt time.Time        `json:"generated_at"`
+	Version     string           `json:"version"`
 }

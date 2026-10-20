@@ -7,6 +7,11 @@
       title: "股票管理",
       description: "维护自选股票、信号状态、风险偏好和一次性决策记录。"
     },
+    trade: {
+      eyebrow: "交易执行",
+      title: "交易终端",
+      description: "查看账户、持仓与委托；模拟盘可直接下单，实盘需官方券商网关。"
+    },
     overview: {
       eyebrow: "市场身份",
       title: "控制总览",
@@ -37,6 +42,11 @@
       title: "持仓管理",
       description: "统一查看关注标的、实时价格、量化结论与风险标签。"
     },
+    custody: {
+      eyebrow: "资产管理",
+      title: "托管交易",
+      description: "设置量化阈值、检查频率与单次上限，由托管引擎自动提交委托。"
+    },
     risk: {
       eyebrow: "组织权限",
       title: "风控配置",
@@ -46,6 +56,11 @@
       eyebrow: "资产管理",
       title: "决策历史",
       description: "回看每次诊股生成的动作、评分、风险与决策依据。"
+    },
+    users: {
+      eyebrow: "组织权限",
+      title: "用户管理",
+      description: "维护本地账户、角色与交易权限；仅管理员可执行此操作。"
     },
     agents: {
       eyebrow: "系统管理",
@@ -66,6 +81,9 @@
     railSearch: "",
     stockFilter: "all",
     analysis: null,
+    tradeSide: "BUY",
+    users: [],
+    usersLoaded: false,
     loading: false,
     toastTimer: null
   };
@@ -117,6 +135,7 @@
     }
     return api("/api/v1/dashboard").then(function (payload) {
       state.data = payload;
+      renderCurrentUser();
       renderHeader();
       renderView();
       renderRail();
@@ -134,6 +153,17 @@
       viewRoot.innerHTML = errorState("无法读取市场数据", error.message);
       showToast(error.message, true);
     });
+  }
+
+  function renderCurrentUser() {
+    if (!state.data || !state.data.current_user) {
+      return;
+    }
+    var user = state.data.current_user;
+    var name = user.display_name || user.username;
+    document.getElementById("user-name").textContent = name;
+    document.getElementById("user-role").textContent = user.role === "owner" ? "OWNER" : "TRADER";
+    document.getElementById("user-avatar").textContent = name.slice(0, 1).toUpperCase();
   }
 
   function setLoading(loading) {
@@ -174,13 +204,16 @@
     var renderers = {
       overview: renderOverview,
       stocks: renderStocks,
+      trade: renderTrade,
       signals: renderSignals,
       audit: renderAudit,
       analyze: renderAnalyze,
       strategies: renderStrategies,
       portfolio: renderPortfolio,
+      custody: renderCustody,
       risk: renderRisk,
       history: renderHistory,
+      users: renderUsers,
       agents: renderAgents,
       system: renderSystem
     };
@@ -360,6 +393,162 @@
     '</div>';
   }
 
+  function renderTrade() {
+    var account = state.data.account || {};
+    var trading = state.data.trading || {};
+    var isLive = trading.mode === "live";
+    var orders = state.data.orders || [];
+    var side = state.tradeSide === "SELL" ? "SELL" : "BUY";
+    return '<div class="view-stack">' +
+      '<div class="trading-banner' + (isLive ? " live" : "") + '">' +
+        '<svg><use href="#i-' + (isLive ? "bolt" : "shield") + '"></use></svg>' +
+        '<div><strong>' + (isLive ? "实盘执行通道" : "模拟交易模式") + '</strong>' +
+          escape(trading.message || "交易通道状态未知") + '</div>' +
+      '</div>' +
+      '<div class="trade-layout">' +
+        '<div class="trade-stack">' +
+          renderAccountHero(account, trading) +
+          '<section class="panel">' +
+            '<div class="panel-head"><div class="panel-title"><h2>当前持仓</h2><p>' + (account.positions || []).length + ' 个持仓标的 · 由 ' + escape(account.broker || trading.broker || "—") + ' 返回</p></div>' +
+              '<span class="mode-badge ' + (isLive ? "live" : "") + '">' + (isLive ? "LIVE" : "PAPER") + '</span></div>' +
+            renderPositions(account.positions || []) +
+          '</section>' +
+          '<section class="panel">' +
+            '<div class="panel-head"><div class="panel-title"><h2>最近委托</h2><p>手动委托与托管委托均在审计日志中留痕</p></div>' +
+              '<button class="small-action" type="button" data-open-trade>刷新委托</button></div>' +
+            renderOrders(orders.slice(0, 12)) +
+          '</section>' +
+        '</div>' +
+        '<section class="panel order-ticket">' +
+          '<span class="dialog-kicker">ORDER TICKET</span>' +
+          '<h2>提交委托</h2>' +
+          '<p>' + (isLive ? "当前为实盘模式，订单会发送到已配置的官方券商网关。" : "当前为模拟盘，成交只更新本地模拟账户，不会发送到券商。") + '</p>' +
+          '<div class="trade-side-tabs">' +
+            '<button class="trade-side buy ' + (side === "BUY" ? "active" : "") + '" type="button" data-trade-side="BUY">买入</button>' +
+            '<button class="trade-side sell ' + (side === "SELL" ? "active" : "") + '" type="button" data-trade-side="SELL">卖出</button>' +
+          '</div>' +
+          '<form id="order-form">' +
+            '<div class="order-fields">' +
+              '<label class="field full"><span>股票代码</span><input class="input" name="symbol" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="例如 600519" required></label>' +
+              '<label class="field"><span>数量 <em>股</em></span><input class="input" name="quantity" type="number" min="1" step="1" value="100" required></label>' +
+              '<label class="field"><span>委托类型</span><select class="input" name="order_type" id="order-type"><option value="MARKET">市价委托</option><option value="LIMIT">限价委托</option></select></label>' +
+              '<label class="field full" id="limit-price-field" hidden><span>限价 <em>元</em></span><input class="input" name="limit_price" type="number" min="0.01" step="0.01" placeholder="输入限价"></label>' +
+              '<label class="field full"><span>委托理由 <em>可选</em></span><input class="input" name="reason" maxlength="200" placeholder="例如 突破前高，量价确认"></label>' +
+            '</div>' +
+            '<button class="button order-submit ' + (side === "BUY" ? "buy" : "sell") + '" type="submit">' + (isLive ? "提交实盘" : "模拟") + (side === "BUY" ? "买入" : "卖出") + '</button>' +
+          '</form>' +
+        '</section>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function renderAccountHero(account, trading) {
+    return '<section class="account-hero">' +
+      '<div class="account-hero-top"><div><span class="dialog-kicker">' + escape(trading.mode === "live" ? "LIVE ACCOUNT" : "PAPER ACCOUNT") + '</span>' +
+        '<h2>' + money(account.total_equity) + '</h2><p>总资产 · 更新于 ' + timeText(account.updated_at) + '</p></div>' +
+        '<span class="mode-badge ' + (trading.mode === "live" ? "live" : "") + '">' + escape(account.broker || trading.broker || "—") + '</span></div>' +
+      '<div class="account-metrics">' +
+        '<div class="account-metric"><span>可用资金</span><strong>' + money(account.cash) + '</strong></div>' +
+        '<div class="account-metric"><span>持仓市值</span><strong>' + money(account.market_value) + '</strong></div>' +
+        '<div class="account-metric"><span>当日盈亏</span><strong class="' + (account.day_pnl > 0 ? "up" : account.day_pnl < 0 ? "down" : "") + '">' + signedMoney(account.day_pnl) + '</strong></div>' +
+      '</div>' +
+    '</section>';
+  }
+
+  function renderPositions(positions) {
+    if (!positions.length) {
+      return '<div class="empty-state" style="min-height:190px"><div><span class="empty-icon"><svg><use href="#i-wallet"></use></svg></span><h3>暂无持仓</h3><p>成交后的持仓会显示在这里。</p></div></div>';
+    }
+    return '<div class="table-wrap"><table class="stock-table"><thead><tr><th>股票</th><th>持仓 / 可用</th><th>成本价</th><th>现价</th><th>市值</th><th>浮动盈亏</th></tr></thead><tbody>' +
+      positions.map(function (position) {
+        return '<tr><td><div class="stock-cell">' + stockAvatar(position.name || position.symbol, "stock-avatar") +
+          '<div class="stock-main"><strong>' + escape(position.name || position.symbol) + '</strong><span>' + escape(position.symbol) + '</span></div></div></td>' +
+          '<td>' + position.quantity + ' / ' + position.available + '</td>' +
+          '<td>' + money(position.avg_cost) + '</td>' +
+          '<td>' + money(position.last_price) + '</td>' +
+          '<td>' + money(position.market_value) + '</td>' +
+          '<td class="' + (position.unrealized_pnl > 0 ? "up" : position.unrealized_pnl < 0 ? "down" : "") + '">' + signedMoney(position.unrealized_pnl) + '<br><small>' + signedPercent(position.unrealized_pct) + '</small></td></tr>';
+      }).join("") + '</tbody></table></div>';
+  }
+
+  function renderOrders(orders) {
+    if (!orders.length) {
+      return '<div class="empty-state" style="min-height:170px"><div><h3>暂无委托</h3><p>提交一笔模拟委托，或开启托管交易。</p></div></div>';
+    }
+    return '<div class="table-wrap"><table class="stock-table"><thead><tr><th>时间</th><th>股票</th><th>方向</th><th>数量</th><th>成交价</th><th>状态</th><th>来源</th><th>操作</th></tr></thead><tbody>' +
+      orders.map(function (order) {
+        var statusClass = String(order.status || "").toLowerCase();
+        return '<tr><td>' + timeText(order.created_at, true) + '</td>' +
+          '<td><strong>' + escape(order.name || order.symbol) + '</strong><br><small>' + escape(order.symbol) + '</small></td>' +
+          '<td><span class="tag ' + (order.side === "BUY" ? "buy" : "sell") + '">' + (order.side === "BUY" ? "买入" : "卖出") + '</span></td>' +
+          '<td>' + order.quantity + '</td><td>' + (order.avg_fill_price ? money(order.avg_fill_price) : "—") + '</td>' +
+          '<td><span class="order-status ' + statusClass + '">' + orderStatusLabel(order.status) + '</span></td>' +
+          '<td>' + (order.source === "custody" ? "托管" : "手动") + '</td>' +
+          '<td>' + (order.status === "PENDING" ? '<button class="small-action danger" type="button" data-cancel-order="' + escape(order.id) + '">撤单</button>' : "—") + '</td></tr>';
+      }).join("") + '</tbody></table></div>';
+  }
+
+  function renderCustody() {
+    var settings = state.data.custody || {};
+    var status = state.data.trading || {};
+    var enabled = Boolean(settings.enabled);
+    var live = status.mode === "live";
+    return '<div class="view-stack">' +
+      '<div class="trading-banner' + (live ? " live" : "") + '">' +
+        '<svg><use href="#i-' + (live ? "bolt" : "robot") + '"></use></svg>' +
+        '<div><strong>' + (live ? "实盘托管通道" : "模拟托管通道") + '</strong>' +
+          escape(live && !status.custody_live_allowed ? "服务端未开启 ALLOW_LIVE_CUSTODY，实盘托管保持锁定。" : status.message) + '</div>' +
+      '</div>' +
+      '<section class="panel">' +
+        '<div class="custody-status">' +
+          '<div class="custody-state ' + (enabled ? "on" : "") + '"><span class="custody-pulse"></span><div>' +
+            '<strong>' + (enabled ? "托管交易运行中" : "托管交易已停止") + '</strong>' +
+            '<span>' + (enabled ? "引擎会按设定间隔检查评分并提交委托。" : "开启前请确认账户、网关和风控参数。") + '</span></div></div>' +
+          '<div class="custody-actions">' +
+            '<button class="button button-secondary" type="button" data-custody-run>立即检查一次</button>' +
+            '<button class="button ' + (enabled ? "button-secondary" : "button-primary") + '" type="button" data-custody-toggle="' + (enabled ? "off" : "on") + '">' + (enabled ? "停止托管" : "开启托管") + '</button>' +
+          '</div>' +
+        '</div>' +
+        '<form id="custody-form" class="custody-form">' +
+          '<div class="settings-grid" style="padding:0">' +
+            fieldNumber("buy_score", "买入评分阈值", settings.buy_score, "分", "50", "100") +
+            fieldNumber("sell_score", "卖出评分阈值", settings.sell_score, "分", "0", "50") +
+            fieldNumber("min_confidence", "最低置信度", Math.round((settings.min_confidence || 0) * 100), "%", "50", "95") +
+            fieldNumber("max_order_value", "单次委托上限", settings.max_order_value, "元", "100", "10000000") +
+            fieldNumber("interval_seconds", "检查间隔", settings.interval_seconds, "秒", "60", "86400") +
+            '<label class="field custody-symbols full"><span>托管股票 <em>逗号分隔</em></span><textarea name="symbols" placeholder="600519,300750">' + escape((settings.symbols || []).join(", ")) + '</textarea></label>' +
+          '</div>' +
+          '<div class="custody-checks"><label><input type="checkbox" name="allow_buy" ' + (settings.allow_buy ? "checked" : "") + '> 允许买入</label>' +
+            '<label><input type="checkbox" name="allow_sell" ' + (settings.allow_sell ? "checked" : "") + '> 允许卖出</label></div>' +
+          '<div class="settings-summary" style="margin:19px 0 0"><p>托管引擎只使用评分、置信度和风控上限做确定性判断；不保证收益，也不会绕过券商风控。</p>' +
+            '<button class="button button-primary" type="submit">保存参数</button></div>' +
+        '</form>' +
+        '<div class="custody-last">最近检查：' + (settings.last_run_at ? timeText(settings.last_run_at, true) : "尚未运行") + '<br>' +
+          escape(settings.last_result || "没有运行结果") + '</div>' +
+      '</section>' +
+    '</div>';
+  }
+
+  function renderUsers() {
+    if (!state.usersLoaded) {
+      return '<div class="loading-state"><span class="loading-ring"></span><strong>正在读取用户列表</strong></div>';
+    }
+    if (!state.users.length) {
+      return '<div class="empty-state"><div><h3>暂无其他账户</h3><p>当前账户信息可在右上角查看。</p></div></div>';
+    }
+    return '<section class="panel"><div class="panel-head"><div class="panel-title"><h2>账户与权限</h2><p>' + state.users.length + ' 个本地账户 · 管理员可调整交易权限</p></div>' +
+      '<span class="tag neutral">LOCAL ACCOUNTS</span></div>' +
+      '<div class="table-wrap"><table class="stock-table user-table"><thead><tr><th>账户</th><th>角色</th><th>注册方式</th><th>最近登录</th><th>交易权限</th></tr></thead><tbody>' +
+      state.users.map(function (user) {
+        return '<tr><td><div class="user-cell"><span class="user-avatar">' + escape((user.display_name || user.username).slice(0, 1).toUpperCase()) + '</span>' +
+          '<div class="stock-main"><strong>' + escape(user.display_name || user.username) + '</strong><span>' + escape(user.username) + '</span></div></div></td>' +
+          '<td><span class="user-role-tag ' + (user.role === "owner" ? "owner" : "") + '">' + (user.role === "owner" ? "管理员" : "交易员") + '</span></td>' +
+          '<td>' + escape(user.auth_provider === "local" ? "本地密码" : user.auth_provider) + '</td>' +
+          '<td>' + (user.last_login_at ? timeText(user.last_login_at, true) : "—") + '</td>' +
+          '<td><button class="switch ' + (user.trading_enabled ? "on" : "") + '" type="button" role="switch" aria-checked="' + user.trading_enabled + '" data-user-trading="' + escape(user.id) + '" data-enabled="' + user.trading_enabled + '"></button></td></tr>';
+      }).join("") + '</tbody></table></div></section>';
+  }
+
   function renderRisk() {
     var settings = state.data.settings;
     return '<div class="view-stack">' +
@@ -418,17 +607,21 @@
     var data = state.data;
     return '<div class="view-stack">' +
       '<section class="panel">' +
-        '<div class="panel-head"><div class="panel-title"><h2>服务信息</h2><p>单二进制部署 · Web 资源已内嵌</p></div><span class="tag low">Go 2.0.0</span></div>' +
+        '<div class="panel-head"><div class="panel-title"><h2>服务信息</h2><p>单二进制部署 · Web 资源已内嵌</p></div><span class="tag low">Go ' + escape(data.version || "2.1.0") + '</span></div>' +
         '<div class="system-grid">' +
           '<div class="system-block"><h3>运行参数</h3>' +
             kv("服务语言", "Go") +
             kv("HTTP 框架", "net/http") +
             kv("行情源", data.overview.data_source) +
+            kv("交易模式", data.trading.mode === "live" ? "实盘" : "模拟盘") +
+            kv("券商通道", data.trading.broker) +
             kv("最近刷新", timeText(data.generated_at)) +
             kv("自选数量", String(data.overview.watch_count)) +
           '</div>' +
           '<div class="system-block"><h3>安全与持久化</h3>' +
             kv("会话保护", "SameSite=Strict · HttpOnly") +
+            kv("密码存储", "Argon2id 加盐") +
+            kv("注册开关", data.current_user ? "由服务端配置控制" : "—") +
             kv("请求体限制", "1 MiB") +
             kv("状态文件", "data/go/state.json") +
             kv("审计上限", "1000 条") +
@@ -437,6 +630,18 @@
         '</div>' +
         '<div class="settings-summary"><p>Go 版本将行情、指标、风控、API 与前端资源打入同一容器；原有 Python 代码保留用于回滚与结果对照。</p>' +
           '<button class="button button-secondary" type="button" id="logout-button">退出登录</button></div>' +
+      '</section>' +
+      '<section class="panel">' +
+        '<div class="panel-head"><div class="panel-title"><h2>账户安全</h2><p>本地账户使用 Argon2id 加盐哈希；扫码账户也可以设置本地备用密码</p></div>' +
+          '<span class="mode-badge">' + escape((data.current_user && data.current_user.auth_provider === "local") ? "LOCAL" : "EXTERNAL") + '</span></div>' +
+        '<form id="password-form">' +
+          '<div class="settings-grid">' +
+            '<label class="field"><span>当前密码 <em>扫码账户可留空</em></span><input class="input" name="current_password" type="password" autocomplete="current-password"></label>' +
+            '<label class="field"><span>新密码</span><input class="input" name="new_password" type="password" minlength="10" maxlength="128" autocomplete="new-password" required></label>' +
+          '</div>' +
+          '<div class="settings-summary"><p>新密码至少 10 位，并同时包含字母和数字。</p>' +
+            '<button class="button button-primary" type="submit">更新密码</button></div>' +
+        '</form>' +
       '</section>' +
     '</div>';
   }
@@ -698,6 +903,31 @@
     return number(value, 2);
   }
 
+  function signedMoney(value) {
+    if (value === null || value === undefined) {
+      return "—";
+    }
+    return (Number(value) > 0 ? "+" : "") + number(value, 2);
+  }
+
+  function signedPercent(value) {
+    if (value === null || value === undefined) {
+      return "—";
+    }
+    return (Number(value) > 0 ? "+" : "") + number(value, 2) + "%";
+  }
+
+  function orderStatusLabel(status) {
+    return {
+      FILLED: "已成交",
+      PENDING: "待成交",
+      CANCELED: "已撤单",
+      REJECTED: "已拒绝",
+      SUBMITTED: "已提交",
+      PARTIALLY_FILLED: "部分成交"
+    }[status] || status || "—";
+  }
+
   function number(value, digits) {
     var numeric = Number(value);
     if (!isFinite(numeric)) {
@@ -768,6 +998,24 @@
     closeMobileRail();
     renderHeader();
     renderView();
+    if (view === "users") {
+      loadUsers();
+    }
+  }
+
+  function loadUsers() {
+    state.usersLoaded = false;
+    renderView();
+    api("/api/v1/users").then(function (payload) {
+      state.users = payload.items || [];
+      state.usersLoaded = true;
+      renderView();
+    }).catch(function (error) {
+      state.usersLoaded = true;
+      state.users = [];
+      renderView();
+      showToast(error.message, true);
+    });
   }
 
   function openStockDialog() {
@@ -850,8 +1098,146 @@
     });
   }
 
+  function placeOrder(form) {
+    var data = new FormData(form);
+    var orderType = String(data.get("order_type") || "MARKET");
+    var limitPrice = orderType === "LIMIT" ? Number(data.get("limit_price")) : null;
+    if (orderType === "LIMIT" && (!limitPrice || limitPrice <= 0)) {
+      showToast("限价委托需要填写有效价格", true);
+      return;
+    }
+    var submit = form.querySelector('button[type="submit"]');
+    submit.disabled = true;
+    api("/api/v1/trading/orders", {
+      method: "POST",
+      body: {
+        client_order_id: clientOrderID(),
+        symbol: String(data.get("symbol") || "").trim(),
+        side: state.tradeSide,
+        order_type: orderType,
+        quantity: Number(data.get("quantity")),
+        limit_price: limitPrice,
+        reason: String(data.get("reason") || "").trim()
+      }
+    }).then(function (order) {
+      showToast(orderStatusLabel(order.status) + " · " + (order.name || order.symbol));
+      return loadDashboard({silent: true});
+    }).catch(function (error) {
+      showToast(error.message, true);
+    }).finally(function () {
+      submit.disabled = false;
+    });
+  }
+
+  function cancelOrder(orderID) {
+    if (!window.confirm("确认撤销这笔待成交委托？")) {
+      return;
+    }
+    api("/api/v1/trading/orders/" + encodeURIComponent(orderID) + "/cancel", {method: "POST"})
+      .then(function () {
+        showToast("撤单请求已提交");
+        return loadDashboard({silent: true});
+      }).catch(function (error) {
+        showToast(error.message, true);
+      });
+  }
+
+  function custodyFromForm(form) {
+    var data = new FormData(form);
+    return {
+      enabled: Boolean(state.data.custody && state.data.custody.enabled),
+      symbols: String(data.get("symbols") || "").split(/[\s,，]+/).filter(Boolean),
+      buy_score: Number(data.get("buy_score")),
+      sell_score: Number(data.get("sell_score")),
+      min_confidence: Number(data.get("min_confidence")) / 100,
+      max_order_value: Number(data.get("max_order_value")),
+      interval_seconds: Number(data.get("interval_seconds")),
+      allow_buy: data.get("allow_buy") === "on",
+      allow_sell: data.get("allow_sell") === "on"
+    };
+  }
+
+  function saveCustody(form) {
+    var submit = form.querySelector('button[type="submit"]');
+    submit.disabled = true;
+    api("/api/v1/custody", {method: "PUT", body: custodyFromForm(form)})
+      .then(function () {
+        showToast("托管参数已保存");
+        return loadDashboard({silent: true});
+      }).catch(function (error) {
+        showToast(error.message, true);
+      }).finally(function () {
+        submit.disabled = false;
+      });
+  }
+
+  function toggleCustody(enabled) {
+    var form = document.getElementById("custody-form");
+    if (!form) {
+      return;
+    }
+    var confirmation = "";
+    if (enabled) {
+      confirmation = window.prompt("托管交易会自动提交订单。请输入 ENABLE CUSTODY 确认开启：");
+      if (confirmation === null) {
+        return;
+      }
+    }
+    var payload = custodyFromForm(form);
+    payload.enabled = enabled;
+    payload.confirmation = confirmation;
+    api("/api/v1/custody", {method: "PUT", body: payload})
+      .then(function () {
+        showToast(enabled ? "托管交易已开启" : "托管交易已停止");
+        return loadDashboard({silent: true});
+      }).catch(function (error) {
+        showToast(error.message, true);
+      });
+  }
+
+  function runCustody() {
+    var force = state.data.trading.mode !== "live";
+    api("/api/v1/custody/run", {method: "POST", body: {force: force}})
+      .then(function (payload) {
+        showToast("托管检查完成，提交 " + payload.count + " 笔委托");
+        return loadDashboard({silent: true});
+      }).catch(function (error) {
+        showToast(error.message, true);
+      });
+  }
+
+  function toggleUserTrading(button) {
+    var enabled = button.getAttribute("data-enabled") !== "true";
+    button.disabled = true;
+    api("/api/v1/users/" + encodeURIComponent(button.getAttribute("data-user-trading")) + "/trading", {
+      method: "POST",
+      body: {enabled: enabled}
+    }).then(function () {
+      showToast(enabled ? "交易权限已开启" : "交易权限已关闭");
+      state.usersLoaded = false;
+      loadUsers();
+      return loadDashboard({silent: true});
+    }).catch(function (error) {
+      showToast(error.message, true);
+    }).finally(function () {
+      button.disabled = false;
+    });
+  }
+
+  function clientOrderID() {
+    if (window.crypto && typeof window.crypto.randomUUID === "function") {
+      return "web-" + window.crypto.randomUUID();
+    }
+    return "web-" + Date.now() + "-" + Math.random().toString(36).slice(2, 10);
+  }
+
   function closeMobileRail() {
     document.body.classList.remove("rail-open");
+  }
+
+  function logout() {
+    fetch("/api/v1/auth/logout", {method: "POST", credentials: "same-origin"})
+      .finally(function () { location.assign("/login"); });
   }
 
   function bindEvents() {
@@ -886,6 +1272,7 @@
       document.body.classList.toggle("rail-open");
     });
     document.getElementById("rail-backdrop").addEventListener("click", closeMobileRail);
+    document.getElementById("header-logout").addEventListener("click", logout);
 
     document.querySelectorAll("[data-close-dialog]").forEach(function (button) {
       button.addEventListener("click", closeStockDialog);
@@ -949,13 +1336,44 @@
       }
       if (target.hasAttribute("data-strategy")) {
         toggleStrategy(target);
+        return;
+      }
+      if (target.hasAttribute("data-trade-side")) {
+        state.tradeSide = target.getAttribute("data-trade-side");
+        renderView();
+        return;
+      }
+      if (target.hasAttribute("data-cancel-order")) {
+        cancelOrder(target.getAttribute("data-cancel-order"));
+        return;
+      }
+      if (target.hasAttribute("data-custody-toggle")) {
+        toggleCustody(target.getAttribute("data-custody-toggle") === "on");
+        return;
+      }
+      if (target.hasAttribute("data-custody-run")) {
+        runCustody();
+        return;
+      }
+      if (target.hasAttribute("data-user-trading")) {
+        toggleUserTrading(target);
+        return;
+      }
+      if (target.hasAttribute("data-open-trade")) {
+        loadDashboard();
+        return;
       }
       if (target.id === "logout-button") {
-        api("/api/v1/settings", {method: "GET"}).catch(function () {}).finally(function () {
-          fetch("/logout", {method: "POST", credentials: "same-origin"}).finally(function () {
-            location.assign("/login");
-          });
-        });
+        logout();
+      }
+    });
+
+    viewRoot.addEventListener("change", function (event) {
+      if (event.target.id === "order-type") {
+        var limitField = document.getElementById("limit-price-field");
+        if (limitField) {
+          limitField.hidden = event.target.value !== "LIMIT";
+        }
       }
     });
 
@@ -988,6 +1406,37 @@
           showToast(error.message, true);
         }).finally(function () {
           submit.disabled = false;
+        });
+        return;
+      }
+      if (event.target.id === "order-form") {
+        event.preventDefault();
+        placeOrder(event.target);
+        return;
+      }
+      if (event.target.id === "custody-form") {
+        event.preventDefault();
+        saveCustody(event.target);
+        return;
+      }
+      if (event.target.id === "password-form") {
+        event.preventDefault();
+        var passwordData = new FormData(event.target);
+        var passwordSubmit = event.target.querySelector('button[type="submit"]');
+        passwordSubmit.disabled = true;
+        api("/api/v1/auth/password", {
+          method: "POST",
+          body: {
+            current_password: String(passwordData.get("current_password") || ""),
+            new_password: String(passwordData.get("new_password") || "")
+          }
+        }).then(function () {
+          event.target.reset();
+          showToast("密码已更新");
+        }).catch(function (error) {
+          showToast(error.message, true);
+        }).finally(function () {
+          passwordSubmit.disabled = false;
         });
       }
     });

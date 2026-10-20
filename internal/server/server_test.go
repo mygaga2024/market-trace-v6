@@ -17,6 +17,7 @@ import (
 	"github.com/mygaga2024/market-trace-v6/internal/domain"
 	"github.com/mygaga2024/market-trace-v6/internal/market"
 	"github.com/mygaga2024/market-trace-v6/internal/store"
+	"github.com/mygaga2024/market-trace-v6/internal/trading"
 )
 
 type serverStubProvider struct{}
@@ -53,10 +54,12 @@ func (serverStubProvider) Kline(_ context.Context, _ string, limit int) ([]domai
 
 func testConfig() config.Config {
 	return config.Config{
-		Address:  ":0",
-		DataFile: "state.json",
-		Version:  "test",
-		Timeout:  5 * time.Second,
+		Address:           ":0",
+		DataFile:          "state.json",
+		Version:           "test",
+		Timeout:           5 * time.Second,
+		SessionTTL:        24 * time.Hour,
+		AllowRegistration: true,
 	}
 }
 
@@ -67,11 +70,30 @@ func newTestServer(t *testing.T, cfg config.Config) *httptest.Server {
 		t.Fatalf("store.Open() error = %v", err)
 	}
 	service := market.NewService(serverStubProvider{}, state)
-	app, err := New(cfg, state, service, nil)
+	tradingManager := trading.NewManager(state, service, service, trading.ManagerConfig{Mode: "paper"}, nil)
+	app, err := New(cfg, state, service, tradingManager, nil)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
 	return httptest.NewServer(app)
+}
+
+func registerTestUser(t *testing.T, server *httptest.Server, username, password string) *http.Client {
+	t.Helper()
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatalf("cookie jar: %v", err)
+	}
+	client := &http.Client{Jar: jar}
+	status, payload := requestJSON(t, client, http.MethodPost, server.URL+"/api/v1/auth/register", map[string]any{
+		"username":     username,
+		"display_name": "测试管理员",
+		"password":     password,
+	})
+	if status != http.StatusCreated || payload["ok"] != true {
+		t.Fatalf("register status = %d, payload = %v", status, payload)
+	}
+	return client
 }
 
 func requestJSON(t *testing.T, client *http.Client, method, url string, body any) (int, map[string]any) {
@@ -106,7 +128,7 @@ func requestJSON(t *testing.T, client *http.Client, method, url string, body any
 func TestDashboardAndStockMutations(t *testing.T) {
 	server := newTestServer(t, testConfig())
 	defer server.Close()
-	client := server.Client()
+	client := registerTestUser(t, server, "owner_test", "strong-pass-123")
 
 	status, payload := requestJSON(t, client, http.MethodGet, server.URL+"/api/v1/dashboard", nil)
 	if status != http.StatusOK {
@@ -139,7 +161,7 @@ func TestDashboardAndStockMutations(t *testing.T) {
 func TestAnalyzeAndRiskSettings(t *testing.T) {
 	server := newTestServer(t, testConfig())
 	defer server.Close()
-	client := server.Client()
+	client := registerTestUser(t, server, "owner_test", "strong-pass-123")
 
 	status, payload := requestJSON(t, client, http.MethodPost, server.URL+"/api/v1/analyze", map[string]any{"symbol": "600519"})
 	if status != http.StatusOK {
@@ -161,9 +183,7 @@ func TestAnalyzeAndRiskSettings(t *testing.T) {
 }
 
 func TestLoginProtectsAPI(t *testing.T) {
-	cfg := testConfig()
-	cfg.APIToken = "secret-token"
-	server := newTestServer(t, cfg)
+	server := newTestServer(t, testConfig())
 	defer server.Close()
 
 	status, _ := requestJSON(t, server.Client(), http.MethodGet, server.URL+"/api/v1/dashboard", nil)
@@ -171,12 +191,19 @@ func TestLoginProtectsAPI(t *testing.T) {
 		t.Fatalf("unauthenticated dashboard status = %d, want 401", status)
 	}
 
-	jar, err := cookiejar.New(nil)
-	if err != nil {
-		t.Fatalf("cookie jar: %v", err)
+	client := registerTestUser(t, server, "owner_test", "strong-pass-123")
+	status, payload := requestJSON(t, client, http.MethodPost, server.URL+"/api/v1/auth/logout", nil)
+	if status != http.StatusOK || payload["ok"] != true {
+		t.Fatalf("logout status = %d, payload = %v", status, payload)
 	}
-	client := &http.Client{Jar: jar}
-	status, payload := requestJSON(t, client, http.MethodPost, server.URL+"/login", map[string]any{"token": "secret-token"})
+	status, _ = requestJSON(t, client, http.MethodGet, server.URL+"/api/v1/dashboard", nil)
+	if status != http.StatusUnauthorized {
+		t.Fatalf("post-logout dashboard status = %d, want 401", status)
+	}
+	status, payload = requestJSON(t, client, http.MethodPost, server.URL+"/api/v1/auth/login", map[string]any{
+		"username": "owner_test",
+		"password": "strong-pass-123",
+	})
 	if status != http.StatusOK || payload["ok"] != true {
 		t.Fatalf("login status = %d, payload = %v", status, payload)
 	}
@@ -184,13 +211,34 @@ func TestLoginProtectsAPI(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("authenticated dashboard status = %d, want 200", status)
 	}
+	status, payload = requestJSON(t, client, http.MethodPost, server.URL+"/api/v1/auth/password", map[string]any{
+		"current_password": "strong-pass-123",
+		"new_password":     "new-strong-pass-456",
+	})
+	if status != http.StatusOK || payload["ok"] != true {
+		t.Fatalf("change password status = %d, payload = %v", status, payload)
+	}
+	requestJSON(t, client, http.MethodPost, server.URL+"/api/v1/auth/logout", nil)
+	status, _ = requestJSON(t, client, http.MethodPost, server.URL+"/api/v1/auth/login", map[string]any{
+		"username": "owner_test", "password": "strong-pass-123",
+	})
+	if status != http.StatusUnauthorized {
+		t.Fatalf("old password login status = %d, want 401", status)
+	}
+	status, _ = requestJSON(t, client, http.MethodPost, server.URL+"/api/v1/auth/login", map[string]any{
+		"username": "owner_test", "password": "new-strong-pass-456",
+	})
+	if status != http.StatusOK {
+		t.Fatalf("new password login status = %d, want 200", status)
+	}
 }
 
 func TestWebAssetsAndHealth(t *testing.T) {
 	server := newTestServer(t, testConfig())
 	defer server.Close()
+	client := registerTestUser(t, server, "owner_test", "strong-pass-123")
 
-	resp, err := server.Client().Get(server.URL + "/")
+	resp, err := client.Get(server.URL + "/")
 	if err != nil {
 		t.Fatalf("GET /: %v", err)
 	}
@@ -212,5 +260,86 @@ func TestWebAssetsAndHealth(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("css status = %d", resp.StatusCode)
+	}
+}
+
+func TestPaperTradingAndCustodyConfiguration(t *testing.T) {
+	server := newTestServer(t, testConfig())
+	defer server.Close()
+	client := registerTestUser(t, server, "owner_test", "strong-pass-123")
+
+	status, payload := requestJSON(t, client, http.MethodPost, server.URL+"/api/v1/trading/orders", map[string]any{
+		"client_order_id": "test-buy-1",
+		"symbol":          "600519",
+		"side":            "BUY",
+		"order_type":      "MARKET",
+		"quantity":        100,
+		"reason":          "测试买入",
+	})
+	if status != http.StatusCreated || payload["status"] != "FILLED" {
+		t.Fatalf("place order status = %d, payload = %v", status, payload)
+	}
+
+	status, payload = requestJSON(t, client, http.MethodGet, server.URL+"/api/v1/trading/account", nil)
+	if status != http.StatusOK || payload["mode"] != "paper" {
+		t.Fatalf("account status = %d, payload = %v", status, payload)
+	}
+	positions, _ := payload["positions"].([]any)
+	if len(positions) != 1 {
+		t.Fatalf("positions = %#v", payload["positions"])
+	}
+
+	status, payload = requestJSON(t, client, http.MethodPut, server.URL+"/api/v1/custody", map[string]any{
+		"enabled":          true,
+		"confirmation":     "ENABLE CUSTODY",
+		"symbols":          []string{"600519"},
+		"buy_score":        78,
+		"sell_score":       30,
+		"min_confidence":   0.72,
+		"max_order_value":  5000,
+		"interval_seconds": 300,
+		"allow_buy":        true,
+		"allow_sell":       true,
+	})
+	if status != http.StatusOK || payload["enabled"] != true {
+		t.Fatalf("custody update status = %d, payload = %v", status, payload)
+	}
+}
+
+func TestAPITokenStillSupportsAutomation(t *testing.T) {
+	cfg := testConfig()
+	cfg.APIToken = "automation-secret"
+	server := newTestServer(t, cfg)
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodGet, server.URL+"/api/v1/dashboard", nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer automation-secret")
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("request dashboard: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("API token dashboard status = %d", resp.StatusCode)
+	}
+}
+
+func TestQRLoginFailsClosedWithoutOfficialConfig(t *testing.T) {
+	server := newTestServer(t, testConfig())
+	defer server.Close()
+	status, payload := requestJSON(t, server.Client(), http.MethodGet, server.URL+"/api/v1/auth/status", nil)
+	if status != http.StatusOK {
+		t.Fatalf("auth status = %d", status)
+	}
+	qr, ok := payload["qr_login"].(map[string]any)
+	if !ok || qr["configured"] != false {
+		t.Fatalf("qr status = %#v", payload["qr_login"])
+	}
+	status, payload = requestJSON(t, server.Client(), http.MethodGet, server.URL+"/api/v1/auth/qr/start", nil)
+	if status != http.StatusServiceUnavailable {
+		t.Fatalf("qr start status = %d, payload = %v", status, payload)
 	}
 }

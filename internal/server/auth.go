@@ -1,94 +1,104 @@
 package server
 
 import (
-	"crypto/rand"
+	"context"
 	"crypto/subtle"
-	"encoding/hex"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
-	"sync"
 	"time"
+
+	"github.com/mygaga2024/market-trace-v6/internal/auth"
+	"github.com/mygaga2024/market-trace-v6/internal/config"
+	"github.com/mygaga2024/market-trace-v6/internal/domain"
+	"github.com/mygaga2024/market-trace-v6/internal/store"
 )
 
-const sessionCookie = "mt6_go_session"
+const sessionCookieName = "mt6_session"
 
-type authManager struct {
-	token        string
-	secureCookie bool
+type userContextKey struct{}
 
-	mu       sync.Mutex
-	sessions map[string]time.Time
-	now      func() time.Time
+type authService struct {
+	store             *store.Store
+	sessions          *auth.SessionManager
+	oauth             *auth.OAuthProvider
+	loginLimiter      *auth.AttemptLimiter
+	registerLimiter   *auth.AttemptLimiter
+	apiToken          string
+	secureCookie      bool
+	allowRegistration bool
 }
 
-func newAuthManager(token string, secure bool) *authManager {
-	return &authManager{
-		token:        token,
-		secureCookie: secure,
-		sessions:     make(map[string]time.Time),
-		now:          time.Now,
+func newAuthService(state *store.Store, cfg config.Config) *authService {
+	return &authService{
+		store:             state,
+		sessions:          auth.NewSessionManager(cfg.SessionTTL),
+		oauth:             auth.NewOAuthProvider(auth.OAuthConfigFromEnv()),
+		loginLimiter:      auth.NewAttemptLimiter(8, 10*time.Minute),
+		registerLimiter:   auth.NewAttemptLimiter(5, 30*time.Minute),
+		apiToken:          cfg.APIToken,
+		secureCookie:      cfg.SecureCookie,
+		allowRegistration: cfg.AllowRegistration,
 	}
 }
 
-func (a *authManager) enabled() bool {
-	return a.token != ""
-}
-
-func (a *authManager) authenticated(r *http.Request) bool {
-	if !a.enabled() {
-		return true
-	}
-	header := strings.TrimSpace(r.Header.Get("Authorization"))
-	if strings.HasPrefix(header, "Bearer ") {
-		token := strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))
-		if equalToken(token, a.token) {
-			return true
+func (a *authService) currentUser(r *http.Request) (domain.User, bool) {
+	if a.apiToken != "" {
+		header := strings.TrimSpace(r.Header.Get("Authorization"))
+		if strings.HasPrefix(header, "Bearer ") {
+			token := strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))
+			if len(token) == len(a.apiToken) && subtle.ConstantTimeCompare([]byte(token), []byte(a.apiToken)) == 1 {
+				return domain.User{
+					ID:             "api-token",
+					Username:       "api-token",
+					DisplayName:    "API 客户端",
+					Role:           "owner",
+					TradingEnabled: true,
+					AuthProvider:   "api-token",
+				}, true
+			}
 		}
 	}
-	cookie, err := r.Cookie(sessionCookie)
-	if err != nil || cookie.Value == "" {
-		return false
+	cookie, err := r.Cookie(sessionCookieName)
+	if err != nil {
+		return domain.User{}, false
 	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	expiry, ok := a.sessions[cookie.Value]
-	if !ok || a.now().After(expiry) {
-		delete(a.sessions, cookie.Value)
-		return false
+	session, ok := a.sessions.Get(cookie.Value)
+	if !ok {
+		return domain.User{}, false
 	}
-	return true
+	record, ok := a.store.UserByID(session.UserID)
+	if !ok || record.Disabled {
+		a.sessions.Delete(cookie.Value)
+		return domain.User{}, false
+	}
+	return record.Public(), true
 }
 
-func (a *authManager) login(token string) (string, bool) {
-	if !a.enabled() || !equalToken(token, a.token) {
-		return "", false
+func (a *authService) startSession(w http.ResponseWriter, userID string) error {
+	session, err := a.sessions.Create(userID)
+	if err != nil {
+		return err
 	}
-	raw := make([]byte, 24)
-	if _, err := rand.Read(raw); err != nil {
-		return "", false
-	}
-	session := hex.EncodeToString(raw)
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.sessions[session] = a.now().Add(24 * time.Hour)
-	return session, true
-}
-
-func (a *authManager) setCookie(w http.ResponseWriter, session string) {
 	http.SetCookie(w, &http.Cookie{
-		Name:     sessionCookie,
-		Value:    session,
+		Name:     sessionCookieName,
+		Value:    session.Token,
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   a.secureCookie,
 		SameSite: http.SameSiteStrictMode,
-		MaxAge:   86400,
+		MaxAge:   int(time.Until(session.ExpiresAt).Seconds()),
 	})
+	return nil
 }
 
-func (a *authManager) clearCookie(w http.ResponseWriter) {
+func (a *authService) endSession(w http.ResponseWriter, r *http.Request) {
+	if cookie, err := r.Cookie(sessionCookieName); err == nil {
+		a.sessions.Delete(cookie.Value)
+	}
 	http.SetCookie(w, &http.Cookie{
-		Name:     sessionCookie,
+		Name:     sessionCookieName,
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
@@ -98,9 +108,56 @@ func (a *authManager) clearCookie(w http.ResponseWriter) {
 	})
 }
 
-func equalToken(a, b string) bool {
-	if len(a) != len(b) {
+func (a *authService) status(r *http.Request) domain.AuthStatus {
+	user, authenticated := a.currentUser(r)
+	status := domain.AuthStatus{
+		Initialized:   a.store.UserCount() > 0,
+		Authenticated: authenticated,
+		Registration:  a.allowRegistration || a.store.UserCount() == 0,
+		QRLogin: domain.QRLoginInfo{
+			Configured: a.oauth.Configured(),
+			Name:       a.oauth.Name(),
+			Reason:     a.oauth.MissingReason(),
+		},
+	}
+	if authenticated {
+		status.User = &user
+	}
+	return status
+}
+
+func withUser(r *http.Request, user domain.User) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), userContextKey{}, user))
+}
+
+func currentUserFromContext(r *http.Request) (domain.User, bool) {
+	user, ok := r.Context().Value(userContextKey{}).(domain.User)
+	return user, ok
+}
+
+func clientIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err == nil {
+		return host
+	}
+	return r.RemoteAddr
+}
+
+func sameOriginRequest(r *http.Request) bool {
+	switch r.Method {
+	case http.MethodGet, http.MethodHead, http.MethodOptions:
+		return true
+	}
+	origin := strings.TrimSpace(r.Header.Get("Origin"))
+	if origin == "" {
+		origin = strings.TrimSpace(r.Header.Get("Referer"))
+	}
+	if origin == "" {
+		return true
+	}
+	parsed, err := url.Parse(origin)
+	if err != nil {
 		return false
 	}
-	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
+	return strings.EqualFold(parsed.Host, r.Host)
 }

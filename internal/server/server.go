@@ -7,13 +7,17 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
+	authpkg "github.com/mygaga2024/market-trace-v6/internal/auth"
 	"github.com/mygaga2024/market-trace-v6/internal/config"
 	"github.com/mygaga2024/market-trace-v6/internal/domain"
+	"github.com/mygaga2024/market-trace-v6/internal/id"
 	"github.com/mygaga2024/market-trace-v6/internal/market"
 	"github.com/mygaga2024/market-trace-v6/internal/store"
+	"github.com/mygaga2024/market-trace-v6/internal/trading"
 	webui "github.com/mygaga2024/market-trace-v6/web"
 )
 
@@ -21,13 +25,14 @@ type Server struct {
 	config  config.Config
 	store   *store.Store
 	market  *market.Service
-	auth    *authManager
+	trading *trading.Manager
+	auth    *authService
 	logger  *slog.Logger
 	started time.Time
 	handler http.Handler
 }
 
-func New(cfg config.Config, state *store.Store, marketService *market.Service, logger *slog.Logger) (*Server, error) {
+func New(cfg config.Config, state *store.Store, marketService *market.Service, tradingManager *trading.Manager, logger *slog.Logger) (*Server, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -35,7 +40,8 @@ func New(cfg config.Config, state *store.Store, marketService *market.Service, l
 		config:  cfg,
 		store:   state,
 		market:  marketService,
-		auth:    newAuthManager(cfg.APIToken, cfg.SecureCookie),
+		trading: tradingManager,
+		auth:    newAuthService(state, cfg),
 		logger:  logger,
 		started: time.Now(),
 	}
@@ -53,8 +59,15 @@ func (s *Server) routes() error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", s.index)
 	mux.HandleFunc("GET /login", s.loginPage)
-	mux.HandleFunc("POST /login", s.login)
+	mux.HandleFunc("GET /register", s.registerPage)
 	mux.HandleFunc("POST /logout", s.logout)
+	mux.HandleFunc("POST /api/v1/auth/login", s.apiLogin)
+	mux.HandleFunc("POST /api/v1/auth/register", s.apiRegister)
+	mux.HandleFunc("POST /api/v1/auth/logout", s.apiLogout)
+	mux.HandleFunc("POST /api/v1/auth/password", s.apiChangePassword)
+	mux.HandleFunc("GET /api/v1/auth/status", s.authStatus)
+	mux.HandleFunc("GET /api/v1/auth/qr/start", s.qrStart)
+	mux.HandleFunc("GET /auth/qr/callback", s.qrCallback)
 	mux.HandleFunc("GET /health", s.health)
 	mux.HandleFunc("GET /favicon.svg", s.favicon)
 
@@ -68,6 +81,15 @@ func (s *Server) routes() error {
 	mux.HandleFunc("GET /api/v1/settings", s.settings)
 	mux.HandleFunc("PUT /api/v1/settings", s.updateSettings)
 	mux.HandleFunc("POST /api/v1/strategies/{key}/toggle", s.toggleStrategy)
+	mux.HandleFunc("GET /api/v1/users", s.users)
+	mux.HandleFunc("POST /api/v1/users/{id}/trading", s.updateUserTrading)
+	mux.HandleFunc("GET /api/v1/trading/account", s.tradingAccount)
+	mux.HandleFunc("GET /api/v1/trading/orders", s.tradingOrders)
+	mux.HandleFunc("POST /api/v1/trading/orders", s.placeOrder)
+	mux.HandleFunc("POST /api/v1/trading/orders/{id}/cancel", s.cancelOrder)
+	mux.HandleFunc("GET /api/v1/custody", s.custody)
+	mux.HandleFunc("PUT /api/v1/custody", s.updateCustody)
+	mux.HandleFunc("POST /api/v1/custody/run", s.runCustody)
 
 	assets, err := webui.Assets()
 	if err != nil {
@@ -85,6 +107,14 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	if _, ok := s.auth.currentUser(r); !ok {
+		if s.store.UserCount() == 0 {
+			http.Redirect(w, r, "/register", http.StatusSeeOther)
+		} else {
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+		}
+		return
+	}
 	raw, err := webui.Index()
 	if err != nil {
 		http.Error(w, "页面资源不可用", http.StatusInternalServerError)
@@ -96,8 +126,12 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) loginPage(w http.ResponseWriter, r *http.Request) {
-	if !s.auth.enabled() {
+	if _, ok := s.auth.currentUser(r); ok {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+	if s.store.UserCount() == 0 {
+		http.Redirect(w, r, "/register", http.StatusSeeOther)
 		return
 	}
 	raw, err := webui.Login()
@@ -110,37 +144,212 @@ func (s *Server) loginPage(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(raw)
 }
 
-func (s *Server) login(w http.ResponseWriter, r *http.Request) {
-	if !s.auth.enabled() {
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "redirect": "/"})
+func (s *Server) registerPage(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.auth.currentUser(r); ok {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
-	var token string
-	contentType := r.Header.Get("Content-Type")
-	if strings.Contains(contentType, "application/json") {
-		var body struct {
-			Token string `json:"token"`
-		}
-		if err := decodeJSON(r, &body); err != nil {
-			writeError(w, http.StatusBadRequest, "请求体格式错误")
-			return
-		}
-		token = body.Token
-	} else {
-		token = r.FormValue("token")
-	}
-	session, ok := s.auth.login(token)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "访问令牌无效")
+	if s.store.UserCount() > 0 && !s.auth.allowRegistration {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
-	s.auth.setCookie(w, session)
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "redirect": "/"})
+	raw, err := webui.Register()
+	if err != nil {
+		http.Error(w, "页面资源不可用", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write(raw)
 }
 
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
-	s.auth.clearCookie(w)
+	s.auth.endSession(w, r)
+	http.Redirect(w, r, "/login", http.StatusSeeOther)
+}
+
+func (s *Server) apiRegister(w http.ResponseWriter, r *http.Request) {
+	if s.store.UserCount() > 0 && !s.auth.allowRegistration {
+		writeError(w, http.StatusForbidden, "公开注册已关闭")
+		return
+	}
+	key := "register:" + clientIP(r)
+	if !s.auth.registerLimiter.Allow(key) {
+		writeError(w, http.StatusTooManyRequests, "注册尝试过于频繁，请稍后再试")
+		return
+	}
+	var body struct {
+		Username    string `json:"username"`
+		DisplayName string `json:"display_name"`
+		Password    string `json:"password"`
+	}
+	if err := decodeJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, "请求体格式错误")
+		return
+	}
+	username, err := authpkg.NormalizeUsername(body.Username)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	hash, err := authpkg.HashPassword(body.Password)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	user, err := s.store.CreateUser(username, body.DisplayName, hash, "local", "")
+	if errors.Is(err, store.ErrExists) {
+		writeError(w, http.StatusConflict, "该用户名已注册")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "注册失败")
+		return
+	}
+	if err := s.auth.startSession(w, user.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, "创建登录会话失败")
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{"ok": true, "user": user, "redirect": "/"})
+}
+
+func (s *Server) apiLogin(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	if err := decodeJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, "请求体格式错误")
+		return
+	}
+	username, err := authpkg.NormalizeUsername(body.Username)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "用户名或密码错误")
+		return
+	}
+	key := "login:" + clientIP(r) + ":" + username
+	if !s.auth.loginLimiter.Allow(key) {
+		writeError(w, http.StatusTooManyRequests, "登录尝试过于频繁，请 10 分钟后再试")
+		return
+	}
+	record, ok := s.store.UserByUsername(username)
+	if !ok || record.Disabled || record.PasswordHash == "" || !authpkg.VerifyPassword(record.PasswordHash, body.Password) {
+		writeError(w, http.StatusUnauthorized, "用户名或密码错误")
+		return
+	}
+	s.auth.loginLimiter.Reset(key)
+	_ = s.store.MarkUserLogin(record.ID)
+	if err := s.auth.startSession(w, record.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, "创建登录会话失败")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "user": record.Public(), "redirect": "/"})
+}
+
+func (s *Server) apiLogout(w http.ResponseWriter, r *http.Request) {
+	s.auth.endSession(w, r)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) apiChangePassword(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUserFromContext(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "请先登录")
+		return
+	}
+	var body struct {
+		CurrentPassword string `json:"current_password"`
+		NewPassword     string `json:"new_password"`
+	}
+	if err := decodeJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, "请求体格式错误")
+		return
+	}
+	record, ok := s.store.UserByID(user.ID)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "账户不存在")
+		return
+	}
+	if record.PasswordHash != "" && !authpkg.VerifyPassword(record.PasswordHash, body.CurrentPassword) {
+		writeError(w, http.StatusUnauthorized, "当前密码错误")
+		return
+	}
+	hash, err := authpkg.HashPassword(body.NewPassword)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := s.store.UpdatePassword(user.ID, hash); err != nil {
+		writeError(w, http.StatusInternalServerError, "保存新密码失败")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) authStatus(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, s.auth.status(r))
+}
+
+func (s *Server) qrStart(w http.ResponseWriter, r *http.Request) {
+	if !s.auth.oauth.Configured() {
+		writeError(w, http.StatusServiceUnavailable, s.auth.oauth.MissingReason())
+		return
+	}
+	key := "qr:" + clientIP(r)
+	if !s.auth.loginLimiter.Allow(key) {
+		writeError(w, http.StatusTooManyRequests, "扫码登录请求过于频繁")
+		return
+	}
+	authURL, err := s.auth.oauth.StartURL()
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"url": authURL, "provider": s.auth.oauth.Name()})
+}
+
+func (s *Server) qrCallback(w http.ResponseWriter, r *http.Request) {
+	identity, err := s.auth.oauth.Exchange(r.URL.Query().Get("code"), r.URL.Query().Get("state"))
+	if err != nil {
+		http.Redirect(w, r, "/login?qr_error="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+		return
+	}
+	record, ok := s.store.UserByProviderSubject(identity.Provider, identity.Subject)
+	if !ok {
+		username, _ := authpkg.NormalizeUsername(identity.Username)
+		if username == "" {
+			username = authpkg.SafeExternalUsername(identity.Provider, identity.Subject)
+		}
+		var user domain.User
+		var createErr error
+		for attempt := 0; attempt < 4; attempt++ {
+			user, createErr = s.store.CreateUser(username, identity.DisplayName, "", identity.Provider, identity.Subject)
+			if !errors.Is(createErr, store.ErrExists) {
+				break
+			}
+			suffix := strings.TrimPrefix(id.New("x"), "x-")
+			username = strings.TrimSuffix(username, "_"+suffix)
+			if len(username) > 48 {
+				username = username[:48]
+			}
+			username += "_" + suffix
+		}
+		if createErr != nil {
+			http.Redirect(w, r, "/login?qr_error="+url.QueryEscape("创建扫码账户失败"), http.StatusSeeOther)
+			return
+		}
+		record, _ = s.store.UserByID(user.ID)
+	}
+	if record.Disabled {
+		http.Redirect(w, r, "/login?qr_error="+url.QueryEscape("账户已停用"), http.StatusSeeOther)
+		return
+	}
+	_ = s.store.MarkUserLogin(record.ID)
+	if err := s.auth.startSession(w, record.ID); err != nil {
+		http.Redirect(w, r, "/login?qr_error="+url.QueryEscape("创建会话失败"), http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
@@ -148,11 +357,7 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	payload := s.market.Health(ctx)
 	payload["uptime_seconds"] = int64(time.Since(s.started).Seconds())
-	status := http.StatusOK
-	if payload["status"] != "ok" {
-		status = http.StatusServiceUnavailable
-	}
-	writeJSON(w, status, payload)
+	writeJSON(w, http.StatusOK, payload)
 }
 
 func (s *Server) favicon(w http.ResponseWriter, r *http.Request) {
@@ -166,6 +371,18 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), s.config.Timeout)
 	defer cancel()
 	payload := s.market.Dashboard(ctx)
+	payload.Account = s.trading.Account(ctx)
+	if orders, err := s.trading.Orders(ctx, 50); err == nil {
+		payload.Orders = orders
+	} else {
+		payload.Orders = []domain.Order{}
+	}
+	payload.Custody = s.trading.CustodySettings()
+	payload.Trading = s.trading.Status()
+	payload.Version = s.config.Version
+	if user, ok := currentUserFromContext(r); ok {
+		payload.CurrentUser = &user
+	}
 	writeJSON(w, http.StatusOK, payload)
 }
 
@@ -281,17 +498,192 @@ func (s *Server) toggleStrategy(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
+func (s *Server) users(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireOwner(w, r); !ok {
+		return
+	}
+	items := s.store.Users()
+	writeJSON(w, http.StatusOK, map[string]any{"count": len(items), "items": items})
+}
+
+func (s *Server) updateUserTrading(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireOwner(w, r); !ok {
+		return
+	}
+	var body struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := decodeJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, "请求体格式错误")
+		return
+	}
+	if err := s.store.SetUserTradingEnabled(r.PathValue("id"), body.Enabled); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "用户不存在")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "更新交易权限失败")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) tradingAccount(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), s.config.Timeout)
+	defer cancel()
+	writeJSON(w, http.StatusOK, s.trading.Account(ctx))
+}
+
+func (s *Server) tradingOrders(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), s.config.Timeout)
+	defer cancel()
+	orders, err := s.trading.Orders(ctx, 100)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"count": len(orders), "items": orders})
+}
+
+func (s *Server) placeOrder(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.requireTrader(w, r)
+	if !ok {
+		return
+	}
+	var request domain.OrderRequest
+	if err := decodeJSON(r, &request); err != nil {
+		writeError(w, http.StatusBadRequest, "请求体格式错误")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), s.config.Timeout)
+	defer cancel()
+	order, err := s.trading.PlaceOrder(ctx, request, "manual", user.Username)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, order)
+}
+
+func (s *Server) cancelOrder(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.requireTrader(w, r)
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), s.config.Timeout)
+	defer cancel()
+	order, err := s.trading.CancelOrder(ctx, r.PathValue("id"), user.Username)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, order)
+}
+
+func (s *Server) custody(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{
+		"settings": s.trading.CustodySettings(),
+		"status":   s.trading.Status(),
+	})
+}
+
+func (s *Server) updateCustody(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.requireOwner(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		domain.CustodySettings
+		Confirmation string `json:"confirmation"`
+	}
+	if err := decodeJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, "请求体格式错误")
+		return
+	}
+	settings, err := s.trading.UpdateCustody(body.CustodySettings, body.Confirmation, user.Username)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, settings)
+}
+
+func (s *Server) runCustody(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.requireOwner(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Force bool `json:"force"`
+	}
+	if r.ContentLength != 0 {
+		if err := decodeJSON(r, &body); err != nil {
+			writeError(w, http.StatusBadRequest, "请求体格式错误")
+			return
+		}
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+	orders, err := s.trading.RunCustodyOnce(ctx, user.Username, body.Force)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"count": len(orders), "items": orders})
+}
+
+func (s *Server) requireTrader(w http.ResponseWriter, r *http.Request) (domain.User, bool) {
+	user, ok := currentUserFromContext(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "请先登录")
+		return domain.User{}, false
+	}
+	if !user.TradingEnabled && user.Role != "owner" {
+		writeError(w, http.StatusForbidden, "当前账户未开启交易权限")
+		return domain.User{}, false
+	}
+	return user, true
+}
+
+func (s *Server) requireOwner(w http.ResponseWriter, r *http.Request) (domain.User, bool) {
+	user, ok := s.requireTrader(w, r)
+	if !ok {
+		return domain.User{}, false
+	}
+	if user.Role != "owner" {
+		writeError(w, http.StatusForbidden, "该操作仅限管理员")
+		return domain.User{}, false
+	}
+	return user, true
+}
+
 func (s *Server) withAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !s.auth.enabled() || publicPath(r.URL.Path) || s.auth.authenticated(r) {
+		if !sameOriginRequest(r) {
+			writeError(w, http.StatusForbidden, "跨站请求已拒绝")
+			return
+		}
+		if publicPath(r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if strings.HasPrefix(r.URL.Path, "/api/") {
-			writeError(w, http.StatusUnauthorized, "请先登录")
+		user, ok := s.auth.currentUser(r)
+		if ok {
+			next.ServeHTTP(w, withUser(r, user))
 			return
 		}
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			writeJSON(w, http.StatusUnauthorized, map[string]any{
+				"error":          "请先登录",
+				"setup_required": s.store.UserCount() == 0,
+			})
+			return
+		}
+		if s.store.UserCount() == 0 {
+			http.Redirect(w, r, "/register", http.StatusSeeOther)
+		} else {
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+		}
 	})
 }
 
@@ -309,8 +701,11 @@ func (s *Server) securityHeaders(next http.Handler) http.Handler {
 }
 
 func publicPath(path string) bool {
-	return path == "/" || path == "/login" || path == "/logout" || path == "/health" ||
-		path == "/favicon.svg" || strings.HasPrefix(path, "/assets/")
+	return path == "/login" || path == "/register" || path == "/logout" || path == "/health" ||
+		path == "/favicon.svg" || path == "/auth/qr/callback" ||
+		path == "/api/v1/auth/status" || path == "/api/v1/auth/login" ||
+		path == "/api/v1/auth/register" || path == "/api/v1/auth/qr/start" ||
+		strings.HasPrefix(path, "/assets/")
 }
 
 func decodeJSON(r *http.Request, target any) error {

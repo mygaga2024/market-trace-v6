@@ -35,3 +35,20 @@ func TestStockSecID(t *testing.T) {
 		}
 	}
 }
+
+func TestParseTencentBars(t *testing.T) {
+	rows := [][]any{
+		{"2026-10-20", "1321.01", "1325.58", "1335.00", "1316.14", "15205"},
+		{"2026-10-19", 1322.5, 1324.97, 1348.6, 1321.0, 39729.0},
+	}
+	bars := parseTencentBars(rows)
+	if len(bars) != 2 {
+		t.Fatalf("bars = %d, want 2", len(bars))
+	}
+	if bars[0].Date != "2026-10-20" || bars[0].Close != 1325.58 || bars[0].Volume != 15205 {
+		t.Fatalf("first bar = %+v", bars[0])
+	}
+	if bars[1].Open != 1322.5 {
+		t.Fatalf("second bar = %+v", bars[1])
+	}
+}

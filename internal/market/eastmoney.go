@@ -18,6 +18,7 @@ import (
 const (
 	eastmoneyQuoteURL = "https://push2.eastmoney.com/api/qt/ulist.np/get"
 	eastmoneyKlineURL = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
+	tencentKlineURL   = "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
 )
 
 var indexSecIDs = []struct {
@@ -114,6 +115,18 @@ func (p *EastmoneyProvider) Indices(ctx context.Context) ([]domain.IndexQuote, e
 }
 
 func (p *EastmoneyProvider) Kline(ctx context.Context, symbol string, limit int) ([]domain.Bar, error) {
+	bars, eastErr := p.eastmoneyKline(ctx, symbol, limit)
+	if eastErr == nil && len(bars) >= 5 {
+		return bars, nil
+	}
+	bars, tencentErr := p.tencentKline(ctx, symbol, limit)
+	if tencentErr == nil && len(bars) >= 5 {
+		return bars, nil
+	}
+	return nil, fmt.Errorf("K 线数据源均不可用: eastmoney=%v; tencent=%v", eastErr, tencentErr)
+}
+
+func (p *EastmoneyProvider) eastmoneyKline(ctx context.Context, symbol string, limit int) ([]domain.Bar, error) {
 	if limit < 30 {
 		limit = 30
 	}
@@ -172,6 +185,71 @@ func (p *EastmoneyProvider) Kline(ctx context.Context, symbol string, limit int)
 		return nil, fmt.Errorf("股票 %s K 线数据不足", symbol)
 	}
 	return bars, nil
+}
+
+func (p *EastmoneyProvider) tencentKline(ctx context.Context, symbol string, limit int) ([]domain.Bar, error) {
+	if limit < 30 {
+		limit = 30
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	prefix := "sz"
+	if stockSecID(symbol)[0] == '1' {
+		prefix = "sh"
+	}
+	params := url.Values{}
+	params.Set("param", fmt.Sprintf("%s%s,day,,,%d,qfq", prefix, symbol, limit))
+	var payload struct {
+		Code int `json:"code"`
+		Data map[string]struct {
+			QFQDay [][]any `json:"qfqday"`
+			Day    [][]any `json:"day"`
+		} `json:"data"`
+	}
+	if err := p.getJSON(ctx, tencentKlineURL+"?"+params.Encode(), &payload); err != nil {
+		return nil, err
+	}
+	item, ok := payload.Data[prefix+symbol]
+	if !ok {
+		return nil, fmt.Errorf("腾讯行情缺少 %s 数据", symbol)
+	}
+	rows := item.QFQDay
+	if len(rows) == 0 {
+		rows = item.Day
+	}
+	bars := parseTencentBars(rows)
+	if len(bars) < 5 {
+		return nil, fmt.Errorf("腾讯 K 线数据不足: %d", len(bars))
+	}
+	return bars, nil
+}
+
+func parseTencentBars(rows [][]any) []domain.Bar {
+	bars := make([]domain.Bar, 0, len(rows))
+	for _, fields := range rows {
+		if len(fields) < 6 {
+			continue
+		}
+		date, _ := fields[0].(string)
+		open, ok1 := anyFloat(fields[1])
+		closePrice, ok2 := anyFloat(fields[2])
+		high, ok3 := anyFloat(fields[3])
+		low, ok4 := anyFloat(fields[4])
+		volume, ok5 := anyFloat(fields[5])
+		if date == "" || !ok1 || !ok2 || !ok3 || !ok4 || !ok5 {
+			continue
+		}
+		bars = append(bars, domain.Bar{
+			Date:   date,
+			Open:   open,
+			Close:  closePrice,
+			High:   high,
+			Low:    low,
+			Volume: volume,
+		})
+	}
+	return bars
 }
 
 func (p *EastmoneyProvider) fetchQuoteRows(ctx context.Context, secids []string) ([]quoteRow, error) {
@@ -278,6 +356,21 @@ func quoteFromRow(row quoteRow, at time.Time) domain.Quote {
 		Volume:    row.Volume.ptr(),
 		Amount:    row.Amount.ptr(),
 		UpdatedAt: at,
+	}
+}
+
+func anyFloat(value any) (float64, bool) {
+	switch item := value.(type) {
+	case float64:
+		return item, true
+	case string:
+		parsed, err := strconv.ParseFloat(item, 64)
+		return parsed, err == nil
+	case json.Number:
+		parsed, err := item.Float64()
+		return parsed, err == nil
+	default:
+		return 0, false
 	}
 }
 

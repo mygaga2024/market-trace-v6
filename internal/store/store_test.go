@@ -71,3 +71,46 @@ func TestStoreRejectsUnsafeRiskSettings(t *testing.T) {
 		t.Fatal("UpdateSettings() accepted zero position limit")
 	}
 }
+
+func TestUserAndTradingPersistence(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	state, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	user, err := state.CreateUser("owner", "管理员", "hash", "local", "")
+	if err != nil {
+		t.Fatalf("CreateUser() error = %v", err)
+	}
+	if user.Role != "owner" || !user.TradingEnabled {
+		t.Fatalf("first user = %+v", user)
+	}
+	if _, err := state.CreateUser("owner", "重复", "hash", "local", ""); !errors.Is(err, ErrExists) {
+		t.Fatalf("duplicate user error = %v", err)
+	}
+	if err := state.SetUserTradingEnabled(user.ID, false); err != nil {
+		t.Fatalf("SetUserTradingEnabled() error = %v", err)
+	}
+	if err := state.UpdateTrading(func(trading *TradingState) error {
+		trading.PaperCash = 1234
+		trading.Custody.Symbols = []string{"600519"}
+		return nil
+	}); err != nil {
+		t.Fatalf("UpdateTrading() error = %v", err)
+	}
+
+	reopened, err := Open(path)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	if reopened.UserCount() != 1 {
+		t.Fatalf("user count = %d", reopened.UserCount())
+	}
+	record, ok := reopened.UserByUsername("owner")
+	if !ok || record.TradingEnabled {
+		t.Fatalf("persisted user = %+v", record)
+	}
+	if got := reopened.TradingSnapshot().PaperCash; got != 1234 {
+		t.Fatalf("paper cash = %v, want 1234", got)
+	}
+}

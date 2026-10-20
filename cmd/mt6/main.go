@@ -14,6 +14,7 @@ import (
 	"github.com/mygaga2024/market-trace-v6/internal/market"
 	"github.com/mygaga2024/market-trace-v6/internal/server"
 	"github.com/mygaga2024/market-trace-v6/internal/store"
+	"github.com/mygaga2024/market-trace-v6/internal/trading"
 )
 
 func main() {
@@ -28,7 +29,8 @@ func main() {
 	}
 	provider := market.NewEastmoneyProvider(&http.Client{Timeout: 8 * time.Second})
 	service := market.NewService(provider, state)
-	app, err := server.New(cfg, state, service, logger)
+	tradingManager := trading.NewManager(state, service, service, trading.ManagerConfigFromEnv(), logger)
+	app, err := server.New(cfg, state, service, tradingManager, logger)
 	if err != nil {
 		logger.Error("无法初始化 Web 服务", "error", err)
 		os.Exit(1)
@@ -43,8 +45,12 @@ func main() {
 		IdleTimeout:       60 * time.Second,
 	}
 
+	appCtx, appCancel := context.WithCancel(context.Background())
+	defer appCancel()
+	go tradingManager.StartCustodyLoop(appCtx)
+
 	go func() {
-		logger.Info("Market Trace Go 已启动", "address", cfg.Address, "data", cfg.DataFile, "auth", cfg.APIToken != "")
+		logger.Info("Market Trace Go 已启动", "address", cfg.Address, "data", cfg.DataFile, "api_token", cfg.APIToken != "", "registration", cfg.AllowRegistration)
 		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Error("HTTP 服务异常退出", "error", err)
 			os.Exit(1)
@@ -54,6 +60,7 @@ func main() {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	<-stop
+	appCancel()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

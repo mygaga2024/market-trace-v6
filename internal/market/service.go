@@ -226,6 +226,21 @@ func (s *Service) Analyze(ctx context.Context, symbol string) (domain.Analysis, 
 	return analysis, nil
 }
 
+func (s *Service) Quote(ctx context.Context, symbol string) (domain.Quote, error) {
+	symbol = normalizeSymbol(symbol)
+	if symbol == "" {
+		return domain.Quote{}, errors.New("请提供 6 位股票代码")
+	}
+	quotes, _, err := s.quotes(ctx, []string{symbol})
+	if err != nil {
+		return domain.Quote{}, err
+	}
+	if len(quotes) == 0 || quotes[0].Price == nil {
+		return domain.Quote{}, fmt.Errorf("股票 %s 暂无可用实时价格", symbol)
+	}
+	return quotes[0], nil
+}
+
 func (s *Service) Health(ctx context.Context) map[string]any {
 	start := time.Now()
 	_, err := s.provider.Indices(ctx)
@@ -236,7 +251,7 @@ func (s *Service) Health(ctx context.Context) map[string]any {
 	return map[string]any{
 		"status":            status,
 		"service":           "market-trace-go",
-		"version":           "2.0.0",
+		"version":           "2.1.0",
 		"time":              time.Now(),
 		"market_source":     s.provider.Name(),
 		"market_latency_ms": time.Since(start).Milliseconds(),

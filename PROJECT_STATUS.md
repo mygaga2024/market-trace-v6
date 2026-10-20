@@ -2,7 +2,7 @@
 
 ## 版本
 
-**2.0.0**
+**2.1.0**
 
 ## 已知问题
 
@@ -10,12 +10,15 @@
 <!-- 发现新问题时在此追加，格式: YYYY-MM-DD | 问题描述 | 临时方案 -->
 | 日期 | 问题 | 临时方案 |
 |------|------|----------|
-| 2026-10-20 | 本地环境无 Docker daemon，NAS 主机名当前不可解析 | Go 二进制与 API/浏览器已本地实测；部署验证需在可访问 NAS 的环境执行 |
+| 2026-10-20 | 同花顺等扫码登录尚未配置官方 OAuth/OIDC 凭据 | 扫码入口保持禁用，不使用非官方登录接口；配置 `QR_LOGIN_*` 后自动启用 |
+| 2026-10-20 | 生产已部署但当前为模拟盘，未配置官方券商网关 | 交易终端可完整模拟成交；配置 `BROKER_GATEWAY_*`、`ALLOW_LIVE_TRADING=true` 后启用实盘 |
+| 2026-10-20 | 实盘托管需要价格、券商和合规二次授权 | 托管默认关闭；需 `ALLOW_LIVE_CUSTODY=true` 且界面输入 `ENABLE CUSTODY` |
 
 ## 最近修复
 
 | 日期 | Commit | 修复内容 |
 |------|--------|---------|
+| 2026-10-20 | — | **Go Edition 2.1.0**: 新增本地账户注册/登录、Argon2id 密码哈希、HttpOnly 会话、登录限流、管理员用户管理与改密；新增官方 OAuth/OIDC 扫码登录通道（未配置时禁用）；新增模拟券商账户、买卖/限价/撤单/持仓估值；新增签名 HMAC 的官方券商网关客户端、实盘与托管双重开关；托管引擎支持评分阈值、置信度、单笔金额、每日去重和竞价时段限制；新增交易终端、托管交易、用户管理 UI；K 线增加腾讯前复权备用源。Go 测试 32 项、Python 回归 328 项通过；已部署 NAS `GGUG` Docker，`/health` 返回 `ok / 2.1.0` |
 | 2026-10-20 | `567621b` | **Go Edition 2.0.0**: 新增 `cmd/mt6` + `internal/*` 标准库 HTTP 服务；东方财富实时指数/自选行情与 140 日 K 线；MA/RSI/MACD/KDJ/ATR/布林带/量比/支撑阻力；可解释评分、动作、置信度、风险；JSON 原子持久化自选/决策/审计/风控/策略；Bearer + HttpOnly Session 鉴权；`go:embed` 内嵌响应式前端。UI 按参考授权中心重做为深松绿侧栏、浅灰工作面、白色名单栏和移动端抽屉。Dockerfile 改为多阶段 Go 构建，原 Python Dockerfile 保留为 `Dockerfile.python`；Go 测试 16 项、Python 回归 328 项全部通过 |
 | 2026-08-04 | — | 静默错误专项修复续(19项中/低危): ATR不足返None/量能均值0不恒真/凯利无真实统计→data_insufficient/parity波动率≤0→None/trace方向强度加权/paper缺价跳过估值+无confidence不自动买/RSI小样本(2倍周期)/回测vol_up不足为False/sharpe等样本不足保持None+score安全/rolling加sample_ok/扫描vol_ratio分母0→None+降级不排序/macro全因子缺失→DEGRADED+data_complete/布林position None/KDJ伪中性→None/position横盘跳过; 版本 1.3.7→1.3.8; 新增 test_silent_fixes.py 19项 (328 total) |
 | 2026-08-04 | — | 同类静默错误专项修复(5项高危): ① strategies._calc_rsi/_calc_ma 数据不足不再返回伪中性 50/现价冒充均线, 改返 None + analyzer 长度防护(前端已兼容显示"—") ② 顶背离 strength 由幅度计算(0.7 硬编码→真实值), 阈值统一 DIVERGENCE_MIN_STRENGTH=0.5 供 risk/chief 共用(critical 强制平仓规则重新可触发) ③ 回测结果 MIN_TRADES_FOR_RESULT=5 笔才收录排名(1 笔 0%/100% 胜率不再污染) ④ analyzer 宏观缓存缺失 RAI=None 不再兜底 0.5 进 LLM, prompt 标注「宏观数据缺失」 ⑤ risk_agent/chief_decision RAI None 传播防护(修 None>0.65 TypeError); 版本 1.3.6→1.3.7; 新增测试 7项 (309 total) |
@@ -78,10 +81,14 @@ fallback   → RuleBasedAnalyzer    (纯规则)
 
 - 端口: `19377`
 - 容器名: `mt6-app` (docker-compose)
-- 主运行版本: Go 2.0.0
+- 主运行版本: Go 2.1.0
 - 数据源: 东方财富实时行情 + 前复权日 K
 - 数据目录: `data/go/state.json`
 - Python 回滚镜像: `Dockerfile.python`
+- NAS: 绿联 `GGUG`（SSH 别名 `ggug`），项目路径 `/volume1/docker/market-trace-v6`
+- Compose 文件: `docker-compose.yml`
+- 当前交易模式: 内置模拟盘（`paper`）
+- 健康检查: `http://10.10.10.130:19377/health`
 
 ## 测试
 

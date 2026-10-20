@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>登录 · Market Trace</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/assets/app.css?v=2.0.0">
+  <link rel="stylesheet" href="/assets/app.css?v=2.1.0">
 </head>
 <body class="login-body">
   <main class="login-card">
@@ -18,20 +18,47 @@
     <div class="login-copy">
       <span class="eyebrow">SECURE ACCESS</span>
       <h1>登录工作台</h1>
-      <p>输入服务端配置的 API 访问令牌，继续查看内网行情与决策记录。</p>
+      <p>账户会话与管理权限由 NAS 本地保存。实盘交易仍需单独配置官方券商网关。</p>
     </div>
-    <form id="login-form">
-      <input name="username" type="text" value="operator" autocomplete="username" hidden>
-      <label class="field">
-        <span>访问令牌</span>
-        <input id="token" type="password" autocomplete="current-password" placeholder="API_TOKEN" required>
-      </label>
-      <p class="form-error" id="login-error" hidden>访问令牌无效，请重新输入。</p>
-      <button class="button button-primary login-submit" type="submit">进入控制中心</button>
-    </form>
-    <p class="login-foot">仅限已授权设备 · Session 有效期 24 小时</p>
+
+    <div class="auth-tabs" role="tablist" aria-label="登录方式">
+      <button class="auth-tab active" type="button" role="tab" aria-selected="true" data-auth-tab="password">账号登录</button>
+      <button class="auth-tab" type="button" role="tab" aria-selected="false" data-auth-tab="qr">扫码登录</button>
+    </div>
+
+    <section class="auth-pane active" data-auth-pane="password">
+      <form id="login-form">
+        <input name="username" type="text" value="operator" autocomplete="username" hidden>
+        <label class="field">
+          <span>用户名</span>
+          <input id="username" name="username" type="text" autocomplete="username" placeholder="用户名、邮箱或手机号" required>
+        </label>
+        <label class="field auth-field-gap">
+          <span>密码</span>
+          <input id="password" name="password" type="password" autocomplete="current-password" placeholder="输入账户密码" required>
+        </label>
+        <p class="form-error" id="login-error" hidden>用户名或密码错误。</p>
+        <button class="button button-primary login-submit" type="submit">进入控制中心</button>
+      </form>
+      <p class="auth-switch">还没有账户？<a href="/register">立即注册</a></p>
+    </section>
+
+    <section class="auth-pane" data-auth-pane="qr">
+      <div class="qr-panel">
+        <span class="qr-mark">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h3v3h-3zM19 19h1v1h-1zM14 19h2M19 14h1"></path></svg>
+        </span>
+        <h2 id="qr-title">官方 App 扫码登录</h2>
+        <p id="qr-status">正在检查扫码登录配置…</p>
+        <button class="button button-primary" id="qr-login-button" type="button" disabled>发起扫码登录</button>
+        <small>仅支持已授权的官方开放平台 OAuth/OIDC。不会调用非官方接口，也不会收集券商密码。</small>
+      </div>
+      <p class="auth-switch">扫码账户首次登录会自动创建本地账户。</p>
+    </section>
+
+    <p class="login-foot">登录会话默认 7 天 · 密码使用 Argon2id 加盐存储</p>
   </main>
-  <script src="/assets/login.js?v=2.0.0" defer></script>
+  <script src="/assets/login.js?v=2.1.0" defer></script>
 </body>
 </html>
 
